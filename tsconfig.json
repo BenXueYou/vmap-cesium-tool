@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "esnext",
+    "moduleResolution": "node",
+    "strict": true,
+    "jsx": "preserve",
+    "lib": ["esnext", "dom", "ES2015", "DOM"],
+    "sourceMap": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true, // 允许从没有设置默认导出的模块中默认导入
+    "types": ["cesium", "vite/client"],
+    "paths": {
+      "cesium": ["./node_modules/cesium"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.tsx", "src/**/*.vue"]
+}
