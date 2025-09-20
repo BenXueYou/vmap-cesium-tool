@@ -331,13 +331,54 @@ export class CesiumMapToolbar {
       button.style.transform = 'scale(1)';
     });
 
-    // 点击事件
-    button.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.handleButtonClick(config.id, button);
-    });
+    // 点击事件（除了搜索、测量、图层切换按钮）
+    if (!['search', 'measure', 'layers'].includes(config.id)) {
+      button.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.handleButtonClick(config.id, button);
+      });
+    } else {
+      // 搜索、测量、图层切换按钮使用hover事件
+      button.addEventListener('mouseenter', () => {
+        this.handleButtonClick(config.id, button);
+      });
+      
+      // 添加鼠标离开事件来关闭菜单
+      button.addEventListener('mouseleave', () => {
+        this.closeMenuOnButtonLeave(config.id);
+      });
+    }
 
     return button;
+  }
+
+  /**
+   * 按钮鼠标离开时关闭菜单
+   */
+  private closeMenuOnButtonLeave(buttonId: string): void {
+    // 延迟关闭，给用户时间移动到菜单上
+    setTimeout(() => {
+      switch (buttonId) {
+        case 'search':
+          const searchContainer = this.toolbarElement.querySelector('.search-container');
+          if (searchContainer && !searchContainer.matches(':hover')) {
+            searchContainer.remove();
+          }
+          break;
+        case 'measure':
+          const measureMenu = this.toolbarElement.querySelector('.measurement-menu');
+          if (measureMenu && !measureMenu.matches(':hover')) {
+            measureMenu.remove();
+          }
+          break;
+        case 'layers':
+          const layersMenu = this.toolbarElement.querySelector('.layers-menu');
+          if (layersMenu && !layersMenu.matches(':hover')) {
+            layersMenu.remove();
+          }
+          break;
+      }
+    }, 100); // 100ms延迟，给用户时间移动到菜单
   }
 
   /**
@@ -378,8 +419,7 @@ export class CesiumMapToolbar {
   private toggleSearch(buttonElement: HTMLElement): void {
     const existingSearch = this.toolbarElement.querySelector('.search-container');
     if (existingSearch) {
-      existingSearch.remove();
-      return;
+      return; // 如果搜索框已存在，不重复创建
     }
 
     const searchContainer = document.createElement('div');
@@ -449,14 +489,13 @@ export class CesiumMapToolbar {
       }, 300);
     });
 
-    // 点击外部关闭搜索框
-    const closeSearch = (e: Event) => {
-      if (!searchContainer.contains(e.target as Node)) {
-        searchContainer.remove();
-        document.removeEventListener('click', closeSearch);
-      }
+    // 鼠标离开搜索框区域时关闭
+    const closeSearch = () => {
+      searchContainer.remove();
     };
-    setTimeout(() => document.addEventListener('click', closeSearch), 100);
+    
+    // 监听搜索框的鼠标离开事件
+    searchContainer.addEventListener('mouseleave', closeSearch);
   }
 
   /**
@@ -559,8 +598,7 @@ export class CesiumMapToolbar {
   private toggleMeasurement(buttonElement: HTMLElement): void {
     const existingMenu = this.toolbarElement.querySelector('.measurement-menu');
     if (existingMenu) {
-      existingMenu.remove();
-      return;
+      return; // 如果菜单已存在，不重复创建
     }
 
     const menu = document.createElement('div');
@@ -616,14 +654,13 @@ export class CesiumMapToolbar {
 
     this.toolbarElement.insertBefore(menu, buttonElement);
 
-    // 点击外部关闭菜单
-    const closeMenu = (e: Event) => {
-      if (!menu.contains(e.target as Node)) {
-        menu.remove();
-        document.removeEventListener('click', closeMenu);
-      }
+    // 鼠标离开菜单区域时关闭
+    const closeMenu = () => {
+      menu.remove();
     };
-    setTimeout(() => document.addEventListener('click', closeMenu), 100);
+    
+    // 监听菜单的鼠标离开事件
+    menu.addEventListener('mouseleave', closeMenu);
   }
 
   /**
@@ -667,8 +704,7 @@ export class CesiumMapToolbar {
   private toggleLayers(buttonElement: HTMLElement): void {
     const existingMenu = this.toolbarElement.querySelector('.layers-menu');
     if (existingMenu) {
-      existingMenu.remove();
-      return;
+      return; // 如果菜单已存在，不重复创建
     }
 
     const menu = document.createElement('div');
@@ -746,14 +782,13 @@ export class CesiumMapToolbar {
 
     this.toolbarElement.insertBefore(menu, buttonElement);
 
-    // 点击外部关闭菜单
-    const closeMenu = (e: Event) => {
-      if (!menu.contains(e.target as Node)) {
-        menu.remove();
-        document.removeEventListener('click', closeMenu);
-      }
+    // 鼠标离开菜单区域时关闭
+    const closeMenu = () => {
+      menu.remove();
     };
-    setTimeout(() => document.addEventListener('click', closeMenu), 100);
+    
+    // 监听菜单的鼠标离开事件
+    menu.addEventListener('mouseleave', closeMenu);
   }
 
   /**
