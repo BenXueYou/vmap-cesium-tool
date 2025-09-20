@@ -1,79 +1,162 @@
-:root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+/* VMap Cesium Toolbar Plugin Styles */
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
-}
-
-body {
-  margin: 0;
+/* 工具栏基础样式 */
+.cesium-map-toolbar {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  padding: 8px;
+  z-index: 1000;
   display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
+  flex-direction: column;
+  gap: 8px;
 }
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
-}
-
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
+/* 工具栏按钮样式 */
+.cesium-toolbar-button {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(66, 133, 244, 0.4);
+  color: white;
+  border: none;
+  border-radius: 4px;
   cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+  font-size: 14px;
+  font-weight: bold;
+  transition: all 0.2s ease;
+  user-select: none;
+  position: relative;
 }
 
-.card {
-  padding: 2em;
+.cesium-toolbar-button:hover {
+  background: rgba(51, 103, 214, 0.9);
+  transform: scale(1.05);
 }
 
-#app {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+/* 搜索容器样式 */
+.search-container {
+  position: absolute;
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  padding: 8px;
+  min-width: 200px;
+  z-index: 1001;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
+.search-container input {
+  padding: 6px 8px;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  font-size: 14px;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.search-results {
+  margin-top: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.search-results > div {
+  padding: 8px;
+  border-bottom: 1px solid #f0f0f0;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.search-results > div:hover {
+  background-color: #f5f5f5;
+}
+
+/* 测量菜单样式 */
+.measurement-menu,
+.layers-menu {
+  position: absolute;
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  padding: 4px 0;
+  min-width: 120px;
+  z-index: 1001;
+}
+
+.layers-menu {
+  padding: 8px;
+  min-width: 200px;
+}
+
+.measurement-menu > div,
+.layers-menu > div {
+  padding: 8px 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background-color 0.2s;
+}
+
+.measurement-menu > div:hover,
+.layers-menu > div:hover {
+  background-color: #f5f5f5;
+}
+
+/* 图层菜单项样式 */
+.layers-menu .map-type-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background-color 0.2s;
+}
+
+.layers-menu .map-type-item:hover {
+  background-color: #f5f5f5;
+}
+
+.layers-menu .map-type-item.selected {
+  background-color: #e3f2fd;
+}
+
+.layers-menu .map-type-thumbnail {
+  width: 20px;
+  height: 20px;
+  border-radius: 2px;
+}
+
+.layers-menu .map-type-checkmark {
+  color: #1976d2;
+  font-weight: bold;
+  margin-left: auto;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .cesium-map-toolbar {
+    padding: 6px;
+    gap: 6px;
   }
-  a:hover {
-    color: #747bff;
+  
+  .cesium-toolbar-button {
+    width: 36px;
+    height: 36px;
+    font-size: 12px;
   }
-  button {
-    background-color: #f9f9f9;
+  
+  .search-container,
+  .measurement-menu,
+  .layers-menu {
+    min-width: 180px;
   }
 }
