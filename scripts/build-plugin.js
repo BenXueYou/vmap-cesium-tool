@@ -1,8 +1,12 @@
 #!/usr/bin/env node
 
-const { execSync } = require('child_process');
-const fs = require('fs');
-const path = require('path');
+import { execSync } from 'child_process';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 console.log('🚀 开始构建 VMap Cesium Toolbar 插件...');
 
@@ -21,6 +25,15 @@ try {
   console.log('📝 复制类型定义文件...');
   if (fs.existsSync('src/types/index.d.ts')) {
     fs.copyFileSync('src/types/index.d.ts', 'dist/index.d.ts');
+  }
+
+  // 重命名构建文件
+  console.log('🔄 重命名构建文件...');
+  if (fs.existsSync('dist/index.es.js')) {
+    fs.renameSync('dist/index.es.js', 'dist/index.js');
+  }
+  if (fs.existsSync('dist/index.es.js.map')) {
+    fs.renameSync('dist/index.es.js.map', 'dist/index.js.map');
   }
 
   // 复制样式文件
@@ -47,7 +60,13 @@ try {
     module: 'index.js',
     types: 'index.d.ts',
     files: ['index.js', 'index.d.ts', 'style.css', 'README.md'],
-    exports: packageJson.exports,
+    exports: {
+      ".": {
+        "import": "./index.js",
+        "types": "./index.d.ts"
+      },
+      "./style": "./style.css"
+    },
     peerDependencies: packageJson.peerDependencies,
     keywords: packageJson.keywords,
     author: packageJson.author,
