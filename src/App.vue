@@ -8,11 +8,13 @@
     
     <!-- 测试按钮区域 -->
     <div class="test-buttons">
-      <h3>绘制功能测试</h3>
+      <h3>功能测试</h3>
       <div class="button-group">
         <button @click="testDrawFrustum" class="test-btn">绘制视锥体</button>
         <button @click="testDrawMonitoringCircle" class="test-btn">绘制监控圆形</button>
         <button @click="testDrawVerticalLine" class="test-btn">绘制垂直线</button>
+        <button @click="testCustomButton" class="test-btn">测试自定义按钮</button>
+        <button @click="testCustomSearch" class="test-btn">测试自定义搜索</button>
         <button @click="clearAllTest" class="test-btn clear-btn">清除所有</button>
       </div>
     </div>
@@ -242,6 +244,121 @@ function testDrawVerticalLine() {
   setTimeout(() => { message.value = ""; }, 2000);
 }
 
+// 测试自定义按钮
+function testCustomButton() {
+  if (!mapToolbar) return;
+  
+  // 创建一个自定义图标元素
+  const customIcon = document.createElement('div');
+  customIcon.innerHTML = '🎯';
+  customIcon.style.fontSize = '16px';
+  
+  // 添加自定义按钮
+  mapToolbar.addCustomButton({
+    id: 'custom-test',
+    icon: customIcon,
+    title: '自定义测试按钮',
+    size: 45,
+    color: 'rgba(255, 193, 7, 0.4)',
+    hoverColor: 'rgba(255, 193, 7, 0.8)',
+    onClick: (buttonId, buttonElement) => {
+      message.value = `自定义按钮被点击: ${buttonId}`;
+      setTimeout(() => { message.value = ""; }, 2000);
+      
+      // 可以在这里添加自定义逻辑
+      console.log('自定义按钮点击事件', buttonId, buttonElement);
+    }
+  });
+  
+  message.value = '已添加自定义按钮';
+  setTimeout(() => { message.value = ""; }, 2000);
+}
+
+// 测试自定义搜索
+function testCustomSearch() {
+  if (!mapToolbar) return;
+  
+  // 更新搜索回调，添加自定义搜索逻辑
+  const originalSearchCallback = mapToolbar['searchCallback'];
+  
+  mapToolbar['searchCallback'] = {
+    ...originalSearchCallback,
+    onSearchInput: (query: string, container: HTMLElement) => {
+      // 自定义搜索输入处理
+      container.innerHTML = `<div style="padding: 8px; color: #666;">正在搜索: "${query}"</div>`;
+      
+      // 模拟自定义搜索结果
+      setTimeout(() => {
+        const customResults: SearchResult[] = [
+          {
+            name: `自定义搜索结果 - ${query}`,
+            address: '这是一个自定义搜索结果的地址',
+            longitude: 120.16 + Math.random() * 0.01,
+            latitude: 30.28 + Math.random() * 0.01,
+            height: 100
+          }
+        ];
+        
+        // 使用自定义结果显示逻辑
+        if (mapToolbar && mapToolbar['searchCallback']?.onSearchResults) {
+          mapToolbar['searchCallback'].onSearchResults(customResults, container);
+        }
+      }, 500);
+    },
+    onSearchResults: (results: SearchResult[], container: HTMLElement) => {
+      // 自定义搜索结果显示
+      container.innerHTML = '';
+      
+      results.forEach(result => {
+        const resultItem = document.createElement('div');
+        resultItem.style.cssText = `
+          padding: 8px;
+          border-bottom: 1px solid #f0f0f0;
+          cursor: pointer;
+          transition: background-color 0.2s;
+          background: linear-gradient(90deg, #e3f2fd, #f3e5f5);
+        `;
+        
+        resultItem.innerHTML = `
+          <div style="font-weight: bold; margin-bottom: 2px; color: #1976d2;">${result.name}</div>
+          <div style="font-size: 12px; color: #666;">${result.address}</div>
+          <div style="font-size: 10px; color: #999; margin-top: 2px;">自定义搜索结果</div>
+        `;
+
+        resultItem.addEventListener('mouseenter', () => {
+          resultItem.style.backgroundColor = '#f5f5f5';
+        });
+
+        resultItem.addEventListener('mouseleave', () => {
+          resultItem.style.backgroundColor = 'transparent';
+        });
+
+        resultItem.addEventListener('click', () => {
+          // 飞行到位置
+          viewer.value.camera.flyTo({
+            destination: Cesium.Cartesian3.fromDegrees(
+              result.longitude,
+              result.latitude,
+              result.height || 1000
+            ),
+            duration: 1.0
+          });
+          
+          message.value = `已定位到: ${result.name}`;
+          setTimeout(() => { message.value = ""; }, 2000);
+          
+          container.parentElement?.remove();
+        });
+
+        container.appendChild(resultItem);
+      });
+    }
+  };
+  
+  message.value = '已启用自定义搜索功能';
+  setTimeout(() => { message.value = ""; }, 2000);
+}
+
 // 清除所有测试内容
 function clearAllTest() {
   if (drawHelper) {
@@ -250,6 +367,11 @@ function clearAllTest() {
   
   if (viewer.value) {
     viewer.value.entities.removeAll();
+  }
+  
+  // 移除自定义按钮
+  if (mapToolbar) {
+    mapToolbar.removeButton('custom-test');
   }
 
   message.value = '已清除所有测试内容';

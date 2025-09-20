@@ -10,6 +10,7 @@ export { initCesium } from './libs/CesiumMapLoader';
 export type {
   ToolbarConfig,
   ButtonConfig,
+  CustomButtonConfig,
   SearchCallback,
   SearchResult,
   MeasurementCallback,

@@ -13,6 +13,7 @@ export interface ToolbarConfig {
   borderWidth?: number;
   boxShadow?: string;
   zIndex?: number;
+  buttons?: CustomButtonConfig[];
 }
 
 // 按钮配置接口
@@ -26,10 +27,26 @@ export interface ButtonConfig {
   activeColor?: string;
 }
 
+// 自定义按钮配置接口
+export interface CustomButtonConfig {
+  id: string;
+  icon: string | HTMLElement;
+  title: string;
+  enabled?: boolean;
+  visible?: boolean;
+  size?: number;
+  color?: string;
+  hoverColor?: string;
+  activeColor?: string;
+  onClick?: (buttonId: string, buttonElement: HTMLElement) => void;
+}
+
 // 搜索回调接口
 export interface SearchCallback {
   onSearch?: (query: string) => Promise<SearchResult[]>;
   onSelect?: (result: SearchResult) => void;
+  onSearchInput?: (query: string, container: HTMLElement) => void;
+  onSearchResults?: (results: SearchResult[], container: HTMLElement) => void;
 }
 
 // 搜索结果接口
@@ -192,6 +209,69 @@ export class CesiumMapToolbar {
   }
 
   /**
+   * 更新按钮配置
+   */
+  public updateButtonConfig(buttonId: string, config: Partial<CustomButtonConfig>): void {
+    const button = this.toolbarElement.querySelector(`[data-tool="${buttonId}"]`) as HTMLElement;
+    if (!button) return;
+
+    // 更新按钮属性
+    if (config.title) button.title = config.title;
+    if (config.icon) this.setButtonIcon(button, config.icon);
+    if (config.size) {
+      button.style.width = `${config.size}px`;
+      button.style.height = `${config.size}px`;
+    }
+    if (config.color) button.style.background = config.color;
+  }
+
+  /**
+   * 添加自定义按钮
+   */
+  public addCustomButton(config: CustomButtonConfig): void {
+    const buttonConfig: ButtonConfig = {
+      id: config.id,
+      icon: typeof config.icon === 'string' ? config.icon : '',
+      title: config.title,
+      size: config.size,
+      color: config.color,
+      hoverColor: config.hoverColor,
+      activeColor: config.activeColor
+    };
+
+    const buttonElement = this.createButton(buttonConfig);
+    this.toolbarElement.appendChild(buttonElement);
+
+    // 更新配置
+    if (!this.config.buttons) {
+      this.config.buttons = [];
+    }
+    this.config.buttons.push(config);
+  }
+
+  /**
+   * 移除按钮
+   */
+  public removeButton(buttonId: string): void {
+    const button = this.toolbarElement.querySelector(`[data-tool="${buttonId}"]`) as HTMLElement;
+    if (button && button.parentNode) {
+      button.parentNode.removeChild(button);
+    }
+
+    // 从配置中移除
+    if (this.config.buttons) {
+      this.config.buttons = this.config.buttons.filter(btn => btn.id !== buttonId);
+    }
+  }
+
+  /**
+   * 获取按钮元素
+   */
+  public getButtonElement(buttonId: string): HTMLElement | null {
+    return this.toolbarElement.querySelector(`[data-tool="${buttonId}"]`) as HTMLElement;
+  }
+
+  /**
    * 设置绘图助手回调
    */
   private setupDrawHelperCallbacks(): void {
@@ -271,8 +351,23 @@ export class CesiumMapToolbar {
       gap: ${this.config.buttonSpacing}px;
     `;
 
-    // 创建按钮
-    const buttons = [
+    // 获取按钮配置
+    const buttons = this.getButtonConfigs();
+
+    buttons.forEach(button => {
+      const buttonElement = this.createButton(button);
+      this.toolbarElement.appendChild(buttonElement);
+    });
+
+    this.container.appendChild(this.toolbarElement);
+  }
+
+  /**
+   * 获取按钮配置
+   */
+  private getButtonConfigs(): ButtonConfig[] {
+    // 默认按钮配置
+    const defaultButtons: ButtonConfig[] = [
       { id: 'search', icon: '🔍', title: '搜索' },
       { id: 'measure', icon: '📏', title: '测量' },
       { id: 'view2d3d', icon: '2D', title: '2D或3D' },
@@ -283,12 +378,20 @@ export class CesiumMapToolbar {
       { id: 'fullscreen', icon: '⛶', title: '全屏' }
     ];
 
-    buttons.forEach(button => {
-      const buttonElement = this.createButton(button);
-      this.toolbarElement.appendChild(buttonElement);
-    });
+    // 如果用户提供了自定义按钮配置，则使用自定义配置
+    if (this.config.buttons && this.config.buttons.length > 0) {
+      return this.config.buttons.map(customButton => ({
+        id: customButton.id,
+        icon: typeof customButton.icon === 'string' ? customButton.icon : '',
+        title: customButton.title,
+        size: customButton.size,
+        color: customButton.color,
+        hoverColor: customButton.hoverColor,
+        activeColor: customButton.activeColor
+      }));
+    }
 
-    this.container.appendChild(this.toolbarElement);
+    return defaultButtons;
   }
 
   /**
@@ -300,39 +403,75 @@ export class CesiumMapToolbar {
     button.setAttribute('data-tool', config.id);
     button.title = config.title;
     
-     button.style.cssText = `
-       width: ${this.config.buttonSize}px;
-       height: ${this.config.buttonSize}px;
-       display: flex;
-       align-items: center;
-       justify-content: center;
-       background: rgba(66, 133, 244, 0.4);
-       color: white;
-       border: none;
-       border-radius: 4px;
-       cursor: pointer;
-       font-size: 14px;
-       font-weight: bold;
-       transition: all 0.2s ease;
-       user-select: none;
-       position: relative;
-     `;
+    const buttonSize = config.size || this.config.buttonSize;
+    const buttonColor = config.color || 'rgba(66, 133, 244, 0.4)';
+    const buttonHoverColor = config.hoverColor || 'rgba(51, 103, 214, 0.9)';
+    
+    button.style.cssText = `
+      width: ${buttonSize}px;
+      height: ${buttonSize}px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: ${buttonColor};
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+      transition: all 0.2s ease;
+      user-select: none;
+      position: relative;
+    `;
 
-    button.innerHTML = config.icon;
+    // 设置图标内容
+    this.setButtonIcon(button, config.icon);
 
     // 悬停效果
     button.addEventListener('mouseenter', () => {
-      button.style.background = 'rgba(51, 103, 214, 0.9)';
+      button.style.background = buttonHoverColor;
       button.style.transform = 'scale(1.05)';
     });
 
     button.addEventListener('mouseleave', () => {
-      button.style.background = 'rgba(66, 133, 244, 0.4)';
+      button.style.background = buttonColor;
       button.style.transform = 'scale(1)';
     });
 
-    // 点击事件（除了搜索、测量、图层切换按钮）
-    if (!['search', 'measure', 'layers'].includes(config.id)) {
+    // 处理点击事件
+    this.setupButtonEvents(button, config);
+
+    return button;
+  }
+
+  /**
+   * 设置按钮图标
+   */
+  private setButtonIcon(button: HTMLElement, icon: string | HTMLElement): void {
+    if (typeof icon === 'string') {
+      button.innerHTML = icon;
+    } else if (icon instanceof HTMLElement) {
+      button.innerHTML = '';
+      button.appendChild(icon);
+    }
+  }
+
+  /**
+   * 设置按钮事件
+   */
+  private setupButtonEvents(button: HTMLElement, config: ButtonConfig): void {
+    // 查找自定义按钮配置
+    const customButton = this.config.buttons?.find(btn => btn.id === config.id);
+    
+    if (customButton?.onClick) {
+      // 自定义按钮点击事件
+      button.addEventListener('click', (e) => {
+        e.stopPropagation();
+        customButton.onClick!(config.id, button);
+      });
+    } else if (!['search', 'measure', 'layers'].includes(config.id)) {
+      // 默认按钮点击事件（除了搜索、测量、图层切换按钮）
       button.addEventListener('click', (e) => {
         e.stopPropagation();
         this.handleButtonClick(config.id, button);
@@ -348,8 +487,6 @@ export class CesiumMapToolbar {
         this.closeMenuOnButtonLeave(config.id);
       });
     }
-
-    return button;
   }
 
   /**
@@ -468,6 +605,13 @@ export class CesiumMapToolbar {
     searchInput.addEventListener('input', () => {
       clearTimeout(searchTimeout);
       const query = searchInput.value.trim();
+      
+      // 如果用户提供了自定义搜索输入处理逻辑
+      if (this.searchCallback?.onSearchInput) {
+        this.searchCallback.onSearchInput(query, resultsContainer);
+        return;
+      }
+      
       if (query.length < 2) {
         resultsContainer.innerHTML = '';
         return;
@@ -502,6 +646,13 @@ export class CesiumMapToolbar {
    * 显示搜索结果
    */
   private displaySearchResults(results: SearchResult[], container: HTMLElement): void {
+    // 如果用户提供了自定义搜索结果处理逻辑
+    if (this.searchCallback?.onSearchResults) {
+      this.searchCallback.onSearchResults(results, container);
+      return;
+    }
+
+    // 默认搜索结果显示逻辑
     container.innerHTML = '';
     
     if (results.length === 0) {
@@ -716,16 +867,24 @@ export class CesiumMapToolbar {
       margin-right: 8px;
       background: white;
       border: 1px solid #e0e0e0;
-      border-radius: 4px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-      padding: 8px;
-      min-width: 200px;
+      border-radius: 6px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      padding: 12px;
+      min-width: 220px;
+      max-width: 280px;
       z-index: 1001;
+      display: flex;
+      flex-direction: column;
     `;
 
     // 地图类型选择
     const mapTypeSection = document.createElement('div');
-    mapTypeSection.innerHTML = '<div style="font-weight: bold; margin-bottom: 8px;">地图类型</div>';
+    mapTypeSection.style.cssText = `
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    `;
+    mapTypeSection.innerHTML = '<div style="font-weight: bold; margin-bottom: 8px; color: #333; font-size: 14px;">地图类型</div>';
     
     this.mapTypes.forEach(mapType => {
       const mapTypeItem = document.createElement('div');
@@ -733,25 +892,41 @@ export class CesiumMapToolbar {
         display: flex;
         align-items: center;
         gap: 8px;
-        padding: 6px;
+        padding: 8px 12px;
         cursor: pointer;
-        border-radius: 3px;
+        border-radius: 4px;
         transition: background-color 0.2s;
+        width: 100%;
+        box-sizing: border-box;
         ${mapType.id === this.currentMapType ? 'background-color: #e3f2fd;' : ''}
       `;
 
       const thumbnail = document.createElement('img');
       thumbnail.src = mapType.thumbnail;
-      thumbnail.style.cssText = 'width: 20px; height: 20px; border-radius: 2px;';
+      thumbnail.style.cssText = `
+        width: 24px; 
+        height: 24px; 
+        border-radius: 3px;
+        flex-shrink: 0;
+      `;
 
       const label = document.createElement('span');
       label.textContent = mapType.name;
-      label.style.fontSize = '14px';
+      label.style.cssText = `
+        font-size: 14px;
+        color: #333;
+        flex: 1;
+      `;
 
       const checkmark = document.createElement('span');
       if (mapType.id === this.currentMapType) {
         checkmark.textContent = '✓';
-        checkmark.style.cssText = 'color: #1976d2; font-weight: bold; margin-left: auto;';
+        checkmark.style.cssText = `
+          color: #1976d2; 
+          font-weight: bold; 
+          font-size: 16px;
+          flex-shrink: 0;
+        `;
       }
 
       mapTypeItem.appendChild(thumbnail);
