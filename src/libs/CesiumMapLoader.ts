@@ -18,6 +18,7 @@ interface InitOptions {
   geocoder?: boolean // 地理编码器
   homeButton?: boolean // 主页按钮
   infoBox?: boolean // 信息框
+  vrButton?: boolean // VR按钮
   sceneModePicker?: boolean // 场景模式选择器
   timeline?: boolean // 时间轴
   animation?: boolean // 动画

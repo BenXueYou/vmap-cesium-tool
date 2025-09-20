@@ -5,210 +5,140 @@
       ref="cesiumContainer"
       style="width: 100%; height: 100vh"
     ></div>
-
-    <!-- 控制按钮 -->
-    <div class="toolbar">
-      <button @click="zoomIn">放大</button>
-      <button @click="zoomOut">缩小</button>
-      <button @click="setZoom(5)">缩放至5级</button>
-      <button @click="setZoom(10)">缩放至10级</button>
-      <button @click="addPoint">添加点位</button>
-      <button @click="startDistanceMeasurement">测距</button>
-      <button @click="startAreaMeasurement">测面</button>
-      <button @click="toggle2D3D">{{ is3D ? "切换到2D" : "切换到3D" }}</button>
-      <button @click="drawFrustum">绘制视锥体</button>
-      <button @click="addOverlay">添加覆盖物</button>
-      <button @click="drawVerticalLine">绘制垂直线</button>
-      <button @click="setContainerSize('80%', '80vh')">设置容器大小</button>
-      <button @click="clearAll">清除所有</button>
-    </div>
-
-    <!-- 提示信息 -->
-    <div v-if="message" class="message">{{ message }}</div>
   </div>
 </template>
 
-<script setup>
+<script lang="ts" setup>
 import { onMounted, ref, onBeforeUnmount } from "vue";
 import { Cesium } from "./libs/CesiumMapModel"; 
 import { initCesium } from "./libs/CesiumMapLoader"; 
-import DrawHelper from './libs/CesiumMapHelper'; 
+import { CesiumMapToolbar, type SearchResult, type MeasurementCallback, type ZoomCallback } from './libs/CesiumMapToolbar'; 
 
 const message = ref("");
-const is3D = ref(true);
-let mapTools = null;
 let viewer = ref();
-let drawHelper = ref();
+let mapToolbar: CesiumMapToolbar | null = null;
 
 // 初始化地图
 onMounted(async () => {
   viewer.value = await initCesium("cesiumContainer", {
     terrain: Cesium.Terrain.fromWorldTerrain(),
-    animation: false,
-    baseLayerPicker: false,
-    fullscreenButton: false,
-    vrButton: false,
-    geocoder: false,
-    homeButton: false,
+    animation: false, // 禁用动画
+    baseLayerPicker: false, // 禁用基础图层选择器
+    fullscreenButton: false, // 禁用全屏按钮
+    vrButton: false, // 禁用VR按钮
+    geocoder: false, // 禁用地理编码器
+    homeButton: false, // 禁用主页按钮
     infoBox: false, // 禁用信息框以减少交互冲突
-    sceneModePicker: false,
+    sceneModePicker: false, // 禁用场景模式选择器 
     selectionIndicator: false, // 禁用选取指示器以减少交互冲突
-    timeline: false,
-    navigationHelpButton: false,
-    navigationInstructionsInitiallyVisible: false,
-    scene3DOnly: false,
+    timeline: false, // 禁用时间轴
+    navigationHelpButton: false, // 禁用导航帮助按钮
+    navigationInstructionsInitiallyVisible: false, // 禁用导航指令初始可见
+    scene3DOnly: false, // 禁用3D场景
   });
-  drawHelper.value = new DrawHelper(viewer.value);
-  drawHelper.value.onDrawStart(() => {
-    console.log("开始绘制");
-  });
-  
-  drawHelper.value.onDrawEnd((entity) => {
-    console.log("结束绘制", entity);
-    if (entity) {
-      // 绘制成功完成，entity 是创建的图形实体
-      // 你可以在这里对 entity 进行进一步操作
-    } else {
-      // 绘制被取消（例如点数不足）
-    }
-  });
-  drawHelper.value.onEntityRemoved((entity) => {
-    console.log("实体被移除", entity);
-  });
+
+  // 初始化工具栏
+  const container = document.getElementById("cesiumContainer");
+  if (container) {
+    mapToolbar = new CesiumMapToolbar(
+      viewer.value,
+      container,
+      {
+        position: 'bottom-right',
+        buttonSize: 40,
+        buttonSpacing: 8,
+        borderRadius: 6,
+        borderWidth: 0,
+        zIndex: 1000,
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+      },
+      {
+        search: {
+          onSearch: async (query: string): Promise<SearchResult[]> => {
+            // 这里可以调用真实的地理编码API
+            return await mockGeocodingSearch(query);
+          },
+          onSelect: (result: SearchResult) => {
+            message.value = `已定位到: ${result.name}`;
+            setTimeout(() => {
+              message.value = "";
+            }, 3000);
+          }
+        },
+        measurement: {
+          onDistanceComplete: (positions, distance) => {
+            message.value = `测距完成，总距离: ${distance.toFixed(2)} 米`;
+            setTimeout(() => {
+              message.value = "";
+            }, 3000);
+          },
+          onAreaComplete: (positions, area) => {
+            message.value = `测面积完成，面积: ${area.toFixed(2)} 平方公里`;
+            setTimeout(() => {
+              message.value = "";
+            }, 3000);
+          },
+          onClear: () => {
+            message.value = "已清除所有测量内容";
+            setTimeout(() => {
+              message.value = "";
+            }, 2000);
+          }
+        },
+        zoom: {
+          onZoomIn: (beforeLevel, afterLevel) => {
+            console.log(`放大: ${beforeLevel.toFixed(0)} -> ${afterLevel.toFixed(0)}`);
+          },
+          onZoomOut: (beforeLevel, afterLevel) => {
+            console.log(`缩小: ${beforeLevel.toFixed(0)} -> ${afterLevel.toFixed(0)}`);
+          }
+        }
+      }
+    );
+  }
 });
 
+// 模拟地理编码搜索
+async function mockGeocodingSearch(query: string): Promise<SearchResult[]> {
+  // 模拟API延迟
+  await new Promise(resolve => setTimeout(resolve, 500));
+  
+  // 模拟搜索结果
+  const mockResults: SearchResult[] = [
+    {
+      name: '人工智能产业园',
+      address: '浙江省杭州市西湖区文三路',
+      longitude: 120.16,
+      latitude: 30.28,
+      height: 100
+    },
+    {
+      name: '西湖风景名胜区',
+      address: '浙江省杭州市西湖区',
+      longitude: 120.15,
+      latitude: 30.25,
+      height: 50
+    },
+    {
+      name: '杭州东站',
+      address: '浙江省杭州市江干区',
+      longitude: 120.20,
+      latitude: 30.30,
+      height: 20
+    }
+  ];
 
-// 基础地图功能
-const zoomIn = () => {
-  if (mapTools) {
-    mapTools.zoomIn();
-  }
-};
+  // 根据查询过滤结果
+  return mockResults.filter(result => 
+    result.name.includes(query) || result.address.includes(query)
+  );
+}
 
-const zoomOut = () => {
-  if (mapTools) {
-    mapTools.zoomOut();
-  }
-};
-
-const setZoom = (level) => {
-  if (mapTools) {
-    mapTools.setZoom(level);
-  }
-};
-
-const toggle2D3D = () => {
-  if (mapTools) {
-    mapTools.toggle2D3D();
-    is3D.value = !is3D.value;
-  }
-};
-
-const setContainerSize = (width, height) => {
-  if (mapTools) {
-    mapTools.setContainerSize(width, height);
-    message.value = `容器大小已设置为: ${width} x ${height}`;
-    setTimeout(() => {
-      message.value = "";
-    }, 2000);
-  }
-};
-
-// 点位功能
-const addPoint = () => {
-  if (mapTools) {
-    const position = Cesium.Cartesian3.fromDegrees(120.16, 30.28, 100);
-    mapTools.addPoint(position, {
-      pixelSize: 12,
-      color: Cesium.Color.BLUE,
-      outlineColor: Cesium.Color.WHITE,
-      outlineWidth: 3,
-      showLabel: true,
-      labelText: "示例点位",
-      onClick: (pos, carto) => {
-        const lng = Cesium.Math.toDegrees(carto.longitude).toFixed(6);
-        const lat = Cesium.Math.toDegrees(carto.latitude).toFixed(6);
-        message.value = `点位被点击: 经度=${lng}, 纬度=${lat}, 高度=${carto.height.toFixed(
-          2
-        )}m`;
-        setTimeout(() => {
-          message.value = "";
-        }, 3000);
-      },
-    });
-  }
-};
-
-// 测距功能
-const startDistanceMeasurement = () => {
-   drawHelper.value.startDrawingLine();
-};
-
-// 测面功能
-const startAreaMeasurement = () => {
-  drawHelper.value.startDrawingPolygon();
-};
-
-// 视锥体功能
-const drawFrustum = () => {
-  if (mapTools) {
-    const position = Cesium.Cartesian3.fromDegrees(120.16, 30.28, 1000);
-    mapTools.drawFrustum({
-      position: position,
-      fov: 45,
-      aspectRatio: 1.5,
-      near: 10,
-      far: 2000,
-      fillColor: new Cesium.Color(0, 1, 0, 0.2),
-      outlineColor: Cesium.Color.GREEN,
-      onRightClick: (pos) => {
-        message.value = "视锥体右键点击事件触发";
-        setTimeout(() => {
-          message.value = "";
-        }, 2000);
-      },
-    });
-  }
-};
-
-// 添加覆盖物
-const addOverlay = () => {
-  drawHelper.startDrawingRectangle();
-};
-
-// 绘制垂直线
-const drawVerticalLine = () => {
-  if (mapTools) {
-    const startPosition = Cesium.Cartesian3.fromDegrees(120.155, 30.274, 0);
-    mapTools.drawVerticalLine({
-      startPosition: startPosition,
-      height: 500,
-      width: 3,
-      material: Cesium.Color.RED,
-      showLabel: true,
-    });
-    message.value = "垂直线绘制完成";
-    setTimeout(() => {
-      message.value = "";
-    }, 2000);
-  }
-};
-
-// 清理功能
-const clearAll = () => {
-  if (mapTools) {
-    mapTools.clearAll();
-    message.value = "已清除所有绘制内容";
-    setTimeout(() => {
-      message.value = "";
-    }, 2000);
-  }
-};
 
 // 清理资源
 onBeforeUnmount(() => {
-  if (mapTools) {
-    mapTools.destroy();
+  if (mapToolbar) {
+    mapToolbar.destroy();
   }
 });
 </script>
@@ -216,34 +146,6 @@ onBeforeUnmount(() => {
 <style scoped>
 .cesium-container {
   position: relative;
-}
-
-.toolbar {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-  z-index: 1000;
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  background: rgba(255, 255, 255, 0.9);
-  padding: 10px;
-  border-radius: 6px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-}
-
-button {
-  padding: 8px 12px;
-  font-size: 14px;
-  border: none;
-  background: #4285f4;
-  color: white;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-button:hover {
-  background: #3367d6;
 }
 
 .message {
