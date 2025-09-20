@@ -104,6 +104,7 @@ interface MapToolsConfig {
 添加一个点位。
 
 **PointOptions:**
+
 ```typescript
 {
   pixelSize?: number;    // 点大小
@@ -143,6 +144,7 @@ interface MapToolsConfig {
 添加覆盖物。
 
 **覆盖物类型:**
+
 - `point`: 点
 - `label`: 文本标签
 - `billboard`: 图标

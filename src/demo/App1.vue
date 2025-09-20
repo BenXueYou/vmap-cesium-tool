@@ -30,53 +30,45 @@
 
 <script setup>
 import { onMounted, ref, onBeforeUnmount } from "vue";
-import { Cesium } from "./libs/CesiumMapModel"; 
-import { initCesium } from "./libs/CesiumMapLoader"; 
-import DrawHelper from './libs/CesiumMapHelper'; 
+import { CesiumMapTools, Cesium } from "../libs/CesiumMapHelper";
 
 const message = ref("");
 const is3D = ref(true);
 let mapTools = null;
-let viewer = ref();
-let drawHelper = ref();
 
 // 初始化地图
 onMounted(async () => {
-  viewer.value = await initCesium("cesiumContainer", {
-    terrain: Cesium.Terrain.fromWorldTerrain(),
-    animation: false,
-    baseLayerPicker: false,
-    fullscreenButton: false,
-    vrButton: false,
-    geocoder: false,
-    homeButton: false,
-    infoBox: false, // 禁用信息框以减少交互冲突
-    sceneModePicker: false,
-    selectionIndicator: false, // 禁用选取指示器以减少交互冲突
-    timeline: false,
-    navigationHelpButton: false,
-    navigationInstructionsInitiallyVisible: false,
-    scene3DOnly: false,
-  });
-  drawHelper.value = new DrawHelper(viewer.value);
-  drawHelper.value.onDrawStart(() => {
-    console.log("开始绘制");
-  });
-  
-  drawHelper.value.onDrawEnd((entity) => {
-    console.log("结束绘制", entity);
-    if (entity) {
-      // 绘制成功完成，entity 是创建的图形实体
-      // 你可以在这里对 entity 进行进一步操作
-    } else {
-      // 绘制被取消（例如点数不足）
-    }
-  });
-  drawHelper.value.onEntityRemoved((entity) => {
-    console.log("实体被移除", entity);
-  });
-});
+  try {
+    const config = {
+      containerId: "cesiumContainer",
+      mapCenter: {
+        longitude: 120.15507,
+        latitude: 30.274085,
+        height: 5000,
+        pitch: -30,
+        heading: 0
+      },
+      zoomLevels: [5000000, 2500000, 1250000, 650000, 300000, 150000, 70000, 35000, 18000, 9000, 4500, 2200, 1100],
+      defaultZoom: 5,
+      viewerOptions: {
+        terrainShadows: Cesium.ShadowMode.ENABLED,
+        scene3DOnly: false
+      }
+    };
 
+    mapTools = new CesiumMapTools(config);
+    await mapTools.initialize();
+    
+    message.value = "地图初始化完成";
+    setTimeout(() => {
+      message.value = "";
+    }, 2000);
+
+  } catch (error) {
+    console.error("地图初始化失败:", error);
+    message.value = "地图初始化失败: " + error.message;
+  }
+});
 
 // 基础地图功能
 const zoomIn = () => {
@@ -124,29 +116,53 @@ const addPoint = () => {
       outlineColor: Cesium.Color.WHITE,
       outlineWidth: 3,
       showLabel: true,
-      labelText: "示例点位",
+      labelText: '示例点位',
       onClick: (pos, carto) => {
         const lng = Cesium.Math.toDegrees(carto.longitude).toFixed(6);
         const lat = Cesium.Math.toDegrees(carto.latitude).toFixed(6);
-        message.value = `点位被点击: 经度=${lng}, 纬度=${lat}, 高度=${carto.height.toFixed(
-          2
-        )}m`;
+        message.value = `点位被点击: 经度=${lng}, 纬度=${lat}, 高度=${carto.height.toFixed(2)}m`;
         setTimeout(() => {
           message.value = "";
         }, 3000);
-      },
+      }
     });
   }
 };
 
 // 测距功能
 const startDistanceMeasurement = () => {
-   drawHelper.value.startDrawingLine();
+  if (mapTools) {
+    mapTools.startDistanceMeasurement({
+      width: 4,
+      material: Cesium.Color.GREEN,
+      showDistance: true,
+      onClick: (positions, distance) => {
+        message.value = `测量完成，距离: ${distance.toFixed(2)} 米`;
+        setTimeout(() => {
+          message.value = "";
+        }, 3000);
+      }
+    });
+  }
 };
 
 // 测面功能
 const startAreaMeasurement = () => {
-  drawHelper.value.startDrawingPolygon();
+  if (mapTools) {
+    mapTools.startAreaMeasurement({
+      material: Cesium.Color.CYAN.withAlpha(0.3),
+      outline: true,
+      outlineColor: Cesium.Color.BLUE,
+      outlineWidth: 2,
+      showArea: true,
+      onClick: (positions, area) => {
+        message.value = `测量完成，面积: ${area.toFixed(2)} 平方米`;
+        setTimeout(() => {
+          message.value = "";
+        }, 3000);
+      }
+    });
+  }
 };
 
 // 视锥体功能
@@ -166,14 +182,31 @@ const drawFrustum = () => {
         setTimeout(() => {
           message.value = "";
         }, 2000);
-      },
+      }
     });
   }
 };
 
 // 添加覆盖物
 const addOverlay = () => {
-  drawHelper.startDrawingRectangle();
+  if (mapTools) {
+    const position = Cesium.Cartesian3.fromDegrees(120.17, 30.27, 50);
+    mapTools.addOverlay({
+      position: position,
+      type: 'label',
+      label: {
+        text: '示例覆盖物',
+        font: '16px sans-serif',
+        fillColor: Cesium.Color.YELLOW,
+        outlineColor: Cesium.Color.BLACK,
+        outlineWidth: 3
+      }
+    });
+    message.value = "覆盖物添加成功";
+    setTimeout(() => {
+      message.value = "";
+    }, 2000);
+  }
 };
 
 // 绘制垂直线
@@ -185,7 +218,7 @@ const drawVerticalLine = () => {
       height: 500,
       width: 3,
       material: Cesium.Color.RED,
-      showLabel: true,
+      showLabel: true
     });
     message.value = "垂直线绘制完成";
     setTimeout(() => {
