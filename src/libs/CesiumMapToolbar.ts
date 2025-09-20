@@ -70,7 +70,7 @@ export class CesiumMapToolbar {
   private viewer: Viewer;
   private drawHelper: DrawHelper;
   private container: HTMLElement;
-  private toolbarElement: HTMLElement;
+  private toolbarElement!: HTMLElement;
   private config: ToolbarConfig;
   private searchCallback?: SearchCallback;
   private measurementCallback?: MeasurementCallback;
@@ -139,7 +139,8 @@ export class CesiumMapToolbar {
       search?: SearchCallback;
       measurement?: MeasurementCallback;
       zoom?: ZoomCallback;
-    }
+    },
+    initialCenter?: { longitude: number; latitude: number; height: number }
   ) {
     this.viewer = viewer;
     this.container = container;
@@ -158,28 +159,36 @@ export class CesiumMapToolbar {
     this.measurementCallback = callbacks?.measurement;
     this.zoomCallback = callbacks?.zoom;
 
+    // 设置初始中心点
+    this.initialCenter = initialCenter;
+
     // 初始化绘图助手
     this.drawHelper = new DrawHelper(viewer);
     this.setupDrawHelperCallbacks();
-
-    // 记录初始中心点
-    this.recordInitialCenter();
 
     // 创建工具栏
     this.createToolbar();
   }
 
   /**
-   * 记录初始中心点
+   * 设置初始中心点
    */
-  private recordInitialCenter(): void {
-    const camera = this.viewer.camera;
-    const position = camera.positionCartographic;
-    this.initialCenter = {
-      longitude: Cesium.Math.toDegrees(position.longitude),
-      latitude: Cesium.Math.toDegrees(position.latitude),
-      height: position.height
-    };
+  public setInitialCenter(center: { longitude: number; latitude: number; height: number }): void {
+    this.initialCenter = center;
+  }
+
+  /**
+   * 获取初始中心点
+   */
+  public getInitialCenter(): { longitude: number; latitude: number; height: number } | undefined {
+    return this.initialCenter;
+  }
+
+  /**
+   * 复位到初始位置（公共方法）
+   */
+  public resetToInitialLocation(): void {
+    this.resetLocation();
   }
 
   /**
@@ -291,34 +300,34 @@ export class CesiumMapToolbar {
     button.setAttribute('data-tool', config.id);
     button.title = config.title;
     
-    button.style.cssText = `
-      width: ${this.config.buttonSize}px;
-      height: ${this.config.buttonSize}px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: #4285f4;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 14px;
-      font-weight: bold;
-      transition: all 0.2s ease;
-      user-select: none;
-      position: relative;
-    `;
+     button.style.cssText = `
+       width: ${this.config.buttonSize}px;
+       height: ${this.config.buttonSize}px;
+       display: flex;
+       align-items: center;
+       justify-content: center;
+       background: rgba(66, 133, 244, 0.4);
+       color: white;
+       border: none;
+       border-radius: 4px;
+       cursor: pointer;
+       font-size: 14px;
+       font-weight: bold;
+       transition: all 0.2s ease;
+       user-select: none;
+       position: relative;
+     `;
 
     button.innerHTML = config.icon;
 
     // 悬停效果
     button.addEventListener('mouseenter', () => {
-      button.style.background = '#3367d6';
+      button.style.background = 'rgba(51, 103, 214, 0.9)';
       button.style.transform = 'scale(1.05)';
     });
 
     button.addEventListener('mouseleave', () => {
-      button.style.background = '#4285f4';
+      button.style.background = 'rgba(66, 133, 244, 0.4)';
       button.style.transform = 'scale(1)';
     });
 
@@ -767,7 +776,10 @@ export class CesiumMapToolbar {
    * 复位到初始位置
    */
   private resetLocation(): void {
-    if (!this.initialCenter) return;
+    if (!this.initialCenter) {
+      console.warn('未设置初始中心点，无法执行复位操作');
+      return;
+    }
 
     this.viewer.camera.flyTo({
       destination: Cesium.Cartesian3.fromDegrees(

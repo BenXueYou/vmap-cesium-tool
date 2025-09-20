@@ -89,7 +89,7 @@ export async function initCesium(
   containerId: string,
   options: InitOptions,
   mapCenter: MapCenter = { longitude: 120.2052342, latitude: 30.2489634, height: 1000, pitch: -60, heading: 0 }
-): Promise<CesiumViewer> {
+): Promise<{ viewer: CesiumViewer; initialCenter: MapCenter }> {
   Ion.defaultAccessToken = (import.meta as any).env.VITE_CESIUM_TOKEN
   const viewer = new Viewer(containerId, {
     timeline: false,
@@ -116,5 +116,6 @@ export async function initCesium(
       }
     });
   }
-  return viewer
+  (viewer.cesiumWidget.creditContainer as HTMLElement).style.display = 'none';
+  return { viewer, initialCenter: mapCenter }
 }

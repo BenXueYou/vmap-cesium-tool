@@ -114,4 +114,19 @@ export interface VerticalLineOptions {
   showLabel?: boolean;
 }
 
+/**
+ * 视锥体绘制选项
+ */
+export interface FrustumOptions {
+  position?: Cartesian3;
+  orientation?: Quaternion;
+  fov?: number;
+  aspectRatio?: number;
+  near?: number;
+  far?: number;
+  fillColor?: Color;
+  outlineColor?: Color;
+  onRightClick?: (position: Cartesian3) => void;
+}
+
 export * as Cesium from 'cesium';

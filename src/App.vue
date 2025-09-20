@@ -20,7 +20,7 @@ let mapToolbar: CesiumMapToolbar | null = null;
 
 // 初始化地图
 onMounted(async () => {
-  viewer.value = await initCesium("cesiumContainer", {
+  const { viewer: cesiumViewer, initialCenter } = await initCesium("cesiumContainer", {
     terrain: Cesium.Terrain.fromWorldTerrain(),
     animation: false, // 禁用动画
     baseLayerPicker: false, // 禁用基础图层选择器
@@ -37,9 +37,18 @@ onMounted(async () => {
     scene3DOnly: false, // 禁用3D场景
   });
 
+  viewer.value = cesiumViewer;
+
   // 初始化工具栏
   const container = document.getElementById("cesiumContainer");
   if (container) {
+    // 使用从initCesium返回的初始中心点
+    const mapInitialCenter = {
+      longitude: initialCenter.longitude,
+      latitude: initialCenter.latitude,
+      height: initialCenter.height
+    };
+
     mapToolbar = new CesiumMapToolbar(
       viewer.value,
       container,
@@ -53,6 +62,7 @@ onMounted(async () => {
         backgroundColor: 'rgba(255, 255, 255, 0.1)',
       },
       {
+        // 搜索回调
         search: {
           onSearch: async (query: string): Promise<SearchResult[]> => {
             // 这里可以调用真实的地理编码API
@@ -65,6 +75,7 @@ onMounted(async () => {
             }, 3000);
           }
         },
+        // 测量回调
         measurement: {
           onDistanceComplete: (positions, distance) => {
             message.value = `测距完成，总距离: ${distance.toFixed(2)} 米`;
@@ -85,6 +96,7 @@ onMounted(async () => {
             }, 2000);
           }
         },
+        // 缩放回调
         zoom: {
           onZoomIn: (beforeLevel, afterLevel) => {
             console.log(`放大: ${beforeLevel.toFixed(0)} -> ${afterLevel.toFixed(0)}`);
@@ -93,7 +105,8 @@ onMounted(async () => {
             console.log(`缩小: ${beforeLevel.toFixed(0)} -> ${afterLevel.toFixed(0)}`);
           }
         }
-      }
+      },
+      mapInitialCenter // 传递从initCesium获取的初始中心点
     );
   }
 });
