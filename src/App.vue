@@ -5,6 +5,20 @@
       ref="cesiumContainer"
       style="width: 100%; height: 100vh"
     ></div>
+    
+    <!-- 测试按钮区域 -->
+    <div class="test-buttons">
+      <h3>绘制功能测试</h3>
+      <div class="button-group">
+        <button @click="testDrawFrustum" class="test-btn">绘制视锥体</button>
+        <button @click="testDrawMonitoringCircle" class="test-btn">绘制监控圆形</button>
+        <button @click="testDrawVerticalLine" class="test-btn">绘制垂直线</button>
+        <button @click="clearAllTest" class="test-btn clear-btn">清除所有</button>
+      </div>
+    </div>
+
+    <!-- 消息提示 -->
+    <div v-if="message" class="message">{{ message }}</div>
   </div>
 </template>
 
@@ -12,11 +26,13 @@
 import { onMounted, ref, onBeforeUnmount } from "vue";
 import { Cesium } from "./libs/CesiumMapModel"; 
 import { initCesium } from "./libs/CesiumMapLoader"; 
-import { CesiumMapToolbar, type SearchResult, type MeasurementCallback, type ZoomCallback } from './libs/CesiumMapToolbar'; 
+import { CesiumMapToolbar, type SearchResult, type MeasurementCallback, type ZoomCallback } from './libs/CesiumMapToolbar';
+import DrawHelper from './libs/CesiumMapHelper'; 
 
 const message = ref("");
 let viewer = ref();
 let mapToolbar: CesiumMapToolbar | null = null;
+let drawHelper: DrawHelper | null = null;
 
 // 初始化地图
 onMounted(async () => {
@@ -38,6 +54,9 @@ onMounted(async () => {
   });
 
   viewer.value = cesiumViewer;
+
+  // 初始化绘图助手
+  drawHelper = new DrawHelper(viewer.value);
 
   // 初始化工具栏
   const container = document.getElementById("cesiumContainer");
@@ -147,11 +166,104 @@ async function mockGeocodingSearch(query: string): Promise<SearchResult[]> {
   );
 }
 
+// 测试绘制视锥体
+function testDrawFrustum() {
+  if (!drawHelper) return;
+  
+  // 获取当前相机位置作为视锥体位置
+  const cameraPosition = viewer.value.camera.positionWC;
+  const cameraOrientation = Cesium.Quaternion.fromRotationMatrix(
+    Cesium.Matrix4.getRotation(
+      viewer.value.camera.transform,
+      new Cesium.Matrix3()
+    )
+  );
+
+  drawHelper.drawFrustum({
+    position: cameraPosition,
+    orientation: cameraOrientation,
+    fov: 60,
+    aspectRatio: 1.5,
+    near: 10,
+    far: 2000,
+    fillColor: Cesium.Color.BLUE.withAlpha(0.3),
+    outlineColor: Cesium.Color.WHITE,
+    onRightClick: (pos) => {
+      message.value = '视锥体被右键点击';
+      setTimeout(() => { message.value = ""; }, 2000);
+    }
+  });
+
+  message.value = '已绘制视锥体';
+  setTimeout(() => { message.value = ""; }, 2000);
+}
+
+// 测试绘制监控圆形
+function testDrawMonitoringCircle() {
+  if (!mapToolbar) return;
+  
+  // 在杭州西湖附近绘制监控圆形
+  const circle = mapToolbar.drawMonitoringCircle(
+    120.16,  // 经度
+    30.28,   // 纬度
+    100,     // 高度
+    500,     // 半径500米
+    {
+      borderColor: '#0062FF',
+      fillColor: '#0062FF',
+      borderWidth: 2,
+      name: '测试监控区域'
+    }
+  );
+
+  message.value = '已绘制监控圆形区域';
+  setTimeout(() => { message.value = ""; }, 2000);
+}
+
+// 测试绘制垂直线
+function testDrawVerticalLine() {
+  if (!mapToolbar) return;
+  
+  // 在杭州西湖附近绘制垂直线
+  const line = mapToolbar.drawVerticalLine(
+    120.15,  // 经度
+    30.25,   // 纬度
+    1000,    // 高度1000米
+    {
+      color: '#0062FF',
+      width: 3,
+      dashPattern: 0x00FF00FF,
+      name: '测试垂直线',
+      groundHeight: 0
+    }
+  );
+
+  message.value = '已绘制垂直线条';
+  setTimeout(() => { message.value = ""; }, 2000);
+}
+
+// 清除所有测试内容
+function clearAllTest() {
+  if (drawHelper) {
+    drawHelper.clearFrustum();
+  }
+  
+  if (viewer.value) {
+    viewer.value.entities.removeAll();
+  }
+
+  message.value = '已清除所有测试内容';
+  setTimeout(() => { message.value = ""; }, 2000);
+}
+
 
 // 清理资源
 onBeforeUnmount(() => {
   if (mapToolbar) {
     mapToolbar.destroy();
+  }
+  if (drawHelper) {
+    drawHelper.destroy();
   }
 });
 </script>
@@ -159,6 +271,62 @@ onBeforeUnmount(() => {
 <style scoped>
 .cesium-container {
   position: relative;
+}
+
+/* 测试按钮区域样式 */
+.test-buttons {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 15px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1002;
+  min-width: 200px;
+}
+
+.test-buttons h3 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  color: #333;
+  font-weight: 600;
+}
+
+.button-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.test-btn {
+  padding: 8px 12px;
+  border: 1px solid #4285f4;
+  border-radius: 4px;
+  background: rgba(66, 133, 244, 0.1);
+  color: #4285f4;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 500;
+}
+
+.test-btn:hover {
+  background: rgba(66, 133, 244, 0.2);
+  border-color: #3367d6;
+  transform: translateY(-1px);
+}
+
+.test-btn.clear-btn {
+  background: rgba(244, 67, 54, 0.1);
+  border-color: #f44336;
+  color: #f44336;
+}
+
+.test-btn.clear-btn:hover {
+  background: rgba(244, 67, 54, 0.2);
+  border-color: #d32f2f;
 }
 
 .message {
