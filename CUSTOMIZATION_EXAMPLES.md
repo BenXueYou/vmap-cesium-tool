@@ -1,6 +1,6 @@
 # CesiumMapToolbar 自定义功能示例
 
-本文档展示了如何使用 CesiumMapToolbar 的自定义按钮和搜索功能。
+本文档展示了如何使用 CesiumMapToolbar 的自定义按钮和搜索功能，以及 DrawHelper 的地图绘制功能。
 
 ## 1. 自定义按钮配置
 
@@ -363,21 +363,130 @@ function createSearchResultItem(result: SearchResult, type: string): HTMLElement
 }
 ```
 
-## 4. 最佳实践
+## 4. DrawHelper 地图绘制功能
+
+### 4.1 绘制监控圆形区域
+
+```typescript
+import { DrawHelper } from 'vmap-cesium-toolbar';
+
+const drawHelper = new DrawHelper(viewer);
+
+// 绘制监控圆形区域
+const circle = drawHelper.drawMonitoringCircle(
+  120.16,  // 经度
+  30.28,   // 纬度
+  100,     // 高度
+  500,     // 半径500米
+  {
+    borderColor: '#0062FF',
+    fillColor: '#0062FF',
+    borderWidth: 2,
+    name: '监控区域'
+  }
+);
+```
+
+### 4.2 绘制垂直线条
+
+```typescript
+// 绘制垂直线条
+const line = drawHelper.drawVerticalLine(
+  120.15,  // 经度
+  30.25,   // 纬度
+  1000,    // 高度1000米
+  {
+    color: '#0062FF',
+    width: 3,
+    dashPattern: 0x00FF00FF,
+    name: '垂直线条',
+    groundHeight: 0
+  }
+);
+```
+
+### 4.3 完整的绘制功能示例
+
+```typescript
+import { CesiumMapToolbar, DrawHelper } from 'vmap-cesium-toolbar';
+
+// 初始化
+const drawHelper = new DrawHelper(viewer);
+const toolbar = new CesiumMapToolbar(viewer, container);
+
+// 绘制各种图形
+function drawVariousShapes() {
+  // 1. 绘制监控圆形
+  const monitoringCircle = drawHelper.drawMonitoringCircle(
+    120.16, 30.28, 100, 500,
+    {
+      borderColor: '#FF6B6B',
+      fillColor: '#FF6B6B',
+      borderWidth: 3,
+      name: '安全监控区域'
+    }
+  );
+
+  // 2. 绘制垂直线
+  const verticalLine = drawHelper.drawVerticalLine(
+    120.15, 30.25, 1000,
+    {
+      color: '#4ECDC4',
+      width: 4,
+      name: '高度标记线',
+      groundHeight: 0
+    }
+  );
+
+  // 3. 绘制视锥体
+  const cameraPosition = viewer.camera.positionWC;
+  const cameraOrientation = Cesium.Quaternion.fromRotationMatrix(
+    Cesium.Matrix4.getRotation(viewer.camera.transform, new Cesium.Matrix3())
+  );
+  
+  drawHelper.drawFrustum({
+    position: cameraPosition,
+    orientation: cameraOrientation,
+    fov: 60,
+    aspectRatio: 1.5,
+    near: 10,
+    far: 2000,
+    fillColor: Cesium.Color.BLUE.withAlpha(0.3),
+    outlineColor: Cesium.Color.WHITE
+  });
+
+  // 4. 绘制测量线条
+  drawHelper.startDrawingLine();
+  
+  // 5. 绘制测量多边形
+  drawHelper.startDrawingPolygon();
+}
+
+// 清理所有绘制内容
+function clearAllDrawings() {
+  drawHelper.clearAll();
+  drawHelper.clearFrustum();
+}
+```
+
+## 5. 最佳实践
 
 ### 4.1 按钮设计
+
 - 使用清晰的图标和标题
 - 保持一致的视觉风格
 - 合理设置按钮大小和间距
 - 提供悬停和点击反馈
 
 ### 4.2 搜索功能
+
 - 提供加载状态指示
 - 处理搜索错误情况
 - 支持键盘导航
 - 优化搜索性能（防抖、缓存等）
 
 ### 4.3 性能优化
+
 - 避免频繁的 DOM 操作
 - 使用事件委托
 - 合理使用异步操作

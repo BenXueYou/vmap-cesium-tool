@@ -222,6 +222,7 @@ new CesiumMapToolbar(
 #### 主要方法
 
 ##### setInitialCenter(center)
+
 设置初始中心点
 
 ```typescript
@@ -233,6 +234,7 @@ toolbar.setInitialCenter({
 ```
 
 ##### getInitialCenter()
+
 获取初始中心点
 
 ```typescript
@@ -240,6 +242,7 @@ const center = toolbar.getInitialCenter();
 ```
 
 ##### resetToInitialLocation()
+
 复位到初始位置
 
 ```typescript
@@ -247,7 +250,8 @@ toolbar.resetToInitialLocation();
 ```
 
 ##### drawMonitoringCircle(longitude, latitude, height, radius, options)
-绘制监控圆形区域
+
+绘制监控圆形区域（代理到 DrawHelper）
 
 ```typescript
 const circle = toolbar.drawMonitoringCircle(
@@ -265,7 +269,8 @@ const circle = toolbar.drawMonitoringCircle(
 ```
 
 ##### drawVerticalLine(longitude, latitude, height, options)
-绘制垂直线条
+
+绘制垂直线条（代理到 DrawHelper）
 
 ```typescript
 const line = toolbar.drawVerticalLine(
@@ -283,6 +288,7 @@ const line = toolbar.drawVerticalLine(
 ```
 
 ##### destroy()
+
 销毁工具栏
 
 ```typescript
@@ -300,6 +306,7 @@ new DrawHelper(viewer: Viewer)
 #### 主要方法
 
 ##### startDrawingLine()
+
 开始绘制线条
 
 ```typescript
@@ -307,6 +314,7 @@ drawHelper.startDrawingLine();
 ```
 
 ##### startDrawingPolygon()
+
 开始绘制多边形
 
 ```typescript
@@ -314,6 +322,7 @@ drawHelper.startDrawingPolygon();
 ```
 
 ##### startDrawingRectangle()
+
 开始绘制矩形
 
 ```typescript
@@ -321,6 +330,7 @@ drawHelper.startDrawingRectangle();
 ```
 
 ##### drawFrustum(options)
+
 绘制视锥体
 
 ```typescript
@@ -340,6 +350,7 @@ drawHelper.drawFrustum({
 ```
 
 ##### clearAll()
+
 清除所有绘制内容
 
 ```typescript
@@ -347,10 +358,49 @@ drawHelper.clearAll();
 ```
 
 ##### clearFrustum()
+
 清除视锥体
 
 ```typescript
 drawHelper.clearFrustum();
+```
+
+##### drawMonitoringCircle(longitude, latitude, height, radius, options?)
+
+绘制监控圆形区域
+
+```typescript
+const circle = drawHelper.drawMonitoringCircle(
+  120.16,  // 经度
+  30.28,   // 纬度
+  100,     // 高度
+  500,     // 半径（米）
+  {
+    borderColor: '#0062FF',
+    fillColor: '#0062FF',
+    borderWidth: 2,
+    name: '监控区域'
+  }
+);
+```
+
+##### drawVerticalLine(longitude, latitude, height, options?)
+
+绘制垂直线条
+
+```typescript
+const line = drawHelper.drawVerticalLine(
+  120.15,  // 经度
+  30.25,   // 纬度
+  1000,    // 高度
+  {
+    color: '#0062FF',
+    width: 3,
+    dashPattern: 0x00FF00FF,
+    name: '垂直线条',
+    groundHeight: 0
+  }
+);
 ```
 
 ### initCesium
@@ -439,32 +489,39 @@ interface ZoomCallback {
 ## 工具栏功能
 
 ### 1. 搜索功能 🔍
+
 - 鼠标悬停显示搜索框
 - 支持地址搜索
 - 点击搜索结果自动定位
 
 ### 2. 测量功能 📏
+
 - 测距：支持多点折线，显示每段距离和总距离
 - 测面积：绘制淡绿色填充多边形，显示面积
 - 清除：清除所有测量内容
 
 ### 3. 2D/3D切换 🔄
+
 - 一键切换2D和3D视角
 - 按钮文本自动更新
 
 ### 4. 图层切换 📚
+
 - 支持天地图的普通、三维、影像、地形四种类型
 - 单选模式，默认影像图
 
 ### 5. 定位功能 🎯
+
 - 复位到地图初始中心点
 - 平滑飞行动画
 
 ### 6. 缩放功能 🔍+/🔍-
+
 - 地图放大/缩小
 - 支持缩放回调
 
 ### 7. 全屏功能 ⛶
+
 - 进入/退出全屏模式
 - 自动检测全屏状态
 
@@ -519,6 +576,7 @@ MIT License
 ## 更新日志
 
 ### v1.0.0
+
 - 初始版本发布
 - 支持完整的工具栏功能（搜索、测量、2D/3D切换、图层切换、定位、缩放、全屏）
 - 支持完整的绘图功能（点、线、多边形、矩形、视锥体）

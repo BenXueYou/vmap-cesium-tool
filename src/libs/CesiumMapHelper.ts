@@ -762,6 +762,94 @@ class DrawHelper {
   }
 
   /**
+   * 绘制监控圆形区域
+   * @param longitude 经度
+   * @param latitude 纬度
+   * @param height 高度
+   * @param radius 监控范围半径（米）
+   * @param options 可选配置
+   */
+  public drawMonitoringCircle(
+    longitude: number,
+    latitude: number,
+    height: number,
+    radius: number,
+    options?: {
+      borderColor?: string;
+      fillColor?: string;
+      borderWidth?: number;
+      name?: string;
+    }
+  ): Cesium.Entity {
+    const borderColor = options?.borderColor || '#0062FF';
+    const fillColor = options?.fillColor || '#0062FF';
+    const borderWidth = options?.borderWidth || 2;
+    const name = options?.name || '监控区域';
+
+    // 创建圆形区域
+    const entity = this.entities.add({
+      name: name,
+      position: Cesium.Cartesian3.fromDegrees(longitude, latitude, height),
+      ellipse: {
+        semiMajorAxis: radius,
+        semiMinorAxis: radius,
+        material: Cesium.Color.fromCssColorString(fillColor).withAlpha(0.27),
+        outline: true,
+        outlineColor: Cesium.Color.fromCssColorString(borderColor),
+        outlineWidth: borderWidth,
+        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+      },
+    });
+
+    return entity;
+  }
+
+  /**
+   * 绘制垂直线条
+   * @param longitude 经度
+   * @param latitude 纬度
+   * @param height 高度
+   * @param options 可选配置
+   */
+  public drawVerticalLine(
+    longitude: number,
+    latitude: number,
+    height: number,
+    options?: {
+      color?: string;
+      width?: number;
+      dashPattern?: number;
+      name?: string;
+      groundHeight?: number;
+    }
+  ): Cesium.Entity {
+    const color = options?.color || '#0062FF';
+    const width = options?.width || 2;
+    const dashPattern = options?.dashPattern || 0x00FF00FF;
+    const name = options?.name || '垂直线条';
+    const groundHeight = options?.groundHeight || 0;
+
+    // 计算地面位置
+    const groundPosition = Cesium.Cartesian3.fromDegrees(longitude, latitude, groundHeight);
+    const topPosition = Cesium.Cartesian3.fromDegrees(longitude, latitude, height);
+
+    // 创建垂直线条
+    const entity = this.entities.add({
+      name: name,
+      polyline: {
+        positions: [groundPosition, topPosition],
+        width: width,
+        material: new Cesium.PolylineDashMaterialProperty({
+          color: Cesium.Color.fromCssColorString(color),
+        }),
+        clampToGround: false,
+      },
+    });
+
+    return entity;
+  }
+
+  /**
    * 销毁工具，清理所有事件监听器
    */
   destroy(): void {
