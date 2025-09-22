@@ -476,8 +476,14 @@ export class CesiumMapToolbar {
         e.stopPropagation();
         this.handleButtonClick(config.id, button);
       });
+    } else if (config.id === 'search') {
+      // 搜索按钮使用点击事件
+      button.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.handleButtonClick(config.id, button);
+      });
     } else {
-      // 搜索、测量、图层切换按钮使用hover事件
+      // 测量、图层切换按钮使用hover事件
       button.addEventListener('mouseenter', () => {
         this.handleButtonClick(config.id, button);
       });
@@ -496,12 +502,6 @@ export class CesiumMapToolbar {
     // 延迟关闭，给用户时间移动到菜单上
     setTimeout(() => {
       switch (buttonId) {
-        case 'search':
-          const searchContainer = this.toolbarElement.querySelector('.search-container');
-          if (searchContainer && !searchContainer.matches(':hover')) {
-            searchContainer.remove();
-          }
-          break;
         case 'measure':
           const measureMenu = this.toolbarElement.querySelector('.measurement-menu');
           if (measureMenu && !measureMenu.matches(':hover')) {
@@ -556,7 +556,9 @@ export class CesiumMapToolbar {
   private toggleSearch(buttonElement: HTMLElement): void {
     const existingSearch = this.toolbarElement.querySelector('.search-container');
     if (existingSearch) {
-      return; // 如果搜索框已存在，不重复创建
+      // 如果搜索框已存在，关闭它
+      existingSearch.remove();
+      return;
     }
 
     const searchContainer = document.createElement('div');
@@ -633,13 +635,32 @@ export class CesiumMapToolbar {
       }, 300);
     });
 
-    // 鼠标离开搜索框区域时关闭
-    const closeSearch = () => {
-      searchContainer.remove();
+    // 添加点击外部区域关闭搜索框的逻辑
+    const closeSearchOnClickOutside = (event: MouseEvent) => {
+      if (!searchContainer.contains(event.target as Node) && 
+          !buttonElement.contains(event.target as Node)) {
+        searchContainer.remove();
+        document.removeEventListener('click', closeSearchOnClickOutside);
+        document.removeEventListener('keydown', closeSearchOnEscape);
+      }
     };
-    
-    // 监听搜索框的鼠标离开事件
-    searchContainer.addEventListener('mouseleave', closeSearch);
+
+    // 添加ESC键关闭搜索框的逻辑
+    const closeSearchOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        searchContainer.remove();
+        document.removeEventListener('click', closeSearchOnClickOutside);
+        document.removeEventListener('keydown', closeSearchOnEscape);
+      }
+    };
+
+    // 延迟添加事件监听器，避免立即触发
+    setTimeout(() => {
+      document.addEventListener('click', closeSearchOnClickOutside);
+      document.addEventListener('keydown', closeSearchOnEscape);
+      // 自动聚焦到搜索输入框
+      searchInput.focus();
+    }, 100);
   }
 
   /**
