@@ -23,8 +23,13 @@ export interface ButtonConfig {
   title: string;
   size?: number;
   color?: string;
+  borderColor?: string;
+  borderWidth?: number;
+  borderStyle?: string;
   hoverColor?: string;
   activeColor?: string;
+  backgroundColor?: string;
+  activeIcon?: string | HTMLElement;
 }
 
 // 自定义按钮配置接口
@@ -36,8 +41,14 @@ export interface CustomButtonConfig {
   visible?: boolean;
   size?: number;
   color?: string;
+  borderColor?: string;
+  borderWidth?: number;
+  borderStyle?: string;
+  padding?: string;
   hoverColor?: string;
   activeColor?: string;
+  backgroundColor?: string;
+  activeIcon?: string | HTMLElement;
   onClick?: (buttonId: string, buttonElement: HTMLElement) => void;
 }
 
@@ -222,7 +233,13 @@ export class CesiumMapToolbar {
       button.style.width = `${config.size}px`;
       button.style.height = `${config.size}px`;
     }
-    if (config.color) button.style.background = config.color;
+    if (config.color) button.style.color = config.color;
+    if (config.backgroundColor) button.style.background = config.backgroundColor;
+    if (config.borderColor) button.style.borderColor = config.borderColor;
+    if (config.borderWidth) button.style.borderWidth = config.borderWidth + 'px';
+    if (config.borderStyle) button.style.borderStyle = config.borderStyle;
+    if (config.padding) button.style.padding = config.padding;
+    if (config.activeIcon) this.setButtonIcon(button, config.activeIcon);
   }
 
   /**
@@ -236,7 +253,8 @@ export class CesiumMapToolbar {
       size: config.size,
       color: config.color,
       hoverColor: config.hoverColor,
-      activeColor: config.activeColor
+      activeColor: config.activeColor,
+      backgroundColor: config.backgroundColor
     };
 
     const buttonElement = this.createButton(buttonConfig);
@@ -378,19 +396,27 @@ export class CesiumMapToolbar {
       { id: 'fullscreen', icon: '⛶', title: '全屏' }
     ];
 
+    const getDefaultButtonIds = (id: string) => defaultButtons.find(button => button.id === id);
+
     // 如果用户提供了自定义按钮配置，则使用自定义配置
     if (this.config.buttons && this.config.buttons.length > 0) {
-      return this.config.buttons.map(customButton => ({
-        id: customButton.id,
-        icon: typeof customButton.icon === 'string' ? customButton.icon : '',
-        title: customButton.title,
-        size: customButton.size,
-        color: customButton.color,
-        hoverColor: customButton.hoverColor,
-        activeColor: customButton.activeColor
-      }));
+      return this.config.buttons.map(customButton => {
+        const defaultButton = getDefaultButtonIds(customButton.id);
+        return {
+          id: customButton.id || defaultButton?.id || '',
+          icon: typeof customButton.icon === 'string' ? customButton.icon : (defaultButton?.icon || ''),
+          title: customButton.title || defaultButton?.title || '',
+          size: typeof customButton.size === 'number'
+            ? customButton.size
+            : (typeof defaultButton?.size === 'number' ? defaultButton.size : undefined),
+          backgroundColor: customButton.backgroundColor || defaultButton?.backgroundColor || '',
+          borderColor: customButton.borderColor || defaultButton?.borderColor || '',
+          borderWidth: customButton.borderWidth || defaultButton?.borderWidth || 1,
+          borderStyle: customButton.borderStyle || defaultButton?.borderStyle || 'solid',
+          color: customButton.color || defaultButton?.color || 'rgba(66, 133, 244, 0.4)',
+        };
+      });
     }
-
     return defaultButtons;
   }
 
@@ -405,7 +431,10 @@ export class CesiumMapToolbar {
     
     const buttonSize = config.size || this.config.buttonSize;
     const buttonColor = config.color || 'rgba(66, 133, 244, 0.4)';
-    const buttonHoverColor = config.hoverColor || 'rgba(51, 103, 214, 0.9)';
+    const backgroundColor = config.backgroundColor || 'rgba(66, 133, 244, 0.4)';
+    const borderColor = config.borderColor || 'rgba(66, 133, 244, 0.4)';
+    const borderWidth = config.borderWidth || 1;
+    const borderStyle = config.borderStyle || 'solid';
     
     button.style.cssText = `
       width: ${buttonSize}px;
@@ -413,12 +442,12 @@ export class CesiumMapToolbar {
       display: flex;
       align-items: center;
       justify-content: center;
-      background: ${buttonColor};
-      color: white;
-      border: none;
-      border-radius: 4px;
+      background: ${backgroundColor};
+      color: ${buttonColor};
+      border-width: ${borderWidth}px;
+      border-style: ${borderStyle};
+      border-color: ${borderColor};
       cursor: pointer;
-      font-size: 14px;
       font-weight: bold;
       transition: all 0.2s ease;
       user-select: none;
@@ -430,12 +459,12 @@ export class CesiumMapToolbar {
 
     // 悬停效果
     button.addEventListener('mouseenter', () => {
-      button.style.background = buttonHoverColor;
+      // button.style.background = buttonHoverColor;
       button.style.transform = 'scale(1.05)';
     });
 
     button.addEventListener('mouseleave', () => {
-      button.style.background = buttonColor;
+      // button.style.background = buttonColor;
       button.style.transform = 'scale(1)';
     });
 
@@ -448,13 +477,96 @@ export class CesiumMapToolbar {
   /**
    * 设置按钮图标
    */
-  private setButtonIcon(button: HTMLElement, icon: string | HTMLElement): void {
-    if (typeof icon === 'string') {
-      button.innerHTML = icon;
-    } else if (icon instanceof HTMLElement) {
+  private setButtonIcon(button: HTMLElement, icon: string | HTMLElement): void {    
+    if (icon instanceof HTMLElement) {
+      // 处理HTMLElement类型的图标
       button.innerHTML = '';
       button.appendChild(icon);
+    } else if (typeof icon === 'string') {
+      if (this.isImagePath(icon)) {
+        // 处理图片路径
+        this.loadImageIcon(button, icon);
+      } else {
+        // 处理HTML字符串（如SVG、图标字体等）
+        button.innerHTML = icon;
+      }
     }
+  }
+
+  /**
+   * 判断是否为图片路径
+   */
+  private isImagePath(icon: string): boolean {
+    // 检查是否为图片文件扩展名
+    const imageExtensions = /\.(jpg|jpeg|png|gif|bmp|webp|svg|ico)$/i;
+    return imageExtensions.test(icon);
+  }
+
+  /**
+   * 加载图片图标
+   */
+  private loadImageIcon(button: HTMLElement, imagePath: string): void {
+    // 创建图片元素进行预加载和验证
+    const img = new Image();
+    
+    const buttonRect = button.getBoundingClientRect();
+    const computedStyle = window.getComputedStyle(button);
+    
+    // 获取按钮的宽高，优先使用计算后的样式
+    const buttonWidth = buttonRect.width || parseInt(computedStyle.width) || 36;
+    const buttonHeight = buttonRect.height || parseInt(computedStyle.height) || 36;
+    
+    // 计算图标的内边距（按钮尺寸的20%作为内边距）
+    const imgWidth = Math.min(buttonWidth, buttonHeight) * 0.6;
+    const imgHeight = Math.min(buttonWidth, buttonHeight) * 0.6;
+    img.width = imgWidth;
+    img.height = imgHeight;
+    // 设置加载成功回调
+    img.onload = () => {
+      // 获取按钮的实际尺寸（包括计算后的样式）
+      button.appendChild(img);
+    };
+    
+    // 设置加载失败回调
+    img.onerror = () => {
+      console.warn(`Failed to load icon: ${imagePath}`);
+      // 加载失败时使用默认图标或显示文字
+      this.setDefaultIcon(button, imagePath);
+    };
+    
+    // 开始加载图片
+    img.src = imagePath;
+  }
+
+  /**
+   * 设置默认图标（当图片加载失败时）
+   */
+  private setDefaultIcon(button: HTMLElement, originalPath: string): void {
+    // 可以根据原始路径生成一个简单的默认图标
+    const fileName = originalPath.split('/').pop()?.split('.')[0] || 'icon';
+    
+    // 使用CSS创建一个简单的默认图标
+    button.style.backgroundImage = 'none';
+    button.style.backgroundColor = '#ccc';
+    button.style.position = 'relative';
+    
+    // 添加一个简单的文字图标作为后备
+    const fallbackIcon = document.createElement('div');
+    fallbackIcon.style.cssText = `
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 12px;
+      color: #666;
+      font-weight: bold;
+      text-align: center;
+      line-height: 1;
+    `;
+    fallbackIcon.textContent = fileName.charAt(0).toUpperCase();
+    
+    button.innerHTML = '';
+    button.appendChild(fallbackIcon);
   }
 
   /**
@@ -865,9 +977,9 @@ export class CesiumMapToolbar {
       : Cesium.SceneMode.SCENE3D;
     
     this.viewer.scene.mode = targetMode;
-    
     // 更新按钮文本
     buttonElement.innerHTML = targetMode === Cesium.SceneMode.SCENE3D ? '3D' : '2D';
+    
   }
 
   /**
