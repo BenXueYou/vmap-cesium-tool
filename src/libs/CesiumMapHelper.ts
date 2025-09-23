@@ -17,8 +17,12 @@ class DrawHelper {
   private isDrawing: boolean = false;
   private tempPositions: Cesium.Cartesian3[] = [];
   private tempEntities: Cesium.Entity[] = []; // 临时实体，用于绘制过程中
+  private tempLabelEntities: Cesium.Entity[] = []; // 临时标签实体
   private finishedEntities: Cesium.Entity[] = []; // 已完成的实体
-
+  private finishedLabelEntities: Cesium.Entity[] = []; // 已完成的标签实体
+  private finishedPointEntities: Cesium.Entity[] = []; // 已完成的点实体
+  private publicEntities: Cesium.Entity[] = []; // 通过公共方法创建的实体
+  private _doubleClickPending: boolean = false; // 双击判断
   // 事件处理器
   private screenSpaceEventHandler: Cesium.ScreenSpaceEventHandler | null = null;
   // 回调函数
@@ -27,6 +31,7 @@ class DrawHelper {
     null;
   private onEntityRemovedCallback: ((entity: Cesium.Entity) => void) | null =
     null;
+  private offsetHeight: number = 2;
 
   /**
    * 构造函数
@@ -40,8 +45,43 @@ class DrawHelper {
     this.scene = viewer.scene;
     this.entities = viewer.entities;
 
+    // 根据地图模式设置偏移高度
+    this.updateOffsetHeight();
+    
+    // 监听场景模式变化
+    this.scene.morphComplete.addEventListener(() => {
+      this.updateOffsetHeight();
+    });
+
     // 确保启用地形深度测试以获得正确的高度
     this.scene.globe.depthTestAgainstTerrain = true;
+  }
+
+  /**
+   * 根据场景模式更新偏移高度
+   */
+  private updateOffsetHeight(): void {
+    if (this.scene.mode === Cesium.SceneMode.SCENE3D) {
+      this.offsetHeight = 100; // 3D模式使用100米偏移，所有元素都浮动
+    } else {
+      this.offsetHeight = 0; // 2D模式使用0米偏移，所有元素都贴近地面
+    }
+  }
+
+  /**
+   * 手动设置偏移高度
+   * @param height 偏移高度（米）
+   */
+  public setOffsetHeight(height: number): void {
+    this.offsetHeight = height;
+  }
+
+  /**
+   * 获取当前偏移高度
+   * @returns 当前偏移高度（米）
+   */
+  public getOffsetHeight(): number {
+    return this.offsetHeight;
   }
 
   clearFrustum(): void {
@@ -52,7 +92,7 @@ class DrawHelper {
       }
     });
     this.frustumPrimitives = [];
-    
+
     // 清理视锥体专用的事件处理器
     if (this.screenSpaceEventHandler) {
       this.screenSpaceEventHandler.destroy();
@@ -63,13 +103,13 @@ class DrawHelper {
   drawFrustum(options: FrustumOptions = {}): void {
     try {
       this.clearFrustum();
-      
+
       // 参数验证
       const fov = Math.max(1, Math.min(179, options.fov || 60)); // 限制FOV范围
       const aspectRatio = Math.max(0.1, options.aspectRatio || 1.0);
       const near = Math.max(0.1, options.near || 1.0);
       const far = Math.max(near + 1, options.far || 1000.0);
-      
+
       const position = options.position || this.viewer.camera.positionWC;
       const orientation =
         options.orientation ||
@@ -87,58 +127,58 @@ class DrawHelper {
         far: far,
       });
 
-    // 创建视锥体填充
-    const fillGeometry = new Cesium.FrustumGeometry({
-      frustum: frustum,
-      origin: position,
-      orientation: orientation,
-      vertexFormat: Cesium.VertexFormat.POSITION_ONLY,
-    });
+      // 创建视锥体填充
+      const fillGeometry = new Cesium.FrustumGeometry({
+        frustum: frustum,
+        origin: position,
+        orientation: orientation,
+        vertexFormat: Cesium.VertexFormat.POSITION_ONLY,
+      });
 
-    const fillInstance = new Cesium.GeometryInstance({
-      geometry: fillGeometry,
-      attributes: {
-        color: Cesium.ColorGeometryInstanceAttribute.fromColor(
-          options.fillColor || new Cesium.Color(1.0, 0.0, 0.0, 0.3)
-        ),
-      },
-    });
+      const fillInstance = new Cesium.GeometryInstance({
+        geometry: fillGeometry,
+        attributes: {
+          color: Cesium.ColorGeometryInstanceAttribute.fromColor(
+            options.fillColor || new Cesium.Color(1.0, 0.0, 0.0, 0.3)
+          ),
+        },
+      });
 
-    const fillPrimitive = new Cesium.Primitive({
-      geometryInstances: fillInstance,
-      appearance: new Cesium.PerInstanceColorAppearance({
-        closed: true,
-        flat: true,
-      }),
-    });
+      const fillPrimitive = new Cesium.Primitive({
+        geometryInstances: fillInstance,
+        appearance: new Cesium.PerInstanceColorAppearance({
+          closed: true,
+          flat: true,
+        }),
+      });
 
-    // 创建视锥体轮廓
-    const outlineGeometry = new Cesium.FrustumOutlineGeometry({
-      frustum: frustum,
-      origin: position,
-      orientation: orientation,
-    });
+      // 创建视锥体轮廓
+      const outlineGeometry = new Cesium.FrustumOutlineGeometry({
+        frustum: frustum,
+        origin: position,
+        orientation: orientation,
+      });
 
-    const outlineInstance = new Cesium.GeometryInstance({
-      geometry: outlineGeometry,
-      attributes: {
-        color: Cesium.ColorGeometryInstanceAttribute.fromColor(
-          options.outlineColor || new Cesium.Color(1.0, 1.0, 1.0, 1.0)
-        ),
-      },
-    });
+      const outlineInstance = new Cesium.GeometryInstance({
+        geometry: outlineGeometry,
+        attributes: {
+          color: Cesium.ColorGeometryInstanceAttribute.fromColor(
+            options.outlineColor || new Cesium.Color(1.0, 1.0, 1.0, 1.0)
+          ),
+        },
+      });
 
-    const outlinePrimitive = new Cesium.Primitive({
-      geometryInstances: outlineInstance,
-      appearance: new Cesium.PerInstanceColorAppearance({
-        closed: true,
-        flat: true,
-      }),
-    });
+      const outlinePrimitive = new Cesium.Primitive({
+        geometryInstances: outlineInstance,
+        appearance: new Cesium.PerInstanceColorAppearance({
+          closed: true,
+          flat: true,
+        }),
+      });
 
-    this.viewer.scene.primitives.add(fillPrimitive);
-    this.viewer.scene.primitives.add(outlinePrimitive);
-    this.frustumPrimitives.push(fillPrimitive, outlinePrimitive);
+      this.viewer.scene.primitives.add(fillPrimitive);
+      this.viewer.scene.primitives.add(outlinePrimitive);
+      this.frustumPrimitives.push(fillPrimitive, outlinePrimitive);
 
       // 右键点击事件
       if (options.onRightClick && this.screenSpaceEventHandler) {
@@ -149,7 +189,7 @@ class DrawHelper {
         }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
       }
     } catch (error) {
-      console.error('绘制视锥体时发生错误:', error);
+      console.error("绘制视锥体时发生错误:", error);
       // 确保在出错时也清理资源
       this.clearFrustum();
     }
@@ -210,6 +250,10 @@ class DrawHelper {
     this.screenSpaceEventHandler.setInputAction(
       (click: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
         if (!this.isDrawing) return;
+        if (this._doubleClickPending) {
+          this._doubleClickPending = false;
+          return;
+        }
         const cartesian = this.pickGlobePosition(click.position);
         if (cartesian) {
           this.addPoint(cartesian);
@@ -246,15 +290,16 @@ class DrawHelper {
     );
     this.screenSpaceEventHandler.setInputAction(
       (dblClick: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
-        // 阻止 Cesium 默认的双击行为（如追踪实体）
-        // Cesium.ScreenSpaceEventHandler.preventDefault(dblClick);
         if (!this.isDrawing) return;
+        this._doubleClickPending = true;
         this.finishDrawing();
-        // 恢复 Cesium 默认的双击行为
-        this.viewer.cesiumWidget.screenSpaceEventHandler.setInputAction(
-          mapDoubleClickAct,
-          Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK
-        );
+        // 恢复 Cesium 默认的双击行为（如果存在的话）
+        if (mapDoubleClickAct) {
+          this.viewer.cesiumWidget.screenSpaceEventHandler.setInputAction(
+            mapDoubleClickAct,
+            Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK
+          );
+        }
       },
       Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK
     );
@@ -291,19 +336,23 @@ class DrawHelper {
   private addPoint(position: Cesium.Cartesian3): void {
     this.tempPositions.push(position.clone());
 
-    // 让点浮于地表之上，避免被地形遮挡
+    // 根据2D/3D模式设置点的高度
     const carto = Cesium.Cartographic.fromCartesian(position);
-    const offsetHeight = 1; // 浮起2米
-    const elevatedPosition = Cesium.Cartesian3.fromRadians(carto.longitude, carto.latitude, (carto.height || 0) + offsetHeight);
+    const elevatedPosition = Cesium.Cartesian3.fromRadians(
+      carto.longitude,
+      carto.latitude,
+      (carto.height || 0) + this.offsetHeight
+    );
 
     const pointEntity = this.entities.add({
       position: elevatedPosition,
       point: {
-        pixelSize: 7,
+        pixelSize: 8,
         color: Cesium.Color.RED,
         outlineColor: Cesium.Color.WHITE,
-        outlineWidth: 2,
+        outlineWidth: 3,
         heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND,
+        scaleByDistance: new Cesium.NearFarScalar(1.5e2, 1.0, 1.5e7, 0.5),
       },
     });
     this.tempEntities.push(pointEntity);
@@ -315,23 +364,60 @@ class DrawHelper {
    */
   private removeLastPoint(): void {
     if (this.tempPositions.length > 0) {
+      // 移除最后一个位置
       this.tempPositions.pop();
 
-      // 移除最后添加的点实体
-      const lastPointEntity = this.tempEntities.pop();
-      if (lastPointEntity) {
-        this.entities.remove(lastPointEntity);
-      }
+      // 移除所有临时实体（包括点实体和线/面实体）
+      this.tempEntities.forEach((entity) => {
+        if (entity) {
+          this.entities.remove(entity);
+        }
+      });
+      this.tempEntities = [];
 
-      // 移除最后添加的线/面片段实体
-      const lastLineEntity = this.tempEntities.pop();
-      if (lastLineEntity) {
-        this.entities.remove(lastLineEntity);
-      }
+      // 移除所有临时标签实体
+      this.tempLabelEntities.forEach((entity) => {
+        if (entity) {
+          this.entities.remove(entity);
+        }
+      });
+      this.tempLabelEntities = [];
 
-      // 重新更新当前的绘制实体
-      this.updateDrawingEntity();
+      // 重新创建剩余的点实体和绘制实体
+      this.recreateRemainingEntities();
     }
+  }
+
+  /**
+   * 重新创建剩余的点实体和绘制实体
+   * 用于右键删除点后的重建
+   */
+  private recreateRemainingEntities(): void {
+    // 重新创建所有剩余的点实体
+    this.tempPositions.forEach((position) => {
+      const carto = Cesium.Cartographic.fromCartesian(position);
+      const elevatedPosition = Cesium.Cartesian3.fromRadians(
+        carto.longitude,
+        carto.latitude,
+        (carto.height || 0) + this.offsetHeight
+      );
+
+      const pointEntity = this.entities.add({
+        position: elevatedPosition,
+        point: {
+          pixelSize: 8,
+          color: Cesium.Color.RED,
+          outlineColor: Cesium.Color.WHITE,
+          outlineWidth: 3,
+          heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND,
+          scaleByDistance: new Cesium.NearFarScalar(1.5e2, 1.0, 1.5e7, 0.5),
+        },
+      });
+      this.tempEntities.push(pointEntity);
+    });
+
+    // 重新创建绘制实体（线/面）
+    this.updateDrawingEntity();
   }
 
   /**
@@ -347,14 +433,30 @@ class DrawHelper {
    * @param previewPoint 可选的预览点，用于显示动态效果
    */
   private updateDrawingEntity(previewPoint?: Cesium.Cartesian3): void {
-    // 移除旧的活动实体（包括线和标签）
-    this.tempEntities.forEach(entity => {
-      if (entity && (entity.polyline || entity.polygon || entity.label)) {
+    // 移除旧的活动实体（只移除线和面，保留点实体）
+    const entitiesToRemove: Cesium.Entity[] = [];
+    this.tempEntities.forEach((entity) => {
+      if (entity && (entity.polyline || entity.polygon || entity.rectangle)) {
+        entitiesToRemove.push(entity);
+      }
+    });
+    
+    // 移除线/面实体
+    entitiesToRemove.forEach((entity) => {
+      this.entities.remove(entity);
+      const index = this.tempEntities.indexOf(entity);
+      if (index > -1) {
+        this.tempEntities.splice(index, 1);
+      }
+    });
+    
+    // 移除旧的临时标签实体
+    this.tempLabelEntities.forEach((entity) => {
+      if (entity) {
         this.entities.remove(entity);
       }
     });
-    this.tempEntities = [];
-
+    this.tempLabelEntities = [];
     const positions = [...this.tempPositions];
     if (previewPoint) {
       positions.push(previewPoint);
@@ -365,85 +467,165 @@ class DrawHelper {
     let activeEntity: Cesium.Entity | undefined;
 
     if (this.drawMode === "line") {
-      // 创建主线条
-      activeEntity = this.entities.add({
-        polyline: {
-          positions: positions,
-          width: 3,
-          material: Cesium.Color.YELLOW,
-          clampToGround: true,
-        },
-      });
+      // 根据2D/3D模式创建线条
+      if (this.offsetHeight > 0) {
+        // 3D模式：使用抬高的位置
+        const elevatedPositions = positions.map(pos => {
+          const carto = Cesium.Cartographic.fromCartesian(pos);
+          return Cesium.Cartesian3.fromRadians(
+            carto.longitude,
+            carto.latitude,
+            (carto.height || 0) + this.offsetHeight
+          );
+        });
+        
+        activeEntity = this.entities.add({
+          polyline: {
+            positions: elevatedPositions,
+            width: 5,
+            material: Cesium.Color.YELLOW,
+            clampToGround: false,
+          },
+        });
+      } else {
+        // 2D模式：贴近地面
+        activeEntity = this.entities.add({
+          polyline: {
+            positions: positions,
+            width: 5,
+            material: Cesium.Color.YELLOW,
+            clampToGround: true,
+          },
+        });
+      }
       this.tempEntities.push(activeEntity);
 
-      // 为每一段添加距离标签
+      // 为每一段添加距离标签（只显示距离大于1米的标签）
       for (let i = 0; i < positions.length - 1; i++) {
         const startPos = positions[i];
         const endPos = positions[i + 1];
         const distance = Cesium.Cartesian3.distance(startPos, endPos);
-        const midPoint = Cesium.Cartesian3.midpoint(startPos, endPos, new Cesium.Cartesian3());
         
-        const labelEntity = this.entities.add({
-          position: midPoint,
-          label: {
-            text: `${distance.toFixed(2)} m`,
-            font: "12px sans-serif",
-            fillColor: Cesium.Color.CYAN,
-            outlineColor: Cesium.Color.BLACK,
-            outlineWidth: 1,
-            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-            pixelOffset: new Cesium.Cartesian2(0, -10),
-            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-          },
-        });
-        this.tempEntities.push(labelEntity);
+        // 只显示距离大于5米的标签，避免显示过小的距离
+        if (distance > 5.0) {
+          const midPoint = Cesium.Cartesian3.midpoint(
+            startPos,
+            endPos,
+            new Cesium.Cartesian3()
+          );
+          // 计算标签位置，避免重叠
+          const labelOffset = i % 2 === 0 ? -25 : 25; // 交替显示在线的上方和下方
+          const labelEntity = this.entities.add({
+            position: midPoint,
+            label: {
+              text: `${distance.toFixed(2)} m`,
+              font: "16px Arial",
+              fillColor: Cesium.Color.WHITE,
+              outlineColor: Cesium.Color.BLACK,
+              outlineWidth: 3,
+              style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+              pixelOffset: new Cesium.Cartesian2(0, labelOffset),
+              heightReference: this.offsetHeight > 0 ? Cesium.HeightReference.RELATIVE_TO_GROUND : Cesium.HeightReference.CLAMP_TO_GROUND,
+              scale: 1.0,
+              showBackground: true,
+              backgroundColor: Cesium.Color.BLACK.withAlpha(0.8),
+              backgroundPadding: new Cesium.Cartesian2(6, 3),
+            },
+          });
+          this.tempLabelEntities.push(labelEntity);
+        }
       }
 
       // 添加总距离标签（在最后一个点）
       if (positions.length > 1) {
         let totalDistance = 0;
         for (let i = 1; i < positions.length; i++) {
-          totalDistance += Cesium.Cartesian3.distance(positions[i-1], positions[i]);
+          totalDistance += Cesium.Cartesian3.distance(
+            positions[i - 1],
+            positions[i]
+          );
         }
-        
         const totalLabelEntity = this.entities.add({
           position: positions[positions.length - 1],
           label: {
             text: `总长: ${totalDistance.toFixed(2)} m`,
-            font: "14px sans-serif",
-            fillColor: Cesium.Color.WHITE,
+            font: "18px Arial",
+            fillColor: Cesium.Color.YELLOW,
             outlineColor: Cesium.Color.BLACK,
-            outlineWidth: 2,
+            outlineWidth: 3,
             style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-            pixelOffset: new Cesium.Cartesian2(0, 20),
+            pixelOffset: new Cesium.Cartesian2(0, 40),
+            heightReference: this.offsetHeight > 0 ? Cesium.HeightReference.RELATIVE_TO_GROUND : Cesium.HeightReference.CLAMP_TO_GROUND,
+            scale: 1.0,
+            showBackground: true,
+            backgroundColor: Cesium.Color.BLACK.withAlpha(0.9),
+            backgroundPadding: new Cesium.Cartesian2(8, 4),
+          },
+        });
+        this.tempLabelEntities.push(totalLabelEntity);
+      }
+    } else if (this.drawMode === "polygon") {
+      // 根据2D/3D模式绘制多边形区域
+      if (this.offsetHeight > 0) {
+        // 3D模式：使用抬高的位置
+        const elevatedPositions = positions.map(pos => {
+          const carto = Cesium.Cartographic.fromCartesian(pos);
+          return Cesium.Cartesian3.fromRadians(
+            carto.longitude,
+            carto.latitude,
+            (carto.height || 0) + this.offsetHeight
+          );
+        });
+        
+        activeEntity = this.entities.add({
+          polygon: {
+            hierarchy: new Cesium.CallbackProperty(() => {
+              return new Cesium.PolygonHierarchy(elevatedPositions);
+            }, false),
+            material: Cesium.Color.LIGHTGREEN.withAlpha(0.3), // 淡绿色填充
+            outline: true,
+            outlineColor: Cesium.Color.GREEN,
+            outlineWidth: 2,
+            heightReference: Cesium.HeightReference.NONE,
+          },
+        });
+      } else {
+        // 2D模式：贴近地面
+        activeEntity = this.entities.add({
+          polygon: {
+            hierarchy: new Cesium.CallbackProperty(() => {
+              return new Cesium.PolygonHierarchy(positions);
+            }, false),
+            material: Cesium.Color.LIGHTGREEN.withAlpha(0.3), // 淡绿色填充
+            outline: true,
+            outlineColor: Cesium.Color.GREEN,
+            outlineWidth: 2,
             heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
           },
         });
-        this.tempEntities.push(totalLabelEntity);
       }
-    } else if (this.drawMode === "polygon") {
-      // 绘制填充的多边形区域
-      activeEntity = this.entities.add({
-        polygon: {
-          hierarchy: new Cesium.CallbackProperty(() => {
-            return new Cesium.PolygonHierarchy(positions);
-          }, false),
-          material: Cesium.Color.LIGHTGREEN.withAlpha(0.3), // 淡绿色填充
-          outline: true,
-          outlineColor: Cesium.Color.GREEN,
-          outlineWidth: 2,
-          heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-        },
-      });
     } else if (this.drawMode === "rectangle" && positions.length >= 2) {
       const rect = this.calculateRectangle(positions[0], positions[1]);
-      activeEntity = this.entities.add({
-        rectangle: {
-          coordinates: rect,
-          material: Cesium.Color.GREEN.withAlpha(0.5),
-          heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-        },
-      });
+      if (this.offsetHeight > 0) {
+        // 3D模式：使用挤压高度
+        activeEntity = this.entities.add({
+          rectangle: {
+            coordinates: rect,
+            material: Cesium.Color.GREEN.withAlpha(0.5),
+            heightReference: Cesium.HeightReference.NONE,
+            extrudedHeight: this.offsetHeight,
+          },
+        });
+      } else {
+        // 2D模式：贴近地面
+        activeEntity = this.entities.add({
+          rectangle: {
+            coordinates: rect,
+            material: Cesium.Color.GREEN.withAlpha(0.5),
+            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+          },
+        });
+      }
     }
 
     if (activeEntity) {
@@ -460,82 +642,88 @@ class DrawHelper {
       this.endDrawingInternal(true);
       return;
     }
-
     let finalEntity: Cesium.Entity | null = null;
     const positions = this.tempPositions.map((p) => p.clone());
 
     if (this.drawMode === "line") {
-      finalEntity = this.entities.add({
-        name: "绘制的线",
-        polyline: {
-          positions: positions,
-          width: 3,
-          material: Cesium.Color.YELLOW,
-          clampToGround: true,
-        },
-      });
-
-      // 为每一段添加距离标签
-      for (let i = 0; i < positions.length - 1; i++) {
-        const startPos = positions[i];
-        const endPos = positions[i + 1];
-        const distance = Cesium.Cartesian3.distance(startPos, endPos);
-        const midPoint = Cesium.Cartesian3.midpoint(startPos, endPos, new Cesium.Cartesian3());
+      // 根据2D/3D模式创建最终线条
+      if (this.offsetHeight > 0) {
+        // 3D模式：使用抬高的位置
+        const elevatedPositions = positions.map(pos => {
+          const carto = Cesium.Cartographic.fromCartesian(pos);
+          return Cesium.Cartesian3.fromRadians(
+            carto.longitude,
+            carto.latitude,
+            (carto.height || 0) + this.offsetHeight
+          );
+        });
         
-        this.entities.add({
-          position: midPoint,
-          label: {
-            text: `${distance.toFixed(2)} m`,
-            font: "12px sans-serif",
-            fillColor: Cesium.Color.CYAN,
-            outlineColor: Cesium.Color.BLACK,
-            outlineWidth: 1,
-            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-            pixelOffset: new Cesium.Cartesian2(0, -10),
-            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+        finalEntity = this.entities.add({
+          name: "绘制的线",
+          polyline: {
+            positions: elevatedPositions,
+            width: 5,
+            material: Cesium.Color.YELLOW,
+            clampToGround: false,
+          },
+        });
+      } else {
+        // 2D模式：贴近地面
+        finalEntity = this.entities.add({
+          name: "绘制的线",
+          polyline: {
+            positions: positions,
+            width: 5,
+            material: Cesium.Color.YELLOW,
+            clampToGround: true,
           },
         });
       }
 
-      // 添加总距离标签
-      if (positions.length > 1) {
-        let totalDistance = 0;
-        for (let i = 1; i < positions.length; i++) {
-          totalDistance += Cesium.Cartesian3.distance(positions[i-1], positions[i]);
-        }
-        
-        this.entities.add({
-          position: positions[positions.length - 1],
-          label: {
-            text: `总长: ${totalDistance.toFixed(2)} m`,
-            font: "14px sans-serif",
-            fillColor: Cesium.Color.WHITE,
-            outlineColor: Cesium.Color.BLACK,
-            outlineWidth: 2,
-            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-            pixelOffset: new Cesium.Cartesian2(0, 20),
-            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-          },
-        });
-      }
+      // 标签已经在 updateDrawingEntity 中创建，这里不需要重复创建
     } else if (this.drawMode === "polygon") {
-      // 绘制填充的多边形区域
-      finalEntity = this.entities.add({
-        name: "绘制的多边形区域",
-        polygon: {
-          hierarchy: new Cesium.PolygonHierarchy(positions),
-          material: Cesium.Color.LIGHTGREEN.withAlpha(0.3), // 淡绿色填充
-          outline: true,
-          outlineColor: Cesium.Color.GREEN,
-          outlineWidth: 2,
-          heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-        },
-      });
+      // 根据2D/3D模式绘制最终多边形区域
+      if (this.offsetHeight > 0) {
+        // 3D模式：使用抬高的位置
+        const elevatedPositions = positions.map(pos => {
+          const carto = Cesium.Cartographic.fromCartesian(pos);
+          return Cesium.Cartesian3.fromRadians(
+            carto.longitude,
+            carto.latitude,
+            (carto.height || 0) + this.offsetHeight
+          );
+        });
+        
+        finalEntity = this.entities.add({
+          name: "绘制的多边形区域",
+          polygon: {
+            hierarchy: new Cesium.PolygonHierarchy(elevatedPositions),
+            material: Cesium.Color.LIGHTGREEN.withAlpha(0.3), // 淡绿色填充
+            outline: true,
+            outlineColor: Cesium.Color.GREEN,
+            outlineWidth: 2,
+            heightReference: Cesium.HeightReference.NONE,
+          },
+        });
+      } else {
+        // 2D模式：贴近地面
+        finalEntity = this.entities.add({
+          name: "绘制的多边形区域",
+          polygon: {
+            hierarchy: new Cesium.PolygonHierarchy(positions),
+            material: Cesium.Color.LIGHTGREEN.withAlpha(0.3), // 淡绿色填充
+            outline: true,
+            outlineColor: Cesium.Color.GREEN,
+            outlineWidth: 2,
+            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+          },
+        });
+      }
       // 添加面积标签
       const area = this.calculatePolygonArea(positions);
       if (area > 0) {
         const center = this.calculatePolygonCenter(positions);
-        this.entities.add({
+        const areaLabelEntity = this.entities.add({
           position: center,
           label: {
             text: `面积: ${area.toFixed(2)} km²`,
@@ -548,22 +736,37 @@ class DrawHelper {
             heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
           },
         });
+        this.finishedLabelEntities.push(areaLabelEntity);
       }
     } else if (this.drawMode === "rectangle" && positions.length >= 2) {
       const rect = this.calculateRectangle(positions[0], positions[1]);
-      finalEntity = this.entities.add({
-        name: "绘制的矩形",
-        rectangle: {
-          coordinates: rect,
-          material: Cesium.Color.GREEN.withAlpha(0.5),
-          heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-        },
-      });
+      if (this.offsetHeight > 0) {
+        // 3D模式：使用挤压高度
+        finalEntity = this.entities.add({
+          name: "绘制的矩形",
+          rectangle: {
+            coordinates: rect,
+            material: Cesium.Color.GREEN.withAlpha(0.5),
+            heightReference: Cesium.HeightReference.NONE,
+            extrudedHeight: this.offsetHeight,
+          },
+        });
+      } else {
+        // 2D模式：贴近地面
+        finalEntity = this.entities.add({
+          name: "绘制的矩形",
+          rectangle: {
+            coordinates: rect,
+            material: Cesium.Color.GREEN.withAlpha(0.5),
+            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+          },
+        });
+      }
       // 添加面积标签
       const area = this.calculateRectangleArea(rect);
       if (area > 0) {
         const rectCenter = Cesium.Rectangle.center(rect);
-        this.entities.add({
+        const rectAreaLabelEntity = this.entities.add({
           position: Cesium.Cartesian3.fromRadians(
             rectCenter.longitude,
             rectCenter.latitude
@@ -579,6 +782,7 @@ class DrawHelper {
             heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
           },
         });
+        this.finishedLabelEntities.push(rectAreaLabelEntity);
       }
     }
 
@@ -587,8 +791,29 @@ class DrawHelper {
       this.finishedEntities.push(finalEntity);
     }
 
-    // 清理临时数据和状态
-    this.endDrawingInternal(true);
+    // 将临时标签实体转移到已完成标签实体数组中
+    this.tempLabelEntities.forEach((entity) => {
+      this.finishedLabelEntities.push(entity);
+    });
+    this.tempLabelEntities = [];
+
+    // 将临时点实体转移到已完成点实体数组中
+    this.tempEntities.forEach((entity) => {
+      if (entity && entity.point) {
+        this.finishedPointEntities.push(entity);
+      } else {
+        // 非点实体直接移除
+        this.entities.remove(entity);
+      }
+    });
+    this.tempEntities = [];
+    this.tempPositions = [];
+
+    if (true) { // resetMode
+      this.drawMode = null;
+      this.isDrawing = false;
+      this.deactivateDrawingHandlers();
+    }
 
     // 触发结束绘制回调
     if (this.onDrawEndCallback) {
@@ -607,6 +832,11 @@ class DrawHelper {
     });
     this.tempEntities = [];
     this.tempPositions = [];
+    // 清理临时标签实体
+    this.tempLabelEntities.forEach((entity) => {
+      this.entities.remove(entity);
+    });
+    this.tempLabelEntities = [];
 
     if (resetMode) {
       this.drawMode = null;
@@ -643,11 +873,99 @@ class DrawHelper {
   clearAll(): void {
     // 先结束可能的绘制
     this.endDrawing();
+    
+    // 强制清除所有点实体
+    this.clearAllPoints();
+    
     // 清除所有已完成的实体
     this.finishedEntities.forEach((entity) => {
       this.entities.remove(entity);
     });
     this.finishedEntities = [];
+    
+    // 清除所有已完成的标签实体
+    this.finishedLabelEntities.forEach((entity) => {
+      if (entity) {
+        this.entities.remove(entity);
+      }
+    });
+    this.finishedLabelEntities = [];
+    
+    // 清除所有通过公共方法创建的实体
+    this.publicEntities.forEach((entity) => {
+      if (entity) {
+        this.entities.remove(entity);
+      }
+    });
+    this.publicEntities = [];
+    
+    // 清理临时实体（包括绘制过程中的点实体）
+    this.tempEntities.forEach((entity) => {
+      if (entity) {
+        this.entities.remove(entity);
+      }
+    });
+    this.tempEntities = [];
+    
+    // 清理临时标签实体
+    this.tempLabelEntities.forEach((entity) => {
+      if (entity && entity.label) {
+        this.entities.remove(entity);
+      }
+    });
+    this.tempLabelEntities = [];
+    
+    // 确保清理所有可能残留的实体
+    this.tempPositions = [];
+  }
+
+  /**
+   * 清除所有实体（包括未跟踪的实体）
+   * 这是一个更彻底的清理方法，会清除场景中的所有实体
+   */
+  clearAllEntities(): void {
+    // 先结束可能的绘制
+    this.endDrawing();
+    // 清除场景中的所有实体
+    this.entities.removeAll();
+    // 重置所有跟踪数组
+    this.finishedEntities = [];
+    this.finishedLabelEntities = [];
+    this.finishedPointEntities = [];
+    this.publicEntities = [];
+    this.tempEntities = [];
+    this.tempLabelEntities = [];
+    this.tempPositions = [];
+  }
+
+  /**
+   * 强制清除所有点实体
+   * 用于解决点实体无法删除的问题
+   */
+  clearAllPoints(): void {
+    // 清除所有已完成的点实体
+    this.finishedPointEntities.forEach((entity) => {
+      if (entity) {
+        this.entities.remove(entity);
+      }
+    });
+    this.finishedPointEntities = [];
+    
+    // 清除临时点实体
+    this.tempEntities.forEach((entity) => {
+      if (entity && entity.point) {
+        this.entities.remove(entity);
+      }
+    });
+    
+    // 清除所有可能的点实体（通过实体名称查找）
+    const allEntities = this.entities.values;
+    for (let i = allEntities.length - 1; i >= 0; i--) {
+      const entity = allEntities[i];
+      if (entity && entity.point) {
+        this.entities.remove(entity);
+      }
+    }
   }
 
   /**
@@ -786,10 +1104,10 @@ class DrawHelper {
       name?: string;
     }
   ): Cesium.Entity {
-    const borderColor = options?.borderColor || '#0062FF';
-    const fillColor = options?.fillColor || '#0062FF';
+    const borderColor = options?.borderColor || "#0062FF";
+    const fillColor = options?.fillColor || "#0062FF";
     const borderWidth = options?.borderWidth || 2;
-    const name = options?.name || '监控区域';
+    const name = options?.name || "监控区域";
 
     // 创建圆形区域
     const entity = this.entities.add({
@@ -805,6 +1123,9 @@ class DrawHelper {
         heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
       },
     });
+
+    // 将实体添加到跟踪数组中
+    this.publicEntities.push(entity);
 
     return entity;
   }
@@ -828,15 +1149,23 @@ class DrawHelper {
       groundHeight?: number;
     }
   ): Cesium.Entity {
-    const color = options?.color || '#0062FF';
+    const color = options?.color || "#0062FF";
     const width = options?.width || 2;
-    const dashPattern = options?.dashPattern || 0x00FF00FF;
-    const name = options?.name || '垂直线条';
+    const dashPattern = options?.dashPattern || 0x00ff00ff;
+    const name = options?.name || "垂直线条";
     const groundHeight = options?.groundHeight || 0;
 
     // 计算地面位置
-    const groundPosition = Cesium.Cartesian3.fromDegrees(longitude, latitude, groundHeight);
-    const topPosition = Cesium.Cartesian3.fromDegrees(longitude, latitude, height);
+    const groundPosition = Cesium.Cartesian3.fromDegrees(
+      longitude,
+      latitude,
+      groundHeight
+    );
+    const topPosition = Cesium.Cartesian3.fromDegrees(
+      longitude,
+      latitude,
+      height
+    );
 
     // 创建垂直线条
     const entity = this.entities.add({
@@ -850,6 +1179,9 @@ class DrawHelper {
         clampToGround: false,
       },
     });
+
+    // 将实体添加到跟踪数组中
+    this.publicEntities.push(entity);
 
     return entity;
   }
