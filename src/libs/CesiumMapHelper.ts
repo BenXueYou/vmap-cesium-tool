@@ -341,7 +341,7 @@ class DrawHelper {
     const elevatedPosition = Cesium.Cartesian3.fromRadians(
       carto.longitude,
       carto.latitude,
-      (carto.height || 0) + this.offsetHeight
+      (carto.height || 0) + (this.drawMode !== "line" ? 0 : this.offsetHeight)
     );
 
     const pointEntity = this.entities.add({
@@ -545,8 +545,20 @@ class DrawHelper {
             positions[i]
           );
         }
+        // 根据offsetHeight计算标签位置，与line的绘制方式保持一致
+        let labelPosition = positions[positions.length - 1];
+        if (this.offsetHeight > 0) {
+          // 3D模式：抬高标签位置
+          const carto = Cesium.Cartographic.fromCartesian(labelPosition);
+          labelPosition = Cesium.Cartesian3.fromRadians(
+            carto.longitude,
+            carto.latitude,
+            (carto.height || 0) + this.offsetHeight
+          );
+        }
+        
         const totalLabelEntity = this.entities.add({
-          position: positions[positions.length - 1],
+          position: labelPosition,
           label: {
             text: `总长: ${totalDistance.toFixed(2)} m`,
             font: "18px Arial",
@@ -555,7 +567,7 @@ class DrawHelper {
             outlineWidth: 3,
             style: Cesium.LabelStyle.FILL_AND_OUTLINE,
             pixelOffset: new Cesium.Cartesian2(0, 40),
-            heightReference: this.offsetHeight > 0 ? Cesium.HeightReference.RELATIVE_TO_GROUND : Cesium.HeightReference.CLAMP_TO_GROUND,
+            heightReference: this.offsetHeight > 0 ? Cesium.HeightReference.NONE : Cesium.HeightReference.CLAMP_TO_GROUND,
             scale: 1.0,
             showBackground: true,
             backgroundColor: Cesium.Color.BLACK.withAlpha(0.9),
