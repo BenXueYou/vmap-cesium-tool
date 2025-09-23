@@ -291,14 +291,19 @@ class DrawHelper {
   private addPoint(position: Cesium.Cartesian3): void {
     this.tempPositions.push(position.clone());
 
+    // 让点浮于地表之上，避免被地形遮挡
+    const carto = Cesium.Cartographic.fromCartesian(position);
+    const offsetHeight = 1; // 浮起2米
+    const elevatedPosition = Cesium.Cartesian3.fromRadians(carto.longitude, carto.latitude, (carto.height || 0) + offsetHeight);
+
     const pointEntity = this.entities.add({
-      position: position.clone(),
+      position: elevatedPosition,
       point: {
-        pixelSize: 5,
+        pixelSize: 7,
         color: Cesium.Color.RED,
         outlineColor: Cesium.Color.WHITE,
         outlineWidth: 2,
-        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+        heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND,
       },
     });
     this.tempEntities.push(pointEntity);
