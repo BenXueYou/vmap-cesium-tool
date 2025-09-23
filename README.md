@@ -1,115 +1,205 @@
-# VMap Cesium Toolbar 插件发布指南
+# @xingm/vmap-cesium-toolbar
 
-## 构建插件
+一个功能强大的 Cesium 地图工具栏组件，提供搜索、测量、绘制、2D/3D切换、图层管理等功能。
 
-### 1. 安装依赖
+## 特性
 
-```bash
-npm install
-```
+- 🗺️ **完整的地图工具栏** - 搜索、测量、绘制、图层切换等功能
+- 📏 **精确测量工具** - 支持距离、面积、高度测量
+- ✏️ **绘制功能** - 支持点、线、面绘制和编辑
+- 🔄 **2D/3D切换** - 无缝切换2D和3D视图模式
+- 🎨 **可定制样式** - 支持自定义按钮样式和布局
+- 📱 **响应式设计** - 适配不同屏幕尺寸
+- 🚀 **TypeScript支持** - 完整的类型定义
+- ⚡ **Vue 3兼容** - 原生支持Vue 3项目
 
-### 2. 构建插件包
-
-```bash
-npm run build:plugin
-```
-
-这个命令会：
-
-- 清理 dist 目录
-- 构建库文件（ES模块格式）
-- 复制类型定义文件
-- 复制样式文件
-- 复制文档
-- 生成发布用的 package.json
-
-### 3. 验证构建结果
-
-构建完成后，`dist/` 目录应包含以下文件：
-
-```
-dist/
-├── index.js          # 主入口文件（ES模块）
-├── index.d.ts        # TypeScript 类型定义
-├── style.css         # 样式文件
-├── README.md         # 使用文档
-└── package.json      # 发布配置
-```
-
-## 发布到 NPM
-
-### 1. 登录 NPM
+## 安装
 
 ```bash
-npm login
+npm install @xingm/vmap-cesium-toolbar cesium
 ```
 
-### 2. 进入 dist 目录
+## 快速开始
 
-```bash
-cd dist
-```
-
-### 3. 发布包
-
-```bash
-npm publish
-```
-
-### 4. 验证发布
-
-```bash
-npm view vmap-cesium-toolbar
-```
-
-## 本地测试
-
-### 1. 创建测试项目
-
-```bash
-mkdir test-plugin
-cd test-plugin
-npm init -y
-```
-
-### 2. 安装插件（本地）
-
-```bash
-npm install file:../vmap-cesium-toolbar/dist
-```
-
-### 3. 创建测试文件
+### 基本使用
 
 ```javascript
-// test.js
-import { CesiumMapToolbar, initCesium } from 'vmap-cesium-toolbar';
-import 'vmap-cesium-toolbar/style';
+import { CesiumMapToolbar, initCesium } from '@xingm/vmap-cesium-toolbar';
+import '@xingm/vmap-cesium-toolbar/style';
 
-console.log('插件加载成功！');
+// 初始化Cesium
+const viewer = initCesium('cesiumContainer', {
+  terrainProvider: Cesium.createWorldTerrain()
+});
+
+// 创建工具栏
+const toolbar = new CesiumMapToolbar(viewer, document.getElementById('toolbar'));
 ```
 
-### 4. 运行测试
+### Vue 3 项目中使用
 
-```bash
-node test.js
+```vue
+<template>
+  <div id="cesiumContainer"></div>
+  <div id="toolbar"></div>
+</template>
+
+<script setup>
+import { onMounted } from 'vue';
+import { CesiumMapToolbar, initCesium } from '@xingm/vmap-cesium-toolbar';
+import '@xingm/vmap-cesium-toolbar/style';
+
+let viewer;
+let toolbar;
+
+onMounted(() => {
+  // 初始化Cesium
+  viewer = initCesium('cesiumContainer', {
+    terrainProvider: Cesium.createWorldTerrain()
+  });
+
+  // 创建工具栏
+  toolbar = new CesiumMapToolbar(viewer, document.getElementById('toolbar'));
+});
+</script>
 ```
 
-## 版本管理
+## 主要组件
 
-### 1. 更新版本号
+### CesiumMapToolbar
 
-```bash
-npm version patch   # 补丁版本 (1.0.0 -> 1.0.1)
-npm version minor   # 次要版本 (1.0.0 -> 1.1.0)
-npm version major   # 主要版本 (1.0.0 -> 2.0.0)
+主要工具栏组件，提供完整的地图操作功能。
+
+```typescript
+const toolbar = new CesiumMapToolbar(
+  viewer,                    // Cesium Viewer实例
+  container,                 // 工具栏容器元素
+  config,                    // 配置选项（可选）
+  callbacks,                 // 回调函数（可选）
+  initialCenter              // 初始中心点（可选）
+);
 ```
 
-### 2. 发布新版本
+### CesiumMapHelper
 
-```bash
-npm run build:plugin
-cd dist
-npm publish
+地图辅助工具类，提供绘制和测量功能。
+
+```typescript
+import { CesiumMapHelper } from '@xingm/vmap-cesium-toolbar';
+
+const helper = new CesiumMapHelper(viewer);
+helper.startDrawing('line');  // 开始绘制线条
+helper.startMeasurement('distance'); // 开始距离测量
+```
+
+### CesiumMapLoader
+
+Cesium初始化工具，简化Cesium的配置和初始化。
+
+```typescript
+import { CesiumMapLoader } from '@xingm/vmap-cesium-toolbar';
+
+const viewer = CesiumMapLoader.init('container', {
+  terrainProvider: Cesium.createWorldTerrain(),
+  imageryProvider: new Cesium.OpenStreetMapImageryProvider({
+    url: 'https://a.tile.openstreetmap.org/'
+  })
+});
+```
+
+## 配置选项
+
+### 工具栏配置
+
+```typescript
+interface ToolbarConfig {
+  position?: 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left';
+  buttonSize?: number;           // 按钮大小 (默认40px)
+  buttonSpacing?: number;        // 按钮间距 (默认8px)
+  backgroundColor?: string;      // 背景色
+  borderColor?: string;          // 边框色
+  borderRadius?: number;         // 圆角半径
+  showSearch?: boolean;          // 显示搜索框
+  showMeasurement?: boolean;     // 显示测量工具
+  showDrawing?: boolean;         // 显示绘制工具
+  showLayerControl?: boolean;    // 显示图层控制
+  show2D3DToggle?: boolean;      // 显示2D/3D切换
+}
+```
+
+### 回调函数
+
+```typescript
+interface ToolbarCallbacks {
+  search?: (query: string) => void;
+  measurement?: (type: string, result: any) => void;
+  drawing?: (type: string, entity: Entity) => void;
+  zoom?: (level: number) => void;
+}
+```
+
+## 功能说明
+
+### 搜索功能
+
+支持地名搜索和坐标定位：
+
+```javascript
+// 搜索回调
+const callbacks = {
+  search: (query) => {
+    console.log('搜索:', query);
+    // 实现搜索逻辑
+  }
+};
+```
+
+### 测量工具
+
+支持多种测量类型：
+
+- **距离测量** - 测量两点间距离
+- **面积测量** - 测量多边形面积
+- **高度测量** - 测量点的高度信息
+
+```javascript
+// 测量回调
+const callbacks = {
+  measurement: (type, result) => {
+    console.log('测量结果:', type, result);
+  }
+};
+```
+
+### 绘制功能
+
+支持多种绘制类型：
+
+- **点绘制** - 在地图上标记点
+- **线绘制** - 绘制线条
+- **面绘制** - 绘制多边形区域
+
+```javascript
+// 绘制回调
+const callbacks = {
+  drawing: (type, entity) => {
+    console.log('绘制完成:', type, entity);
+  }
+};
+```
+
+## 样式定制
+
+组件提供了完整的CSS变量支持，可以轻松定制样式：
+
+```css
+:root {
+  --toolbar-bg-color: #ffffff;
+  --toolbar-border-color: #e0e0e0;
+  --toolbar-button-size: 40px;
+  --toolbar-button-spacing: 8px;
+  --toolbar-border-radius: 4px;
+}
 ```
 
 ## 示例项目
@@ -117,6 +207,11 @@ npm publish
 ### 基本使用示例
 
 ```bash
+# 克隆项目
+git clone https://github.com/your-username/vmap-cesium-toolbar.git
+cd vmap-cesium-toolbar
+
+# 查看基本示例
 cd examples/basic-usage
 # 在浏览器中打开 index.html
 ```
@@ -129,38 +224,46 @@ npm install
 npm run dev
 ```
 
-## 故障排除
+## API 文档
 
-### 1. 构建失败
+详细的API文档请参考：
 
-- 检查 Node.js 版本（推荐 16+）
-- 确保所有依赖已安装
-- 检查 TypeScript 配置
+- [CesiumMapToolbar API](./doc/CesiumMapToolbar_API.md)
+- [CesiumMapHelper API](./doc/CesiumMapHelper_API.md)
+- [CesiumMapLoader API](./doc/CesiumMapLoader_API.md)
 
-### 2. 发布失败
+## 依赖要求
 
-- 检查 NPM 登录状态
-- 确保包名唯一
-- 检查版本号是否已存在
+- **Cesium**: ^1.100.0
+- **Vue**: ^3.0.0 (可选，用于Vue项目)
 
-### 3. 类型定义问题
+## 浏览器支持
 
-- 确保 `src/types/index.d.ts` 存在
-- 检查类型定义语法
-- 验证导出接口
+- Chrome 60+
+- Firefox 55+
+- Safari 12+
+- Edge 79+
 
-## 开发工作流
+## 许可证
 
-1. **开发功能**：在 `src/` 目录下开发
-2. **测试功能**：使用 `npm run dev` 测试
-3. **构建插件**：使用 `npm run build:plugin`
-4. **本地测试**：在示例项目中测试
-5. **发布版本**：更新版本号并发布
+MIT License
 
-## 注意事项
+## 贡献
 
-1. **依赖管理**：确保 peerDependencies 正确设置
-2. **类型定义**：保持类型定义与实现同步
-3. **文档更新**：功能变更时更新文档
-4. **版本兼容**：重大变更时升级主版本号
-5. **测试覆盖**：发布前充分测试所有功能
+欢迎提交 Issue 和 Pull Request！
+
+## 更新日志
+
+### v0.0.1-beta.2
+
+- 新增高度测量功能
+- 优化标签显示逻辑
+- 修复3D模式下标签位置问题
+- 改进绘制工具的用户体验
+
+### v0.0.1-beta.1
+
+- 初始版本发布
+- 基础工具栏功能
+- 搜索、测量、绘制功能
+- Vue 3 支持
