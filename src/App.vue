@@ -287,12 +287,12 @@ function testDrawFrustum() {
   );
 
   drawHelper.drawFrustum({
-    position: cameraPosition,
-    orientation: cameraOrientation,
-    fov: 60,
-    aspectRatio: 1.5,
-    near: 10,
-    far: 2000,
+    position: cameraPosition, // 使用相机位置
+    orientation: cameraOrientation, // 使用相机方向
+    fov: 60, // 设置视场角
+    aspectRatio: 1.5, // 设置宽高比
+    near: 10, // 设置近距离
+    far: 2000, // 设置远距离
     fillColor: Cesium.Color.BLUE.withAlpha(0.3),
     outlineColor: Cesium.Color.WHITE,
     onRightClick: (pos) => {

@@ -92,9 +92,17 @@ export async function initCesium(
 ): Promise<{ viewer: CesiumViewer; initialCenter: MapCenter }> {
   Ion.defaultAccessToken = (import.meta as any).env.VITE_CESIUM_TOKEN
   const viewer = new Viewer(containerId, {
-    timeline: false,
-    animation: false,
-    baseLayerPicker: false,
+    animation: false, // 禁用动画
+    baseLayerPicker: false, // 禁用基础图层选择器
+    fullscreenButton: false, // 禁用全屏按钮
+    geocoder: false, // 禁用地理编码器
+    homeButton: false, // 禁用主页按钮
+    infoBox: false, // 禁用信息框以减少交互冲突
+    sceneModePicker: false, // 禁用场景模式选择器
+    selectionIndicator: false, // 禁用选取指示器以减少交互冲突
+    timeline: false, // 禁用时间轴
+    navigationHelpButton: false, // 禁用导航帮助按钮
+    navigationInstructionsInitiallyVisible: false, // 禁用导航指令初始可见
     ...options
   })
   // 地形提供者

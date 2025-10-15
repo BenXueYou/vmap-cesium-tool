@@ -1,6 +1,6 @@
 {
   "name": "@xingm/vmap-cesium-toolbar",
-  "version": "0.0.1-beta.3",
+  "version": "0.0.1-beta.4",
   "description": "A powerful Cesium map toolbar plugin with drawing, measurement, and interaction features",
   "type": "module",
   "main": "dist/index.js",
@@ -29,16 +29,15 @@
     "type-check": "vue-tsc --noEmit"
   },
   "peerDependencies": {
-    "cesium": "^1.100.0",
     "vue": "^3.0.0"
   },
   "dependencies": {
+    "cesium": "^1.134.1",
     "vue": "^3.5.18"
   },
   "devDependencies": {
     "@types/cesium": "^1.70.4",
     "@vitejs/plugin-vue": "^6.0.1",
-    "cesium": "^1.132.0",
     "rollup-plugin-dts": "^6.1.0",
     "vite": "^7.1.2",
     "vite-plugin-cesium": "^1.2.23",
