@@ -464,18 +464,18 @@ export class CesiumMapToolbar {
       // 默认按钮点击事件（除了搜索、测量、图层切换按钮）
       button.addEventListener('click', (e) => {
         e.stopPropagation();
-        this.handleButtonClick(config.id, button);
+        this.handleButtonClick(config.id, button, config.callback);
       });
     } else if (config.id === 'search') {
       // 搜索按钮使用点击事件
       button.addEventListener('click', (e) => {
         e.stopPropagation();
-        this.handleButtonClick(config.id, button);
+        this.handleButtonClick(config.id, button, config.callback);
       });
     } else {
       // 测量、图层切换按钮使用hover事件
       button.addEventListener('mouseenter', () => {
-        this.handleButtonClick(config.id, button);
+        this.handleButtonClick(config.id, button, config.callback);
       });
 
       // 添加鼠标离开事件来关闭菜单
@@ -511,7 +511,7 @@ export class CesiumMapToolbar {
   /**
    * 处理按钮点击
    */
-  private handleButtonClick(buttonId: string, buttonElement: HTMLElement): void {
+  private handleButtonClick(buttonId: string, buttonElement: HTMLElement, callback?: () => void): void {
     switch (buttonId) {
       case 'search':
         this.toggleSearch(buttonElement);
@@ -523,7 +523,7 @@ export class CesiumMapToolbar {
         this.toggle2D3D(buttonElement);
         break;
       case 'layers':
-        this.toggleLayers(buttonElement);
+        this.toggleLayers(buttonElement, callback);
         break;
       case 'location':
         this.resetLocation();
@@ -770,8 +770,8 @@ export class CesiumMapToolbar {
       right: 100%;
       top: 0;
       margin-right: 8px;
-      background: white;
-      border: 1px solid #e0e0e0;
+      background: rgba(0, 40, 80, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.2);
       border-radius: 4px;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
       padding: 4px 0;
@@ -792,6 +792,7 @@ export class CesiumMapToolbar {
         cursor: pointer;
         display: flex;
         align-items: center;
+        color: #fff;
         gap: 8px;
         transition: background-color 0.2s;
       `;
@@ -799,7 +800,7 @@ export class CesiumMapToolbar {
       menuItem.innerHTML = `${item.icon} ${item.text}`;
 
       menuItem.addEventListener('mouseenter', () => {
-        menuItem.style.backgroundColor = '#f5f5f5';
+        menuItem.style.backgroundColor = '#023C61';
         menuItem.style.transform = 'scale(1.02)';
       });
 
@@ -865,7 +866,7 @@ export class CesiumMapToolbar {
   /**
    * 切换图层
    */
-  private toggleLayers(buttonElement: HTMLElement): void {
+  private toggleLayers(buttonElement: HTMLElement, callback?: (param: any) => void): void {
     const existingMenu = this.toolbarElement.querySelector('.layers-menu');
     if (existingMenu) {
       return; // 如果菜单已存在，不重复创建
@@ -878,86 +879,117 @@ export class CesiumMapToolbar {
       right: 100%;
       top: 0;
       margin-right: 8px;
-      background: white;
-      border: 1px solid #e0e0e0;
-      border-radius: 6px;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-      padding: 12px;
-      min-width: 280px;
+      background: rgba(0, 40, 80, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+      padding: 16px;
+      min-width: 500px;
+      max-width: 520px;
       z-index: 1001;
       display: flex;
-      flex-wrap: no-wrap;
-      flex-direction: row;
+      flex-direction: column;
     `;
 
-    // 地图类型选择
+    // 第一部分：地图类型
     const mapTypeSection = document.createElement('div');
     mapTypeSection.style.cssText = `
       display: flex;
-      flex-direction: row;
-      flex-wrap: no-wrap;
-      gap: 4px;
+      flex-direction: column;
+      gap: 12px;
+      background: transparent;
     `;
-    mapTypeSection.innerHTML = '<div style="font-weight: bold; margin-bottom: 8px; color: #333; font-size: 14px;">地图类型</div>';
+
+    // 地图类型标题栏
+    const mapTypeHeader = document.createElement('div');
+    mapTypeHeader.textContent = '地图类型';
+    mapTypeHeader.style.cssText = `
+      display: flex;
+      width: 100%;
+      justify-content: flex-start;
+      align-items: center;
+      text-align: left;
+      font-weight: bold;
+      font-size: 16px;
+      color: #fff;
+    `;
+    // 地图类型网格容器
+    const mapTypeGrid = document.createElement('div');
+    mapTypeGrid.style.cssText = `
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+    `;
 
     this.mapTypes.forEach(mapType => {
       const mapTypeItem = document.createElement('div');
       mapTypeItem.style.cssText = `
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 8px 12px;
+        position: relative;
         cursor: pointer;
         border-radius: 4px;
-        transition: background-color 0.2s;
-        width: 220px;
-        box-sizing: border-box;
-        ${mapType.id === this.currentMapType ? 'background-color: #e3f2fd;' : ''}
+        overflow: hidden;
+        transition: transform 0.2s, box-shadow 0.2s, background-color 0.2s, border-color 0.2s;
+        background-color: transparent;
+        ${mapType.id === this.currentMapType ? 'box-shadow: 0 2px 8px rgba(25, 118, 210, 0.5); border: 2px solid #1976d2;' : 'border: 2px solid transparent;'}
       `;
 
       const thumbnail = document.createElement('img');
       thumbnail.src = mapType.thumbnail;
       thumbnail.style.cssText = `
-        width: 87px; 
-        height: 56px; 
-        border-radius: 3px;
-        flex-shrink: 0;
+        width: 100%;
+        height: auto;
+        display: block;
       `;
 
-      const label = document.createElement('span');
+      const label = document.createElement('div');
       label.textContent = mapType.name;
       label.style.cssText = `
-        font-size: 14px;
-        color: #333;
-        flex: 1;
+        font-size: 12px;
+        color: #fff;
+        padding: 4px 0;
+        text-align: center;
+        background: rgba(0, 0, 0, 0.3);
       `;
 
-      const checkmark = document.createElement('span');
+      // 勾选标记
       if (mapType.id === this.currentMapType) {
-        checkmark.textContent = '✓';
+        const checkmark = document.createElement('div');
+        checkmark.innerHTML = '✓';
         checkmark.style.cssText = `
-          color: #1976d2; 
-          font-weight: bold; 
-          font-size: 16px;
-          flex-shrink: 0;
+          position: absolute;
+          top: 4px;
+          right: 4px;
+          width: 20px;
+          height: 20px;
+          background: #1976d2;
+          color: #fff;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 14px;
+          font-weight: bold;
+          z-index: 10;
         `;
+        mapTypeItem.appendChild(checkmark);
       }
 
       mapTypeItem.appendChild(thumbnail);
       mapTypeItem.appendChild(label);
-      mapTypeItem.appendChild(checkmark);
 
       mapTypeItem.addEventListener('mouseenter', () => {
-        if (mapType.id !== this.currentMapType) {
-          mapTypeItem.style.backgroundColor = '#f5f5f5';
-          mapTypeItem.style.transform = 'scale(1.05)';
-        }
+        mapTypeItem.style.transform = 'scale(1.05)';
+        mapTypeItem.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.4)';
+        mapTypeItem.style.borderColor = '#023C61';
+        mapTypeItem.style.backgroundColor = '#023C61';
       });
 
       mapTypeItem.addEventListener('mouseleave', () => {
+        mapTypeItem.style.transform = 'scale(1)';
         if (mapType.id !== this.currentMapType) {
+          mapTypeItem.style.boxShadow = 'none';
+          mapTypeItem.style.borderColor = 'transparent';
           mapTypeItem.style.backgroundColor = 'transparent';
-          mapTypeItem.style.transform = 'scale(1.00)';
         }
       });
 
@@ -966,10 +998,111 @@ export class CesiumMapToolbar {
         menu.remove();
       });
 
-      mapTypeSection.appendChild(mapTypeItem);
+      mapTypeGrid.appendChild(mapTypeItem);
     });
 
+
+    mapTypeSection.appendChild(mapTypeHeader);
+    mapTypeSection.appendChild(mapTypeGrid);
+
+    // 第二部分：叠加图层
+    const overlaySection = document.createElement('div');
+    overlaySection.style.cssText = `
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      background: transparent;
+    `;
+
+    const overlayTitle = document.createElement('div');
+    overlayTitle.textContent = '叠加图层';
+    overlayTitle.style.cssText = `
+      font-weight: bold;
+      font-size: 16px;
+      color: #fff;
+      margin-bottom: 4px;
+    `;
+    overlaySection.appendChild(overlayTitle);
+    // 示例叠加图层选项
+    const overlayOptions = [
+      { id: 'airport', name: '机场禁飞区', icon: '🔴' }
+      // 可以添加更多叠加图层选项
+    ];
+
+    overlayOptions.forEach(option => {
+      const overlayItem = document.createElement('div');
+      overlayItem.style.cssText = `
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background-color 0.2s;
+      `;
+
+      const checkbox = document.createElement('div');
+      checkbox.style.cssText = `
+        width: 18px;
+        height: 18px;
+        border: 2px solid rgba(255, 255, 255, 0.5);
+        border-radius: 3px;
+        background: transparent;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      `;
+
+      const icon = document.createElement('span');
+      icon.textContent = option.icon;
+      icon.style.cssText = `
+        font-size: 12px;
+        display: flex;
+        align-items: center;
+      `;
+
+      const name = document.createElement('span');
+      name.textContent = option.name;
+      name.style.cssText = `
+        font-size: 14px;
+        color: #fff;
+      `;
+
+      overlayItem.appendChild(checkbox);
+      overlayItem.appendChild(icon);
+      overlayItem.appendChild(name);
+
+      overlayItem.addEventListener('mouseenter', () => {
+        overlayItem.style.backgroundColor = '#023C61';
+      });
+
+      overlayItem.addEventListener('mouseleave', () => {
+        overlayItem.style.backgroundColor = 'transparent';
+      });
+
+      overlayItem.addEventListener('click', () => {
+        // 切换复选框状态（可以根据需要实现具体的图层逻辑）
+        const isChecked = checkbox.style.background === '#ffffff';
+        if (isChecked) {
+          checkbox.style.background = 'transparent';
+          checkbox.innerHTML = '';
+        } else {
+          checkbox.style.background = '#023C61';
+          checkbox.innerHTML = '✓';
+          checkbox.style.color = '#ffffff';
+          checkbox.style.fontWeight = 'bold';
+          checkbox.style.fontSize = '12px';
+        }
+        callback?.(isChecked);
+      });
+
+      overlaySection.appendChild(overlayItem);
+    });
+
+    // 组装菜单
     menu.appendChild(mapTypeSection);
+    menu.appendChild(overlaySection);
 
     this.toolbarElement.insertBefore(menu, buttonElement);
 

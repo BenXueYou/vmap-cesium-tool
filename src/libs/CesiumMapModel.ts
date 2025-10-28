@@ -27,6 +27,7 @@ export interface ButtonConfig {
   hoverColor?: string;
   activeColor?: string;
   backgroundColor?: string;
+  callback?: () => void;
   activeIcon?: string | HTMLElement;
 }
 

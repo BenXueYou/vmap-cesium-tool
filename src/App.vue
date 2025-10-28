@@ -40,8 +40,7 @@ onMounted(async () => {
   const { viewer: cesiumViewer, initialCenter } = await initCesium(
     "cesiumContainer",
     {
-      token: TDT_TK,
-      mapType: "tiandi",
+      token: TDT_TK,    
     }
   );
 
