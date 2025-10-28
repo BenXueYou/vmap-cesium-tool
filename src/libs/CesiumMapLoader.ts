@@ -1,10 +1,10 @@
 import * as Cesium from 'cesium'
 import { Ion, Viewer, createWorldTerrainAsync, Terrain, Cartesian3, SampledPositionProperty, TerrainProvider } from 'cesium'
 import type { Entity, Viewer as CesiumViewer, EntityCollection } from 'cesium'
-
+import { TDTMapTypes } from './CesiumMapConfig'
 
 interface InitOptions {
-  terrain: Terrain, // 地形
+  terrain?: Terrain, // 地形
   terrainProvider?: TerrainProvider // 地形提供者
   mapType?: string // 地图类型，默认为天地图
   imageryProvider?: Cesium.UrlTemplateImageryProvider // 自定义影像图层提供r
@@ -40,6 +40,7 @@ interface InitOptions {
   terrainExaggeration?: number // 地形夸张系数
   maximumScreenSpaceError?: number // 最大屏幕空间误差
   maximumNumberOfLoadedTiles?: number // 最大加载瓦片数量
+  token?: string // 访问令牌
 }
 
 interface MapCenter {
@@ -57,38 +58,11 @@ interface TianDiMap {
   maximumLevel: number,
   credit: string
 }
-interface GaoDeMap {
-  url: string,
-  subdomains: string[],
-  minimumLevel: number,
-  maximumLevel: number,
-  credit: string
-}
-
-export function createTianDiMap(): TianDiMap {
-  return {
-    url: 'https://webst0{s}.is.autonavi.com/appmaptile?style=7&x={x}&y={y}&z={z}',
-    subdomains: ['1', '2', '3', '4'], // 必须使用数字子域
-    minimumLevel: 3,
-    maximumLevel: 18,
-    credit: '© 高德地图'
-  }
-}
-
-export function createGaoDeMap(): Cesium.UrlTemplateImageryProvider {
-  return new Cesium.UrlTemplateImageryProvider({
-    url: 'https://webst0{s}.is.autonavi.com/appmaptile?style=7&x={x}&y={y}&z={z}',
-    subdomains: ['1', '2', '3', '4'], // 必须使用数字子域
-    minimumLevel: 3,
-    maximumLevel: 18,
-    credit: '© 高德地图'
-  })
-}
 
 export async function initCesium(
   containerId: string,
   options: InitOptions,
-  mapCenter: MapCenter = { longitude: 120.2052342, latitude: 30.2489634, height: 1000, pitch: -60, heading: 0 }
+  mapCenter: MapCenter = { longitude: 120.2052342, latitude: 30.2489634, height: 1000, pitch: -45, heading: 0 }
 ): Promise<{ viewer: CesiumViewer; initialCenter: MapCenter }> {
   Ion.defaultAccessToken = (import.meta as any).env.VITE_CESIUM_TOKEN
   const viewer = new Viewer(containerId, {
@@ -103,24 +77,31 @@ export async function initCesium(
     timeline: false, // 禁用时间轴
     navigationHelpButton: false, // 禁用导航帮助按钮
     navigationInstructionsInitiallyVisible: false, // 禁用导航指令初始可见
+    token: import.meta.env.VITE_TD_TOKEN,
     ...options
   })
+  // if (viewer.scene?.fxaa !== undefined) {
+  //   viewer.scene.fxaa = true;
+  // }
+  viewer.scene.postProcessStages.fxaa.enabled=false;
   // 地形提供者
   if (!options.terrainProvider && !options.terrain) {
     viewer.terrainProvider = await createWorldTerrainAsync()
   }
   // 添加高德图影像图层
-  if (options.mapType === 'gaode') {
+  if (options.mapType === 'tiandi') {
     viewer.imageryLayers.removeAll();
-    viewer.imageryLayers.addImageryProvider(createGaoDeMap());
+    TDTMapTypes.find(type => type.id === 'imagery')?.provider(import.meta.env.VITE_TD_TOKEN).forEach(provider => {
+      viewer.imageryLayers.addImageryProvider(provider);
+    });
   }
   if (mapCenter) {
     // 设置初始视角为中国区域 (经度, 纬度, 高度)
-    viewer.camera.flyTo({
+    viewer.camera.setView({
       destination: Cesium.Cartesian3.fromDegrees(mapCenter.longitude, mapCenter.latitude, mapCenter.height), // 中国中心坐标
       orientation: {
         heading: Cesium.Math.toRadians(mapCenter.heading || 0), // 方向角度
-        pitch: Cesium.Math.toRadians(mapCenter.pitch || -30), // 俯
+        pitch: Cesium.Math.toRadians(mapCenter.pitch || 0), // 俯
       }
     });
   }

@@ -1,12 +1,93 @@
 import * as Cesium from 'cesium';
-import type { 
-  Viewer, Cartesian3, Cartographic, Color, Entity, 
-  ScreenSpaceEventHandler, CallbackProperty, PolygonHierarchy,
-  HeadingPitchRoll, PerspectiveFrustum, Primitive, GeometryInstance,
-  PerInstanceColorAppearance, FrustumGeometry, FrustumOutlineGeometry,
-  VertexFormat, ColorGeometryInstanceAttribute, Quaternion,
-  PolylineDashMaterialProperty
-} from 'cesium';
+import type { Cartesian3, Cartographic, Color } from 'cesium';
+// 工具栏配置接口
+export interface ToolbarConfig {
+  position?: 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left';
+  buttonSize?: number;
+  buttonSpacing?: number;
+  backgroundColor?: string;
+  borderColor?: string;
+  borderRadius?: number;
+  borderWidth?: number;
+  boxShadow?: string;
+  zIndex?: number;
+  buttons?: CustomButtonConfig[];
+}
+
+// 按钮配置接口
+export interface ButtonConfig {
+  id: string;
+  icon: string;
+  title: string;
+  size?: number;
+  color?: string;
+  borderColor?: string;
+  borderWidth?: number;
+  borderStyle?: string;
+  hoverColor?: string;
+  activeColor?: string;
+  backgroundColor?: string;
+  activeIcon?: string | HTMLElement;
+}
+
+// 自定义按钮配置接口
+export interface CustomButtonConfig {
+  id: string;
+  icon: string | HTMLElement | false;
+  title: string;
+  enabled?: boolean;
+  visible?: boolean;
+  size?: number;
+  color?: string;
+  borderColor?: string;
+  borderWidth?: number;
+  borderStyle?: string;
+  padding?: string;
+  hoverColor?: string;
+  activeColor?: string;
+  backgroundColor?: string;
+  activeIcon?: string | HTMLElement | false;
+  onClick?: (buttonId: string, buttonElement: HTMLElement) => void;
+}
+
+// 搜索回调接口
+export interface SearchCallback {
+  onSearch?: (query: string) => Promise<SearchResult[]>;
+  onSelect?: (result: SearchResult) => void;
+  onSearchInput?: (query: string, container: HTMLElement) => void;
+  onSearchResults?: (results: SearchResult[], container: HTMLElement) => void;
+}
+
+// 搜索结果接口
+export interface SearchResult {
+  name: string;
+  address: string;
+  longitude: number;
+  latitude: number;
+  height?: number;
+}
+
+// 测量回调接口
+export interface MeasurementCallback {
+  onDistanceComplete?: (positions: Cartesian3[], distance: number) => void;
+  onAreaComplete?: (positions: Cartesian3[], area: number) => void;
+  onClear?: () => void;
+}
+
+// 缩放回调接口
+export interface ZoomCallback {
+  onZoomIn?: (beforeLevel: number, afterLevel: number) => void;
+  onZoomOut?: (beforeLevel: number, afterLevel: number) => void;
+}
+
+// 地图类型接口
+export interface MapType {
+  id: string;
+  name: string;
+  thumbnail: string;
+  provider: (token: string) => Cesium.ImageryProvider[];
+}
+
 // 配置接口定义
 export interface MapToolsConfig {
   containerId: string; // 地图容器ID
@@ -59,21 +140,6 @@ export interface PolygonOptions {
   onClick?: (positions: Cartesian3[], area: number) => void; // 点击回调
 }
 
-/**
- * 视锥体绘制选项
- */
-export interface FrustumOptions {
-  position?: Cartesian3;
-  orientation?: Quaternion;
-  fov?: number;
-  aspectRatio?: number;
-  near?: number;
-  far?: number;
-  fillColor?: Color;
-  outlineColor?: Color;
-  onRightClick?: (position: Cartesian3) => void;
-}
-
 export interface OverlayOptions {
   position: Cartesian3;
   type: 'point' | 'label' | 'billboard' | 'model' | 'cylinder';
@@ -104,29 +170,6 @@ export interface OverlayOptions {
     bottomRadius: number;
     material?: Color;
   };
-}
-
-export interface VerticalLineOptions {
-  startPosition: Cartesian3;
-  height: number;
-  width?: number;
-  material?: Cesium.MaterialProperty | Color;
-  showLabel?: boolean;
-}
-
-/**
- * 视锥体绘制选项
- */
-export interface FrustumOptions {
-  position?: Cartesian3;
-  orientation?: Quaternion;
-  fov?: number;
-  aspectRatio?: number;
-  near?: number;
-  far?: number;
-  fillColor?: Color;
-  outlineColor?: Color;
-  onRightClick?: (position: Cartesian3) => void;
 }
 
 export * as Cesium from 'cesium';

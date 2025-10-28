@@ -1,6 +1,5 @@
 import * as Cesium from "cesium";
 import type { Primitive } from "cesium";
-import type { FrustumOptions } from "./CesiumMapModel";
 /**
  * Cesium 绘图辅助工具类
  * 支持绘制点、线、多边形、矩形，并提供编辑和删除功能
@@ -65,133 +64,6 @@ class DrawHelper {
       this.offsetHeight = 100; // 3D模式使用100米偏移，所有元素都浮动
     } else {
       this.offsetHeight = 0; // 2D模式使用0米偏移，所有元素都贴近地面
-    }
-  }
-
-  /**
-   * 手动设置偏移高度
-   * @param height 偏移高度（米）
-   */
-  public setOffsetHeight(height: number): void {
-    this.offsetHeight = height;
-  }
-
-  /**
-   * 获取当前偏移高度
-   * @returns 当前偏移高度（米）
-   */
-  public getOffsetHeight(): number {
-    return this.offsetHeight;
-  }
-
-  clearFrustum(): void {
-    // 清理视锥体图元
-    this.frustumPrimitives.forEach((primitive) => {
-      if (primitive && !primitive.isDestroyed()) {
-        this.viewer.scene.primitives.remove(primitive);
-      }
-    });
-    this.frustumPrimitives = [];
-
-    // 清理视锥体专用的事件处理器
-    if (this.screenSpaceEventHandler) {
-      this.screenSpaceEventHandler.destroy();
-      this.screenSpaceEventHandler = null;
-    }
-  }
-  // 视锥体功能
-  drawFrustum(options: FrustumOptions = {}): void {
-    try {
-      this.clearFrustum();
-
-      // 参数验证
-      const fov = Math.max(1, Math.min(179, options.fov || 60)); // 限制FOV范围
-      const aspectRatio = Math.max(0.1, options.aspectRatio || 1.0);
-      const near = Math.max(0.1, options.near || 1.0);
-      const far = Math.max(near + 1, options.far || 1000.0);
-
-      const position = options.position || this.viewer.camera.positionWC;
-      const orientation =
-        options.orientation ||
-        Cesium.Quaternion.fromRotationMatrix(
-          Cesium.Matrix4.getRotation(
-            this.viewer.camera.transform,
-            new Cesium.Matrix3()
-          )
-        );
-
-      const frustum = new Cesium.PerspectiveFrustum({
-        fov: Cesium.Math.toRadians(fov),
-        aspectRatio: aspectRatio,
-        near: near,
-        far: far,
-      });
-
-      // 创建视锥体填充
-      const fillGeometry = new Cesium.FrustumGeometry({
-        frustum: frustum,
-        origin: position,
-        orientation: orientation,
-        vertexFormat: Cesium.VertexFormat.POSITION_ONLY,
-      });
-
-      const fillInstance = new Cesium.GeometryInstance({
-        geometry: fillGeometry,
-        attributes: {
-          color: Cesium.ColorGeometryInstanceAttribute.fromColor(
-            options.fillColor || new Cesium.Color(1.0, 0.0, 0.0, 0.3)
-          ),
-        },
-      });
-
-      const fillPrimitive = new Cesium.Primitive({
-        geometryInstances: fillInstance,
-        appearance: new Cesium.PerInstanceColorAppearance({
-          closed: true,
-          flat: true,
-        }),
-      });
-
-      // 创建视锥体轮廓
-      const outlineGeometry = new Cesium.FrustumOutlineGeometry({
-        frustum: frustum,
-        origin: position,
-        orientation: orientation,
-      });
-
-      const outlineInstance = new Cesium.GeometryInstance({
-        geometry: outlineGeometry,
-        attributes: {
-          color: Cesium.ColorGeometryInstanceAttribute.fromColor(
-            options.outlineColor || new Cesium.Color(1.0, 1.0, 1.0, 1.0)
-          ),
-        },
-      });
-
-      const outlinePrimitive = new Cesium.Primitive({
-        geometryInstances: outlineInstance,
-        appearance: new Cesium.PerInstanceColorAppearance({
-          closed: true,
-          flat: true,
-        }),
-      });
-
-      this.viewer.scene.primitives.add(fillPrimitive);
-      this.viewer.scene.primitives.add(outlinePrimitive);
-      this.frustumPrimitives.push(fillPrimitive, outlinePrimitive);
-
-      // 右键点击事件
-      if (options.onRightClick && this.screenSpaceEventHandler) {
-        this.screenSpaceEventHandler.setInputAction((movement: any) => {
-          if (movement.position && options.onRightClick) {
-            options.onRightClick(position);
-          }
-        }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
-      }
-    } catch (error) {
-      console.error("绘制视锥体时发生错误:", error);
-      // 确保在出错时也清理资源
-      this.clearFrustum();
     }
   }
 
@@ -1203,7 +1075,6 @@ class DrawHelper {
    */
   destroy(): void {
     this.deactivateDrawingHandlers();
-    this.clearFrustum(); // 清理视锥体相关资源
     // 可以选择不清除实体，由用户决定
     // this.clearAll();
   }

@@ -1,94 +1,13 @@
 import * as Cesium from 'cesium';
-import type { Viewer, Cartesian3, Cartographic } from 'cesium';
+import type { Viewer, Cartesian3 } from 'cesium';
 import DrawHelper from './CesiumMapHelper';
+import type { 
+  ButtonConfig, MapType, SearchResult, ToolbarConfig, 
+  SearchCallback, MeasurementCallback, ZoomCallback, CustomButtonConfig 
+} from './CesiumMapModel';
 
-// 工具栏配置接口
-export interface ToolbarConfig {
-  position?: 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left';
-  buttonSize?: number;
-  buttonSpacing?: number;
-  backgroundColor?: string;
-  borderColor?: string;
-  borderRadius?: number;
-  borderWidth?: number;
-  boxShadow?: string;
-  zIndex?: number;
-  buttons?: CustomButtonConfig[];
-}
+import {  TDTMapTypes } from './CesiumMapConfig'
 
-// 按钮配置接口
-export interface ButtonConfig {
-  id: string;
-  icon: string;
-  title: string;
-  size?: number;
-  color?: string;
-  borderColor?: string;
-  borderWidth?: number;
-  borderStyle?: string;
-  hoverColor?: string;
-  activeColor?: string;
-  backgroundColor?: string;
-  activeIcon?: string | HTMLElement;
-}
-
-// 自定义按钮配置接口
-export interface CustomButtonConfig {
-  id: string;
-  icon: string | HTMLElement;
-  title: string;
-  enabled?: boolean;
-  visible?: boolean;
-  size?: number;
-  color?: string;
-  borderColor?: string;
-  borderWidth?: number;
-  borderStyle?: string;
-  padding?: string;
-  hoverColor?: string;
-  activeColor?: string;
-  backgroundColor?: string;
-  activeIcon?: string | HTMLElement;
-  onClick?: (buttonId: string, buttonElement: HTMLElement) => void;
-}
-
-// 搜索回调接口
-export interface SearchCallback {
-  onSearch?: (query: string) => Promise<SearchResult[]>;
-  onSelect?: (result: SearchResult) => void;
-  onSearchInput?: (query: string, container: HTMLElement) => void;
-  onSearchResults?: (results: SearchResult[], container: HTMLElement) => void;
-}
-
-// 搜索结果接口
-export interface SearchResult {
-  name: string;
-  address: string;
-  longitude: number;
-  latitude: number;
-  height?: number;
-}
-
-// 测量回调接口
-export interface MeasurementCallback {
-  onDistanceComplete?: (positions: Cartesian3[], distance: number) => void;
-  onAreaComplete?: (positions: Cartesian3[], area: number) => void;
-  onClear?: () => void;
-}
-
-// 缩放回调接口
-export interface ZoomCallback {
-  onZoomIn?: (beforeLevel: number, afterLevel: number) => void;
-  onZoomOut?: (beforeLevel: number, afterLevel: number) => void;
-}
-
-// 地图类型接口
-export interface MapType {
-  id: string;
-  name: string;
-  thumbnail: string;
-  provider: Cesium.ImageryProvider;
-}
 
 /**
  * Cesium地图工具栏类
@@ -106,58 +25,10 @@ export class CesiumMapToolbar {
   private initialCenter?: { longitude: number; latitude: number; height: number };
   private isFullscreen: boolean = false;
   private currentMapType: string = 'imagery';
+  public TD_Token: string = 'your_tianditu_token_here'; // 请替换为您的天地图密钥
 
   // 地图类型配置
-  private mapTypes: MapType[] = [
-    {
-      id: 'normal',
-      name: '天地图-普通',
-      thumbnail: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjQwIiBoZWlnaHQ9IjQwIiBmaWxsPSIjZjBmMGYwIi8+CjxwYXRoIGQ9Ik0xMCAxMEgzMFYzMEgxMFYxMFoiIGZpbGw9IiNlMGUwZTAiLz4KPC9zdmc+',
-      provider: new Cesium.UrlTemplateImageryProvider({
-        url: 'https://t{s}.tianditu.gov.cn/vec_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=vec&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={TileMatrix}&TILEROW={TileRow}&TILECOL={TileCol}&tk=your_token',
-        subdomains: ['0', '1', '2', '3', '4', '5', '6', '7'],
-        minimumLevel: 1,
-        maximumLevel: 18,
-        credit: '© 天地图'
-      })
-    },
-    {
-      id: '3d',
-      name: '天地图-三维',
-      thumbnail: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjQwIiBoZWlnaHQ9IjQwIiBmaWxsPSIjZjBmMGYwIi8+CjxwYXRoIGQ9Ik0xMCAxMEgzMFYzMEgxMFYxMFoiIGZpbGw9IiNlMGUwZTAiLz4KPC9zdmc+',
-      provider: new Cesium.UrlTemplateImageryProvider({
-        url: 'https://t{s}.tianditu.gov.cn/ter_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ter&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={TileMatrix}&TILEROW={TileRow}&TILECOL={TileCol}&tk=your_token',
-        subdomains: ['0', '1', '2', '3', '4', '5', '6', '7'],
-        minimumLevel: 1,
-        maximumLevel: 18,
-        credit: '© 天地图'
-      })
-    },
-    {
-      id: 'imagery',
-      name: '天地图-影像',
-      thumbnail: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjQwIiBoZWlnaHQ9IjQwIiBmaWxsPSIjZjBmMGYwIi8+CjxwYXRoIGQ9Ik0xMCAxMEgzMFYzMEgxMFYxMFoiIGZpbGw9IiNlMGUwZTAiLz4KPC9zdmc+',
-      provider: new Cesium.UrlTemplateImageryProvider({
-        url: 'https://t{s}.tianditu.gov.cn/img_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=img&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={TileMatrix}&TILEROW={TileRow}&TILECOL={TileCol}&tk=your_token',
-        subdomains: ['0', '1', '2', '3', '4', '5', '6', '7'],
-        minimumLevel: 1,
-        maximumLevel: 18,
-        credit: '© 天地图'
-      })
-    },
-    {
-      id: 'terrain',
-      name: '天地图-地形',
-      thumbnail: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjQwIiBoZWlnaHQ9IjQwIiBmaWxsPSIjZjBmMGYwIi8+CjxwYXRoIGQ9Ik0xMCAxMEgzMFYzMEgxMFYxMFoiIGZpbGw9IiNlMGUwZTAiLz4KPC9zdmc+',
-      provider: new Cesium.UrlTemplateImageryProvider({
-        url: 'https://t{s}.tianditu.gov.cn/ter_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ter&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={TileMatrix}&TILEROW={TileRow}&TILECOL={TileCol}&tk=your_token',
-        subdomains: ['0', '1', '2', '3', '4', '5', '6', '7'],
-        minimumLevel: 1,
-        maximumLevel: 18,
-        credit: '© 天地图'
-      })
-    }
-  ];
+  public mapTypes: MapType[] = TDTMapTypes;
 
   constructor(
     viewer: Viewer,
@@ -196,6 +67,13 @@ export class CesiumMapToolbar {
 
     // 创建工具栏
     this.createToolbar();
+  }
+
+  public setMapTypes(mapTypes: MapType[]): void {
+    this.mapTypes = mapTypes;
+  }
+  public setTDToken(TD_Token: string): void {
+    this.TD_Token = TD_Token;
   }
 
   /**
@@ -307,7 +185,7 @@ export class CesiumMapToolbar {
           if (positions && this.measurementCallback?.onDistanceComplete) {
             let totalDistance = 0;
             for (let i = 1; i < positions.length; i++) {
-              totalDistance += Cesium.Cartesian3.distance(positions[i-1], positions[i]);
+              totalDistance += Cesium.Cartesian3.distance(positions[i - 1], positions[i]);
             }
             this.measurementCallback.onDistanceComplete(positions, totalDistance);
           }
@@ -333,17 +211,17 @@ export class CesiumMapToolbar {
    */
   private calculatePolygonArea(positions: Cartesian3[]): number {
     if (positions.length < 3) return 0;
-    
+
     const ellipsoid = this.viewer.scene.globe.ellipsoid;
     let area = 0;
     const len = positions.length;
-    
+
     for (let i = 0; i < len; i++) {
       const p1 = ellipsoid.cartesianToCartographic(positions[i]);
       const p2 = ellipsoid.cartesianToCartographic(positions[(i + 1) % len]);
       area += (p2.longitude - p1.longitude) * (2 + Math.sin(p1.latitude) + Math.sin(p2.latitude));
     }
-    
+
     area = Math.abs(area * 6378137.0 * 6378137.0 / 2.0);
     return area / 1e6; // 转换为平方公里
   }
@@ -428,14 +306,14 @@ export class CesiumMapToolbar {
     button.className = 'cesium-toolbar-button';
     button.setAttribute('data-tool', config.id);
     button.title = config.title;
-    
+
     const buttonSize = config.size || this.config.buttonSize;
     const buttonColor = config.color || 'rgba(66, 133, 244, 0.4)';
     const backgroundColor = config.backgroundColor || 'rgba(66, 133, 244, 0.4)';
     const borderColor = config.borderColor || 'rgba(66, 133, 244, 0.4)';
     const borderWidth = config.borderWidth || 1;
     const borderStyle = config.borderStyle || 'solid';
-    
+
     button.style.cssText = `
       width: ${buttonSize}px;
       height: ${buttonSize}px;
@@ -477,7 +355,7 @@ export class CesiumMapToolbar {
   /**
    * 设置按钮图标
    */
-  private setButtonIcon(button: HTMLElement, icon: string | HTMLElement): void {    
+  private setButtonIcon(button: HTMLElement, icon: string | HTMLElement): void {
     if (icon instanceof HTMLElement) {
       // 处理HTMLElement类型的图标
       button.innerHTML = '';
@@ -508,14 +386,14 @@ export class CesiumMapToolbar {
   private loadImageIcon(button: HTMLElement, imagePath: string): void {
     // 创建图片元素进行预加载和验证
     const img = new Image();
-    
+
     const buttonRect = button.getBoundingClientRect();
     const computedStyle = window.getComputedStyle(button);
-    
+
     // 获取按钮的宽高，优先使用计算后的样式
     const buttonWidth = buttonRect.width || parseInt(computedStyle.width) || 36;
     const buttonHeight = buttonRect.height || parseInt(computedStyle.height) || 36;
-    
+
     // 计算图标的内边距（按钮尺寸的20%作为内边距）
     const imgWidth = Math.min(buttonWidth, buttonHeight) * 0.6;
     const imgHeight = Math.min(buttonWidth, buttonHeight) * 0.6;
@@ -526,14 +404,14 @@ export class CesiumMapToolbar {
       // 获取按钮的实际尺寸（包括计算后的样式）
       button.appendChild(img);
     };
-    
+
     // 设置加载失败回调
     img.onerror = () => {
       console.warn(`Failed to load icon: ${imagePath}`);
       // 加载失败时使用默认图标或显示文字
       this.setDefaultIcon(button, imagePath);
     };
-    
+
     // 开始加载图片
     img.src = imagePath;
   }
@@ -544,12 +422,12 @@ export class CesiumMapToolbar {
   private setDefaultIcon(button: HTMLElement, originalPath: string): void {
     // 可以根据原始路径生成一个简单的默认图标
     const fileName = originalPath.split('/').pop()?.split('.')[0] || 'icon';
-    
+
     // 使用CSS创建一个简单的默认图标
     button.style.backgroundImage = 'none';
     button.style.backgroundColor = '#ccc';
     button.style.position = 'relative';
-    
+
     // 添加一个简单的文字图标作为后备
     const fallbackIcon = document.createElement('div');
     fallbackIcon.style.cssText = `
@@ -564,7 +442,7 @@ export class CesiumMapToolbar {
       line-height: 1;
     `;
     fallbackIcon.textContent = fileName.charAt(0).toUpperCase();
-    
+
     button.innerHTML = '';
     button.appendChild(fallbackIcon);
   }
@@ -575,7 +453,7 @@ export class CesiumMapToolbar {
   private setupButtonEvents(button: HTMLElement, config: ButtonConfig): void {
     // 查找自定义按钮配置
     const customButton = this.config.buttons?.find(btn => btn.id === config.id);
-    
+
     if (customButton?.onClick) {
       // 自定义按钮点击事件
       button.addEventListener('click', (e) => {
@@ -599,7 +477,7 @@ export class CesiumMapToolbar {
       button.addEventListener('mouseenter', () => {
         this.handleButtonClick(config.id, button);
       });
-      
+
       // 添加鼠标离开事件来关闭菜单
       button.addEventListener('mouseleave', () => {
         this.closeMenuOnButtonLeave(config.id);
@@ -651,10 +529,10 @@ export class CesiumMapToolbar {
         this.resetLocation();
         break;
       case 'zoom-in':
-        this.zoomIn();
+        this.zoomOut();
         break;
       case 'zoom-out':
-        this.zoomOut();
+        this.zoomIn();
         break;
       case 'fullscreen':
         this.toggleFullscreen();
@@ -719,13 +597,13 @@ export class CesiumMapToolbar {
     searchInput.addEventListener('input', () => {
       clearTimeout(searchTimeout);
       const query = searchInput.value.trim();
-      
+
       // 如果用户提供了自定义搜索输入处理逻辑
       if (this.searchCallback?.onSearchInput) {
         this.searchCallback.onSearchInput(query, resultsContainer);
         return;
       }
-      
+
       if (query.length < 2) {
         resultsContainer.innerHTML = '';
         return;
@@ -749,8 +627,8 @@ export class CesiumMapToolbar {
 
     // 添加点击外部区域关闭搜索框的逻辑
     const closeSearchOnClickOutside = (event: MouseEvent) => {
-      if (!searchContainer.contains(event.target as Node) && 
-          !buttonElement.contains(event.target as Node)) {
+      if (!searchContainer.contains(event.target as Node) &&
+        !buttonElement.contains(event.target as Node)) {
         searchContainer.remove();
         document.removeEventListener('click', closeSearchOnClickOutside);
         document.removeEventListener('keydown', closeSearchOnEscape);
@@ -787,7 +665,7 @@ export class CesiumMapToolbar {
 
     // 默认搜索结果显示逻辑
     container.innerHTML = '';
-    
+
     if (results.length === 0) {
       container.innerHTML = '<div style="padding: 8px; color: #666;">未找到相关地址</div>';
       return;
@@ -801,7 +679,7 @@ export class CesiumMapToolbar {
         cursor: pointer;
         transition: background-color 0.2s;
       `;
-      
+
       resultItem.innerHTML = `
         <div style="font-weight: bold; margin-bottom: 2px;">${result.name}</div>
         <div style="font-size: 12px; color: #666;">${result.address}</div>
@@ -917,15 +795,17 @@ export class CesiumMapToolbar {
         gap: 8px;
         transition: background-color 0.2s;
       `;
-      
+
       menuItem.innerHTML = `${item.icon} ${item.text}`;
 
       menuItem.addEventListener('mouseenter', () => {
         menuItem.style.backgroundColor = '#f5f5f5';
+        menuItem.style.transform = 'scale(1.02)';
       });
 
       menuItem.addEventListener('mouseleave', () => {
         menuItem.style.backgroundColor = 'transparent';
+        menuItem.style.transform = 'scale(1.00)';
       });
 
       menuItem.addEventListener('click', () => {
@@ -942,7 +822,7 @@ export class CesiumMapToolbar {
     const closeMenu = () => {
       menu.remove();
     };
-    
+
     // 监听菜单的鼠标离开事件
     menu.addEventListener('mouseleave', closeMenu);
   }
@@ -972,14 +852,14 @@ export class CesiumMapToolbar {
    */
   private toggle2D3D(buttonElement: HTMLElement): void {
     const currentMode = this.viewer.scene.mode;
-    const targetMode = currentMode === Cesium.SceneMode.SCENE3D 
-      ? Cesium.SceneMode.SCENE2D 
+    const targetMode = currentMode === Cesium.SceneMode.SCENE3D
+      ? Cesium.SceneMode.SCENE2D
       : Cesium.SceneMode.SCENE3D;
-    
+
     this.viewer.scene.mode = targetMode;
     // 更新按钮文本
     buttonElement.innerHTML = targetMode === Cesium.SceneMode.SCENE3D ? '3D' : '2D';
-    
+
   }
 
   /**
@@ -1003,22 +883,23 @@ export class CesiumMapToolbar {
       border-radius: 6px;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
       padding: 12px;
-      min-width: 220px;
-      max-width: 280px;
+      min-width: 280px;
       z-index: 1001;
       display: flex;
-      flex-direction: column;
+      flex-wrap: no-wrap;
+      flex-direction: row;
     `;
 
     // 地图类型选择
     const mapTypeSection = document.createElement('div');
     mapTypeSection.style.cssText = `
       display: flex;
-      flex-direction: column;
+      flex-direction: row;
+      flex-wrap: no-wrap;
       gap: 4px;
     `;
     mapTypeSection.innerHTML = '<div style="font-weight: bold; margin-bottom: 8px; color: #333; font-size: 14px;">地图类型</div>';
-    
+
     this.mapTypes.forEach(mapType => {
       const mapTypeItem = document.createElement('div');
       mapTypeItem.style.cssText = `
@@ -1029,7 +910,7 @@ export class CesiumMapToolbar {
         cursor: pointer;
         border-radius: 4px;
         transition: background-color 0.2s;
-        width: 100%;
+        width: 220px;
         box-sizing: border-box;
         ${mapType.id === this.currentMapType ? 'background-color: #e3f2fd;' : ''}
       `;
@@ -1037,8 +918,8 @@ export class CesiumMapToolbar {
       const thumbnail = document.createElement('img');
       thumbnail.src = mapType.thumbnail;
       thumbnail.style.cssText = `
-        width: 24px; 
-        height: 24px; 
+        width: 87px; 
+        height: 56px; 
         border-radius: 3px;
         flex-shrink: 0;
       `;
@@ -1069,12 +950,14 @@ export class CesiumMapToolbar {
       mapTypeItem.addEventListener('mouseenter', () => {
         if (mapType.id !== this.currentMapType) {
           mapTypeItem.style.backgroundColor = '#f5f5f5';
+          mapTypeItem.style.transform = 'scale(1.05)';
         }
       });
 
       mapTypeItem.addEventListener('mouseleave', () => {
         if (mapType.id !== this.currentMapType) {
           mapTypeItem.style.backgroundColor = 'transparent';
+          mapTypeItem.style.transform = 'scale(1.00)';
         }
       });
 
@@ -1094,7 +977,7 @@ export class CesiumMapToolbar {
     const closeMenu = () => {
       menu.remove();
     };
-    
+
     // 监听菜单的鼠标离开事件
     menu.addEventListener('mouseleave', closeMenu);
   }
@@ -1108,10 +991,12 @@ export class CesiumMapToolbar {
 
     // 移除当前图层
     this.viewer.imageryLayers.removeAll();
-    
+
     // 添加新图层
-    this.viewer.imageryLayers.addImageryProvider(mapType.provider);
-    
+    const layers = mapType.provider(this.TD_Token);
+    layers.forEach((layer) => {
+      this.viewer.imageryLayers.addImageryProvider(layer);
+    })
     this.currentMapType = mapTypeId;
   }
 
@@ -1141,7 +1026,7 @@ export class CesiumMapToolbar {
     const beforeLevel = this.viewer.camera.positionCartographic.height;
     this.viewer.camera.zoomIn(this.viewer.camera.positionCartographic.height * 0.5);
     const afterLevel = this.viewer.camera.positionCartographic.height;
-    
+
     if (this.zoomCallback?.onZoomIn) {
       this.zoomCallback.onZoomIn(beforeLevel, afterLevel);
     }
@@ -1154,7 +1039,7 @@ export class CesiumMapToolbar {
     const beforeLevel = this.viewer.camera.positionCartographic.height;
     this.viewer.camera.zoomOut(this.viewer.camera.positionCartographic.height * 0.5);
     const afterLevel = this.viewer.camera.positionCartographic.height;
-    
+
     if (this.zoomCallback?.onZoomOut) {
       this.zoomCallback.onZoomOut(beforeLevel, afterLevel);
     }
@@ -1176,7 +1061,7 @@ export class CesiumMapToolbar {
    */
   private enterFullscreen(): void {
     const container = this.viewer.container;
-    
+
     if (container.requestFullscreen) {
       container.requestFullscreen();
     } else if ((container as any).webkitRequestFullscreen) {
@@ -1186,12 +1071,12 @@ export class CesiumMapToolbar {
     }
 
     this.isFullscreen = true;
-    
+
     // 监听全屏状态变化
     const fullscreenChange = () => {
-      if (!document.fullscreenElement && 
-          !(document as any).webkitFullscreenElement && 
-          !(document as any).msFullscreenElement) {
+      if (!document.fullscreenElement &&
+        !(document as any).webkitFullscreenElement &&
+        !(document as any).msFullscreenElement) {
         this.isFullscreen = false;
         document.removeEventListener('fullscreenchange', fullscreenChange);
         document.removeEventListener('webkitfullscreenchange', fullscreenChange);
