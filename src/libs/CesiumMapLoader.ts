@@ -51,14 +51,6 @@ interface MapCenter {
   heading?: number
 }
 
-interface TianDiMap {
-  url: string,
-  subdomains: string[],
-  minimumLevel: number,
-  maximumLevel: number,
-  credit: string
-}
-
 export async function initCesium(
   containerId: string,
   options: InitOptions,

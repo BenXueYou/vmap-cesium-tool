@@ -26,9 +26,9 @@ export const TDTMapTypes: MapType[] = [
       provider: (token: string) => {
         return [
           new Cesium.WebMapTileServiceImageryProvider({
-            url: `http://t{s}.tianditu.com/vec_w/wmts?service=wmts&request=GetTile&version=1.0.0&LAYER=vec&tileMatrixSet=w&TileMatrix={TileMatrix}&TileRow={TileRow}&TileCol={TileCol}&style=default&format=tiles&tk=${token}`,
+            url: `https://t{s}.tianditu.gov.cn/vec_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=vec&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={TileMatrix}&TILEROW={TileRow}&TILECOL={TileCol}&tk=${token}`,
             subdomains: ['0', '1', '2', '3', '4', '5', '6', '7'],
-            layer: "tdtVecBasicLayer",
+            layer: "vec",
             style: "default",
             tileMatrixSetID: "GoogleMapsCompatible",
             minimumLevel: 1,
@@ -36,12 +36,15 @@ export const TDTMapTypes: MapType[] = [
             credit: '© 天地图'
           }),
           new Cesium.WebMapTileServiceImageryProvider({
-            url: `http://t{s}.tianditu.com/cva_w/wmts?service=wmts&request=GetTile&version=1.0.0&LAYER=cva&tileMatrixSet=w&TileMatrix={TileMatrix}&TileRow={TileRow}&TileCol={TileCol}&style=default.jpg&tk=${token}`,
-            layer: "tdtAnnoLayer",
+            url: `https://t{s}.tianditu.gov.cn/cva_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=cva&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={TileMatrix}&TILEROW={TileRow}&TILECOL={TileCol}&tk=${token}`,
+            layer: "cva",
             style: "default",
-            format: "image/jpeg",
+            format: "tiles",
             subdomains: ["0", "1", "2", "3", "4", "5", "6", "7"],
-            tileMatrixSetID: "GoogleMapsCompatible"
+            tileMatrixSetID: "GoogleMapsCompatible",
+            minimumLevel: 1,
+            maximumLevel: 18,
+            credit: '© 天地图'
           })
         ]
       }
@@ -73,7 +76,7 @@ export const TDTMapTypes: MapType[] = [
       provider: (token: string) => {
         return [
           new Cesium.WebMapTileServiceImageryProvider({
-            url: `http://t{s}.tianditu.com/img_w/wmts?service=wmts&request=GetTile&version=1.0.0&LAYER=img&tileMatrixSet=w&TileMatrix={TileMatrix}&TileRow={TileRow}&TileCol={TileCol}&style=default&format=tiles&tk=${token}`,
+            url: `https://t{s}.tianditu.com/img_w/wmts?service=wmts&request=GetTile&version=1.0.0&LAYER=img&tileMatrixSet=w&TileMatrix={TileMatrix}&TileRow={TileRow}&TileCol={TileCol}&style=default&format=tiles&tk=${token}`,
             layer: "tdtBasicLayer",
             style: "default",
             format: "image/jpeg",
@@ -81,7 +84,7 @@ export const TDTMapTypes: MapType[] = [
             tileMatrixSetID: "GoogleMapsCompatible"
           }),
           new Cesium.WebMapTileServiceImageryProvider({
-            url: `http://t{s}.tianditu.com/img_w/wmts?service=wmts&request=GetTile&version=1.0.0&LAYER=img&tileMatrixSet=w&TileMatrix={TileMatrix}&TileRow={TileRow}&TileCol={TileCol}&style=default&format=tiles&tk=${token}`,
+            url: `https://t{s}.tianditu.com/img_w/wmts?service=wmts&request=GetTile&version=1.0.0&LAYER=img&tileMatrixSet=w&TileMatrix={TileMatrix}&TileRow={TileRow}&TileCol={TileCol}&style=default&format=tiles&tk=${token}`,
             subdomains: ['0', '1', '2', '3', '4', '5', '6', '7'],
             minimumLevel: 1,
             maximumLevel: 18,
@@ -101,25 +104,25 @@ export const TDTMapTypes: MapType[] = [
       provider: (token: string) => {
         return [
           new Cesium.WebMapTileServiceImageryProvider({
-            url: `https://t{s}.tianditu.gov.cn/ter_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ter&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={TileMatrix}&TILEROW={TileRow}&TILECOL={TileCol}&tk=${token}`,
+            url: `https://t{s}.tianditu.gov.cn/ter_c/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ter&STYLE=default&TILEMATRIXSET=c&FORMAT=tiles&TILEMATRIX={TileMatrix}&TILEROW={TileRow}&TILECOL={TileCol}&tk=${token}`,
             subdomains: ['0', '1', '2', '3', '4', '5', '6', '7'],
             minimumLevel: 1,
             maximumLevel: 18,
-            format: "image/jpeg",
-            layer: "tdtVecBasicLayer",
+            format: "tiles",
+            layer: "ter",
             style: "default",
-            tileMatrixSetID: "GoogleMapsCompatible",
+            tileMatrixSetID: "c",
             credit: '© 天地图'
           }),
           new Cesium.WebMapTileServiceImageryProvider({
-            url: `http://t{s}.tianditu.gov.cn/cta_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ter&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={TileMatrix}&TILEROW={TileRow}&TILECOL={TileCol}&tk=${token}`,
+            url: `https://t{s}.tianditu.gov.cn/cta_c/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=cta&STYLE=default&TILEMATRIXSET=c&FORMAT=tiles&TILEMATRIX={TileMatrix}&TILEROW={TileRow}&TILECOL={TileCol}&tk=${token}`,
             subdomains: ['0', '1', '2', '3', '4', '5', '6', '7'],
             minimumLevel: 1,
             maximumLevel: 18,
-            format: "image/jpeg",
-            layer: "tdtVecBasicLayer",
+            layer: "cta",
             style: "default",
-            tileMatrixSetID: "GoogleMapsCompatible",
+            format: "tiles",
+            tileMatrixSetID: "c",
             credit: '© 天地图'
           }),
         ]
