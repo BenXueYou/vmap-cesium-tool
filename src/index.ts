@@ -1,6 +1,3 @@
-// VMap Cesium Toolbar Plugin
-// 导出主要类和接口
-
 // 核心类
 export { CesiumMapToolbar } from './libs/CesiumMapToolbar';
 export { default as DrawHelper } from './libs/CesiumMapHelper';
@@ -28,5 +25,6 @@ import { initCesium } from './libs/CesiumMapLoader';
 export default {
   CesiumMapToolbar,
   DrawHelper,
-  initCesium
+  initCesium,
+  initCesiumMap: initCesium
 };
