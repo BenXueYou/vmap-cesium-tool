@@ -43,17 +43,12 @@ onMounted(async () => {
       token: TDT_TK,    
     }
   );
-
   viewer.value = cesiumViewer;
-
-  viewer.value._cesiumWidget._creditContainer.style.display =
-    "none"; // 去掉左下角的Cesium商标
-  viewer.value.scene.globe.depthTestAgainstTerrain =
-    true; // 启用地形深度测    
+  viewer.value.scene.globe.depthTestAgainstTerrain = true; // 启用地形深度测    
+  viewer.value._cesiumWidget._creditContainer.style.display =  "none"; // 去掉左下角的Cesium商标
 
   // 初始化绘图助手
   drawHelper = new DrawHelper(viewer.value);
-
   // 初始化工具栏
   const container = document.getElementById("cesiumContainer");
   if (container) {
@@ -219,60 +214,11 @@ onBeforeUnmount(() => {
   position: relative;
 }
 
-/* 测试按钮区域样式 */
-.test-buttons {
-  position: absolute;
-  top: 20px;
-  left: 20px;
-  background: rgba(255, 255, 255, 0.95);
-  border: 1px solid #e0e0e0;
-  border-radius: 8px;
-  padding: 15px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  z-index: 1002;
-  min-width: 200px;
-}
-
-.test-buttons h3 {
-  margin: 0 0 12px 0;
-  font-size: 16px;
-  color: #333;
-  font-weight: 600;
-}
 
 .button-group {
   display: flex;
   flex-direction: column;
   gap: 8px;
-}
-
-.test-btn {
-  padding: 8px 12px;
-  border: 1px solid #4285f4;
-  border-radius: 4px;
-  background: rgba(66, 133, 244, 0.1);
-  color: #4285f4;
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-weight: 500;
-}
-
-.test-btn:hover {
-  background: rgba(66, 133, 244, 0.2);
-  border-color: #3367d6;
-  transform: translateY(-1px);
-}
-
-.test-btn.clear-btn {
-  background: rgba(244, 67, 54, 0.1);
-  border-color: #f44336;
-  color: #f44336;
-}
-
-.test-btn.clear-btn:hover {
-  background: rgba(244, 67, 54, 0.2);
-  border-color: #d32f2f;
 }
 
 .message {

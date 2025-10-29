@@ -8,6 +8,7 @@ export { initCesium } from './libs/CesiumMapLoader';
 
 // 类型定义
 export type {
+  OverlayOptions,
   ToolbarConfig,
   ButtonConfig,
   CustomButtonConfig,
@@ -16,11 +17,6 @@ export type {
   MeasurementCallback,
   ZoomCallback,
   MapType
-} from './libs/CesiumMapToolbar';
-
-export type {
-  FrustumOptions,
-  OverlayOptions
 } from './libs/CesiumMapModel';
 
 // 导入用于默认导出

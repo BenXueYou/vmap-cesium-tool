@@ -1013,6 +1013,7 @@ export class CesiumMapToolbar {
       flex-direction: column;
       align-items: flex-start;
       background: transparent;
+      margin-top: 12px;
     `;
 
     const overlayTitle = document.createElement('div');

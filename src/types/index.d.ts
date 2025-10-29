@@ -100,6 +100,7 @@ export interface MapCenter {
 
 // 初始化选项接口
 export interface InitOptions {
+  token?: string;
   terrain?: any; // Cesium.Terrain
   terrainProvider?: any; // Cesium.TerrainProvider
   mapType?: string;
@@ -150,7 +151,8 @@ export declare class CesiumMapToolbar {
     },
     initialCenter?: { longitude: number; latitude: number; height: number }
   );
-
+  setMapTypes(mapTypes: MapType[]): void;
+  setTDToken(TD_Token: string): void;
   setInitialCenter(center: { longitude: number; latitude: number; height: number }): void;
   getInitialCenter(): { longitude: number; latitude: number; height: number } | undefined;
   resetToInitialLocation(): void;
