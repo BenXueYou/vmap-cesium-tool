@@ -2,7 +2,7 @@ import * as Cesium from 'cesium'
 import { Ion, Viewer, createWorldTerrainAsync, Terrain, Cartesian3, SampledPositionProperty, TerrainProvider } from 'cesium'
 import type { Entity, Viewer as CesiumViewer, EntityCollection } from 'cesium'
 import { TDTMapTypes } from './CesiumMapConfig'
-
+import { getViteTdToken } from '../utils/common'
 interface InitOptions {
   terrain?: Terrain, // 地形
   terrainProvider?: TerrainProvider // 地形提供者
@@ -69,7 +69,6 @@ export async function initCesium(
     timeline: false, // 禁用时间轴
     navigationHelpButton: false, // 禁用导航帮助按钮
     navigationInstructionsInitiallyVisible: false, // 禁用导航指令初始可见
-    token: import.meta.env.VITE_TD_TOKEN,
     ...options
   })
   // if (viewer.scene?.fxaa !== undefined) {
@@ -80,10 +79,11 @@ export async function initCesium(
   if (!options.terrainProvider && !options.terrain) {
     viewer.terrainProvider = await createWorldTerrainAsync()
   }
+  const token = options.token || getViteTdToken();
   // 添加高德图影像图层
   if (options.mapType === 'tiandi') {
     viewer.imageryLayers.removeAll();
-    TDTMapTypes.find(type => type.id === 'imagery')?.provider(import.meta.env.VITE_TD_TOKEN).forEach(provider => {
+    TDTMapTypes.find(type => type.id === 'imagery')?.provider(token).forEach(provider => {
       viewer.imageryLayers.addImageryProvider(provider);
     });
   }

@@ -12,19 +12,18 @@
 
 <script lang="ts" setup>
 import { onMounted, ref, onBeforeUnmount } from "vue";
-import { Cesium } from "./libs/CesiumMapModel";
 import { initCesium } from "./libs/CesiumMapLoader";
-import {  SearchResult } from "./libs/CesiumMapModel";
 import { CesiumMapToolbar } from "./libs/CesiumMapToolbar";
 import type { ToolbarConfig } from "./libs/CesiumMapModel";
 import DrawHelper from "./libs/CesiumMapHelper";
 import { useToolBarConfig } from "./hooks/toolBarConfig";
+import { getViteTdToken } from "./utils/common";
 
 const message = ref("");
 let viewer = ref();
 let mapToolbar: CesiumMapToolbar | null = null;
 let drawHelper: DrawHelper | null = null;
-const TDT_TK = import.meta.env.VITE_TD_TOKEN;
+const TDT_TK = getViteTdToken();
 const CesiumToken = import.meta.env.VITE_CESIUM_TOKEN;
 
 const { toolbarConfig, toolbarCallback } = useToolBarConfig(message);
@@ -34,12 +33,13 @@ onMounted(async () => {
   const { viewer: cesiumViewer, initialCenter } = await initCesium(
     "cesiumContainer",
     {
-      token: TDT_TK,    
+      token: TDT_TK,
+      mapType: 'tiandi',
     }
   );
   viewer.value = cesiumViewer;
-  viewer.value.scene.globe.depthTestAgainstTerrain = true; // 启用地形深度测    
-  viewer.value._cesiumWidget._creditContainer.style.display =  "none"; // 去掉左下角的Cesium商标
+  viewer.value.scene.globe.depthTestAgainstTerrain = true; // 启用地形深度测
+  viewer.value._cesiumWidget._creditContainer.style.display = "none"; // 去掉左下角的Cesium商标
 
   // 初始化绘图助手
   drawHelper = new DrawHelper(viewer.value);
@@ -60,7 +60,7 @@ onMounted(async () => {
       toolbarCallback,
       mapInitialCenter // 传递从initCesium获取的初始中心点
     );
-    mapToolbar.setTDToken(TDT_TK)
+    mapToolbar.setTDToken(TDT_TK);
   }
 });
 // 清理资源
@@ -78,7 +78,6 @@ onBeforeUnmount(() => {
 .cesium-container {
   position: relative;
 }
-
 
 .button-group {
   display: flex;
