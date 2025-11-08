@@ -35,6 +35,7 @@ onMounted(async () => {
     {
       token: TDT_TK,
       mapType: 'tiandi',
+      isFly: true,
     }
   );
   viewer.value = cesiumViewer;

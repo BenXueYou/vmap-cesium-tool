@@ -266,7 +266,7 @@ export class CesiumMapToolbar {
     const defaultButtons: ButtonConfig[] = [
       { id: 'search', icon: '🔍', title: '搜索' },
       { id: 'measure', icon: '📏', title: '测量' },
-      { id: 'view2d3d', icon: '2D', title: '2D或3D' },
+      { id: 'view2d3d', icon: '3D', title: '2D或3D' },
       { id: 'layers', icon: '📚', title: '图层切换' },
       { id: 'location', icon: '🎯', title: '定位' },
       { id: 'zoom-in', icon: '🔍+', title: '放大' },

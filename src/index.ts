@@ -14,13 +14,10 @@ export type {
   MeasurementCallback,
   ZoomCallback,
   MapType,
-  TdtTerrainOptions,
-  TdtGeoWTFSOptions,
-  TdtBoundaryOptions
 } from './libs/CesiumMapModel';
 
 // 天地图插件
-export { GeoTerrainProvider, GeoWTFS } from './libs/tdt';
+// export { GeoTerrainProvider, GeoWTFS } from './libs/tdt';
 
 // 导入用于默认导出
 import { CesiumMapToolbar } from './libs/CesiumMapToolbar';

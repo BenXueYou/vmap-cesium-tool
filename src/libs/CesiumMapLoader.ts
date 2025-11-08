@@ -22,6 +22,7 @@ interface InitOptions {
   sceneModePicker?: boolean // 场景模式选择器
   timeline?: boolean // 时间轴
   animation?: boolean // 动画
+  isFly?: boolean // flyTo动画
   baseLayerPicker?: boolean // 基础图层选择器
   navigationInstructionsInitiallyVisible?: boolean // 导航指令初始可见
   clock?: Cesium.Clock // 时钟
@@ -71,9 +72,7 @@ export async function initCesium(
     navigationInstructionsInitiallyVisible: false, // 禁用导航指令初始可见
     ...options
   })
-  // if (viewer.scene?.fxaa !== undefined) {
-  //   viewer.scene.fxaa = true;
-  // }
+  viewer.cesiumWidget.creditContainer.style.display = 'none';
   viewer.scene.postProcessStages.fxaa.enabled=false;
   // 地形提供者
   if (!options.terrainProvider && !options.terrain) {
@@ -87,7 +86,7 @@ export async function initCesium(
       viewer.imageryLayers.addImageryProvider(provider);
     });
   }
-  if (mapCenter) {
+  if (mapCenter && !options.isFly) {
     // 设置初始视角为中国区域 (经度, 纬度, 高度)
     viewer.camera.setView({
       destination: Cesium.Cartesian3.fromDegrees(mapCenter.longitude, mapCenter.latitude, mapCenter.height), // 中国中心坐标
@@ -97,6 +96,15 @@ export async function initCesium(
       }
     });
   }
-  (viewer.cesiumWidget.creditContainer as HTMLElement).style.display = 'none';
+  if (mapCenter && options.isFly) {
+    // 设置初始视角为中国区域 (经度, 纬度, 高度)
+    viewer.camera.flyTo({
+      destination: Cesium.Cartesian3.fromDegrees(mapCenter.longitude, mapCenter.latitude, mapCenter.height), // 中国中心坐标
+      orientation: {
+        heading: Cesium.Math.toRadians(mapCenter.heading || 0), // 方向角度
+        pitch: Cesium.Math.toRadians(mapCenter.pitch || 0), // 俯
+      }
+    });
+  }
   return { viewer, initialCenter: mapCenter }
 }
