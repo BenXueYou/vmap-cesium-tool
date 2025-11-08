@@ -269,8 +269,8 @@ export class CesiumMapToolbar {
       { id: 'view2d3d', icon: '3D', title: '2D或3D' },
       { id: 'layers', icon: '📚', title: '图层切换' },
       { id: 'location', icon: '🎯', title: '定位' },
-      { id: 'zoom-in', icon: '🔍+', title: '放大' },
-      { id: 'zoom-out', icon: '🔍-', title: '缩小' },
+      { id: 'zoom-in', icon: '🔍-', title: '缩小' },
+      { id: 'zoom-out', icon: '🔍+', title: '放大' },
       { id: 'fullscreen', icon: '⛶', title: '全屏' }
     ];
 
