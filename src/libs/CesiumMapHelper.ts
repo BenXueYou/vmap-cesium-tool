@@ -22,6 +22,9 @@ class DrawHelper {
   private finishedPointEntities: Cesium.Entity[] = []; // 已完成的点实体
   private publicEntities: Cesium.Entity[] = []; // 通过公共方法创建的实体
   private _doubleClickPending: boolean = false; // 双击判断
+  private currentLineEntity: Cesium.Entity | null = null; // 当前正在绘制的线条实体（用于复用）
+  private currentSegmentLabels: Cesium.Entity[] = []; // 当前分段标签实体数组（用于复用）
+  private currentTotalLabel: Cesium.Entity | null = null; // 当前总距离标签实体（用于复用）
   // 事件处理器
   private screenSpaceEventHandler: Cesium.ScreenSpaceEventHandler | null = null;
   // 回调函数
@@ -105,6 +108,11 @@ class DrawHelper {
     this.tempPositions = [];
     this.tempEntities = [];
     this._doubleClickPending = false; // 重置双击标志，确保第一次点击能正常响应
+    
+    // 重置实体复用变量
+    this.currentLineEntity = null;
+    this.currentSegmentLabels = [];
+    this.currentTotalLabel = null;
 
     this.activateDrawingHandlers();
 
@@ -261,6 +269,11 @@ class DrawHelper {
       });
       this.tempLabelEntities = [];
 
+      // 重置复用变量
+      this.currentLineEntity = null;
+      this.currentSegmentLabels = [];
+      this.currentTotalLabel = null;
+
       // 重新创建剩余的点实体和绘制实体
       this.recreateRemainingEntities();
     }
@@ -311,111 +324,170 @@ class DrawHelper {
    * @param previewPoint 可选的预览点，用于显示动态效果
    */
   private updateDrawingEntity(previewPoint?: Cesium.Cartesian3): void {
-    // 移除旧的活动实体（只移除线和面，保留点实体）
-    const entitiesToRemove: Cesium.Entity[] = [];
-    this.tempEntities.forEach((entity) => {
-      if (entity && (entity.polyline || entity.polygon || entity.rectangle)) {
-        entitiesToRemove.push(entity);
-      }
-    });
-    
-    // 移除线/面实体
-    entitiesToRemove.forEach((entity) => {
-      this.entities.remove(entity);
-      const index = this.tempEntities.indexOf(entity);
-      if (index > -1) {
-        this.tempEntities.splice(index, 1);
-      }
-    });
-    
-    // 移除旧的临时标签实体
-    this.tempLabelEntities.forEach((entity) => {
-      if (entity) {
-        this.entities.remove(entity);
-      }
-    });
-    this.tempLabelEntities = [];
     const positions = [...this.tempPositions];
     if (previewPoint) {
       positions.push(previewPoint);
     }
 
-    if (positions.length < 2) return;
+    if (positions.length < 2) {
+      // 如果点数不足，清理线条和标签实体
+      if (this.currentLineEntity) {
+        this.entities.remove(this.currentLineEntity);
+        const index = this.tempEntities.indexOf(this.currentLineEntity);
+        if (index > -1) {
+          this.tempEntities.splice(index, 1);
+        }
+        this.currentLineEntity = null;
+      }
+      // 清理分段标签
+      this.currentSegmentLabels.forEach((entity) => {
+        if (entity) {
+          this.entities.remove(entity);
+          const index = this.tempLabelEntities.indexOf(entity);
+          if (index > -1) {
+            this.tempLabelEntities.splice(index, 1);
+          }
+        }
+      });
+      this.currentSegmentLabels = [];
+      // 清理总距离标签
+      if (this.currentTotalLabel) {
+        this.entities.remove(this.currentTotalLabel);
+        const index = this.tempLabelEntities.indexOf(this.currentTotalLabel);
+        if (index > -1) {
+          this.tempLabelEntities.splice(index, 1);
+        }
+        this.currentTotalLabel = null;
+      }
+      return;
+    }
 
     let activeEntity: Cesium.Entity | undefined;
 
     if (this.drawMode === "line") {
-      // 根据2D/3D模式创建线条
-      if (this.offsetHeight > 0) {
-        // 3D模式：使用抬高的位置
-        const elevatedPositions = positions.map(pos => {
-          const carto = Cesium.Cartographic.fromCartesian(pos);
-          return Cesium.Cartesian3.fromRadians(
-            carto.longitude,
-            carto.latitude,
-            (carto.height || 0) + this.offsetHeight
-          );
-        });
-        
+      // 计算抬高的位置（如果需要）
+      const elevatedPositions = this.offsetHeight > 0
+        ? positions.map(pos => {
+            const carto = Cesium.Cartographic.fromCartesian(pos);
+            return Cesium.Cartesian3.fromRadians(
+              carto.longitude,
+              carto.latitude,
+              (carto.height || 0) + this.offsetHeight
+            );
+          })
+        : positions;
+
+      // 复用或创建线条实体
+      if (this.currentLineEntity) {
+        // 更新现有实体的位置
+        this.currentLineEntity.polyline!.positions = new Cesium.ConstantProperty(elevatedPositions);
+      } else {
+        // 创建新的线条实体
         activeEntity = this.entities.add({
           polyline: {
             positions: elevatedPositions,
             width: 5,
             material: Cesium.Color.YELLOW,
-            clampToGround: false,
+            clampToGround: this.offsetHeight === 0,
           },
         });
-      } else {
-        // 2D模式：贴近地面
-        activeEntity = this.entities.add({
-          polyline: {
-            positions: positions,
-            width: 5,
-            material: Cesium.Color.YELLOW,
-            clampToGround: true,
-          },
-        });
+        this.currentLineEntity = activeEntity;
+        this.tempEntities.push(activeEntity);
       }
-      this.tempEntities.push(activeEntity);
 
-      // 为每一段添加距离标签（只显示距离大于1米的标签）
-      for (let i = 0; i < positions.length - 1; i++) {
+      // 更新分段标签
+      const currentSegmentCount = positions.length - 1;
+      const existingLabelCount = this.currentSegmentLabels.length;
+
+      // 移除多余的分段标签
+      if (existingLabelCount > currentSegmentCount) {
+        for (let i = currentSegmentCount; i < existingLabelCount; i++) {
+          const entity = this.currentSegmentLabels[i];
+          if (entity) {
+            this.entities.remove(entity);
+            const index = this.tempLabelEntities.indexOf(entity);
+            if (index > -1) {
+              this.tempLabelEntities.splice(index, 1);
+            }
+          }
+        }
+        this.currentSegmentLabels = this.currentSegmentLabels.slice(0, currentSegmentCount);
+      }
+
+      // 更新或创建分段标签
+      for (let i = 0; i < currentSegmentCount; i++) {
         const startPos = positions[i];
         const endPos = positions[i + 1];
         const distance = Cesium.Cartesian3.distance(startPos, endPos);
         
-        // 只显示距离大于5米的标签，避免显示过小的距离
+        // 只显示距离大于5米的标签
         if (distance > 5.0) {
           const midPoint = Cesium.Cartesian3.midpoint(
             startPos,
             endPos,
             new Cesium.Cartesian3()
           );
-          // 计算标签位置，避免重叠
-          const labelOffset = i % 2 === 0 ? -25 : 25; // 交替显示在线的上方和下方
-          const labelEntity = this.entities.add({
-            position: midPoint,
-            label: {
-              text: this.formatDistance(distance),
-              font: "16px Arial",
-              fillColor: Cesium.Color.WHITE,
-              outlineColor: Cesium.Color.BLACK,
-              outlineWidth: 3,
-              style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-              pixelOffset: new Cesium.Cartesian2(0, labelOffset),
-              heightReference: this.offsetHeight > 0 ? Cesium.HeightReference.RELATIVE_TO_GROUND : Cesium.HeightReference.CLAMP_TO_GROUND,
-              scale: 1.0,
-              showBackground: true,
-              backgroundColor: Cesium.Color.BLACK.withAlpha(0.8),
-              backgroundPadding: new Cesium.Cartesian2(6, 3),
-            },
-          });
-          this.tempLabelEntities.push(labelEntity);
+          
+          // 计算抬高的中点位置（如果需要）
+          let elevatedMidPoint = midPoint;
+          if (this.offsetHeight > 0) {
+            const carto = Cesium.Cartographic.fromCartesian(midPoint);
+            elevatedMidPoint = Cesium.Cartesian3.fromRadians(
+              carto.longitude,
+              carto.latitude,
+              (carto.height || 0) + this.offsetHeight
+            );
+          }
+          
+          const labelOffset = i % 2 === 0 ? -25 : 25;
+          
+          if (i < this.currentSegmentLabels.length) {
+            // 更新现有标签
+            const labelEntity = this.currentSegmentLabels[i];
+            if (labelEntity) {
+              labelEntity.position = new Cesium.ConstantPositionProperty(elevatedMidPoint);
+              labelEntity.label!.text = new Cesium.ConstantProperty(this.formatDistance(distance));
+            }
+          } else {
+            // 创建新标签
+            const labelEntity = this.entities.add({
+              position: elevatedMidPoint,
+              label: {
+                text: this.formatDistance(distance),
+                font: "16px Arial",
+                fillColor: Cesium.Color.WHITE,
+                outlineColor: Cesium.Color.BLACK,
+                outlineWidth: 3,
+                style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+                pixelOffset: new Cesium.Cartesian2(0, labelOffset),
+                heightReference: this.offsetHeight > 0 ? Cesium.HeightReference.RELATIVE_TO_GROUND : Cesium.HeightReference.CLAMP_TO_GROUND,
+                scale: 1.0,
+                showBackground: true,
+                backgroundColor: Cesium.Color.BLACK.withAlpha(0.8),
+                backgroundPadding: new Cesium.Cartesian2(6, 3),
+              },
+            });
+            this.currentSegmentLabels.push(labelEntity);
+            this.tempLabelEntities.push(labelEntity);
+          }
+        } else {
+          // 距离太小，移除对应的标签（如果存在）
+          if (i < this.currentSegmentLabels.length) {
+            const entity = this.currentSegmentLabels[i];
+            if (entity) {
+              this.entities.remove(entity);
+              const index = this.tempLabelEntities.indexOf(entity);
+              if (index > -1) {
+                this.tempLabelEntities.splice(index, 1);
+              }
+            }
+            this.currentSegmentLabels.splice(i, 1);
+            i--; // 调整索引
+          }
         }
       }
 
-      // 添加总距离标签（在最后一个点）
-      // 注意：总距离应该只基于已确定的点（tempPositions），不包括预览点
+      // 更新总距离标签（只基于已确定的点，不包括预览点）
       if (this.tempPositions.length > 1) {
         let totalDistance = 0;
         for (let i = 1; i < this.tempPositions.length; i++) {
@@ -424,10 +496,10 @@ class DrawHelper {
             this.tempPositions[i]
           );
         }
-        // 根据offsetHeight计算标签位置，使用最后一个已确定的点
+        
+        // 计算标签位置
         let labelPosition = this.tempPositions[this.tempPositions.length - 1];
         if (this.offsetHeight > 0) {
-          // 3D模式：抬高标签位置
           const carto = Cesium.Cartographic.fromCartesian(labelPosition);
           labelPosition = Cesium.Cartesian3.fromRadians(
             carto.longitude,
@@ -438,32 +510,48 @@ class DrawHelper {
         
         const formattedDistance = this.formatDistance(totalDistance);
         const labelText = `总长: ${formattedDistance}`;
-        // 计算总长标签的偏移位置，使其与分段标签保持一致的视觉风格
-        // 根据分段标签的数量决定总长标签的位置，避免重叠
         const segmentCount = this.tempPositions.length - 1;
-        const labelOffset = segmentCount % 2 === 0 ? -35 : 35; // 与最后一个分段标签相反方向
+        const labelOffset = segmentCount % 2 === 0 ? -35 : 35;
         
-        const totalLabelEntity = this.entities.add({
-          position: labelPosition,
-          label: {
-            text: labelText,
-            font: "16px Arial", // 与分段标签使用相同的字体大小，保持视觉统一
-            fillColor: Cesium.Color.YELLOW, // 保持黄色以突出总长
-            outlineColor: Cesium.Color.BLACK,
-            outlineWidth: 3,
-            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-            pixelOffset: new Cesium.Cartesian2(0, labelOffset), // 使用与分段标签类似的偏移逻辑
-            heightReference: this.offsetHeight > 0 ? Cesium.HeightReference.RELATIVE_TO_GROUND : Cesium.HeightReference.CLAMP_TO_GROUND,
-            scale: 1.0,
-            showBackground: true,
-            backgroundColor: Cesium.Color.BLACK.withAlpha(0.8), // 与分段标签使用相同的背景透明度
-            backgroundPadding: new Cesium.Cartesian2(8, 4), // 稍微增加padding以容纳"总长:"前缀
-            disableDepthTestDistance: Number.POSITIVE_INFINITY,
-            verticalOrigin: Cesium.VerticalOrigin.CENTER,
-            horizontalOrigin: Cesium.HorizontalOrigin.CENTER, // 居中对齐，与分段标签保持一致
-          },
-        });
-        this.tempLabelEntities.push(totalLabelEntity);
+        if (this.currentTotalLabel) {
+          // 更新现有总距离标签
+          this.currentTotalLabel.position = new Cesium.ConstantPositionProperty(labelPosition);
+          this.currentTotalLabel.label!.text = new Cesium.ConstantProperty(labelText);
+        } else {
+          // 创建新的总距离标签
+          const totalLabelEntity = this.entities.add({
+            position: labelPosition,
+            label: {
+              text: labelText,
+              font: "16px Arial",
+              fillColor: Cesium.Color.YELLOW,
+              outlineColor: Cesium.Color.BLACK,
+              outlineWidth: 3,
+              style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+              pixelOffset: new Cesium.Cartesian2(0, labelOffset),
+              heightReference: this.offsetHeight > 0 ? Cesium.HeightReference.RELATIVE_TO_GROUND : Cesium.HeightReference.CLAMP_TO_GROUND,
+              scale: 1.0,
+              showBackground: true,
+              backgroundColor: Cesium.Color.BLACK.withAlpha(0.8),
+              backgroundPadding: new Cesium.Cartesian2(8, 4),
+              disableDepthTestDistance: Number.POSITIVE_INFINITY,
+              verticalOrigin: Cesium.VerticalOrigin.CENTER,
+              horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+            },
+          });
+          this.currentTotalLabel = totalLabelEntity;
+          this.tempLabelEntities.push(totalLabelEntity);
+        }
+      } else {
+        // 点数不足，移除总距离标签
+        if (this.currentTotalLabel) {
+          this.entities.remove(this.currentTotalLabel);
+          const index = this.tempLabelEntities.indexOf(this.currentTotalLabel);
+          if (index > -1) {
+            this.tempLabelEntities.splice(index, 1);
+          }
+          this.currentTotalLabel = null;
+        }
       }
     } else if (this.drawMode === "polygon") {
       // 根据2D/3D模式绘制多边形区域
@@ -735,6 +823,11 @@ class DrawHelper {
     });
     this.tempEntities = [];
     this.tempPositions = [];
+    
+    // 重置复用变量
+    this.currentLineEntity = null;
+    this.currentSegmentLabels = [];
+    this.currentTotalLabel = null;
 
     if (true) { // resetMode
       this.drawMode = null;
@@ -764,6 +857,11 @@ class DrawHelper {
       this.entities.remove(entity);
     });
     this.tempLabelEntities = [];
+    
+    // 重置复用变量
+    this.currentLineEntity = null;
+    this.currentSegmentLabels = [];
+    this.currentTotalLabel = null;
 
     if (resetMode) {
       this.drawMode = null;
