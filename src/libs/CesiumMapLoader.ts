@@ -74,6 +74,7 @@ export async function initCesium(
   });
   (viewer.cesiumWidget.creditContainer as HTMLElement).style.display = 'none';
   viewer.scene.postProcessStages.fxaa.enabled = false;
+  viewer.scene.globe.depthTestAgainstTerrain = true; // 启用地形深度测
   // 地形提供者
   if (!options.terrainProvider && !options.terrain) {
     viewer.terrainProvider = await createWorldTerrainAsync();

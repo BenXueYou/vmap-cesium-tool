@@ -73,6 +73,9 @@ export class CesiumMapToolbar {
 
     // 创建工具栏
     this.createToolbar();
+
+    // 自动加载禁飞区（如果默认勾选）
+    this.autoLoadNoFlyZones();
   }
 
   public setMapTypes(mapTypes: MapType[]): void {
@@ -1283,13 +1286,13 @@ export class CesiumMapToolbar {
 
     this.toolbarElement.insertBefore(menu, buttonElement);
 
-    // 如果机场禁飞区默认勾选且尚未加载，则自动加载
-    const airportOption = overlayOptions.find(opt => opt.id === 'airport');
-    if (airportOption && !this.isNoFlyZoneVisible) {
+    // 注意：禁飞区已经在创建 toolbar 后自动加载，这里不需要重复加载
+    // 如果禁飞区尚未加载，说明自动加载可能失败了，可以在这里尝试加载
+    if (!this.isNoFlyZoneVisible) {
       // 延迟加载，避免阻塞菜单显示
       setTimeout(() => {
         this.showNoFlyZones().catch((error) => {
-          console.error('自动加载禁飞区失败:', error);
+          console.error('加载禁飞区失败:', error);
         });
       }, 100);
     }
@@ -1616,6 +1619,25 @@ export class CesiumMapToolbar {
    */
   public getNoFlyZoneVisible(): boolean {
     return this.isNoFlyZoneVisible;
+  }
+
+  /**
+   * 自动加载禁飞区（如果默认勾选）
+   * 在创建 toolbar 后自动调用
+   */
+  private async autoLoadNoFlyZones(): Promise<void> {
+    // 检查机场禁飞区是否默认勾选
+    // 在 toggleLayers 方法中，airport 选项默认是勾选的
+    const isDefaultChecked = true; // 机场禁飞区默认勾选
+    
+    if (isDefaultChecked && !this.isNoFlyZoneVisible) {
+      // 延迟加载，避免阻塞工具栏创建
+      setTimeout(() => {
+        this.showNoFlyZones().catch((error) => {
+          console.error('自动加载禁飞区失败:', error);
+        });
+      }, 500); // 延迟 500ms，确保工具栏完全创建完成
+    }
   }
 
   /**
