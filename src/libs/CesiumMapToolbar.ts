@@ -7,6 +7,7 @@ import type {
 } from './CesiumMapModel';
 
 import {  TDTMapTypes } from './CesiumMapConfig'
+import { heightToZoomLevel, zoomLevelToHeight } from '../utils/common';
 
 
 /**
@@ -972,10 +973,53 @@ export class CesiumMapToolbar {
       ? Cesium.SceneMode.SCENE2D
       : Cesium.SceneMode.SCENE3D;
 
+    // 保存当前相机状态
+    const currentCameraState = {
+      position: this.viewer.camera.position.clone(),
+      heading: this.viewer.camera.heading,
+      pitch: this.viewer.camera.pitch,
+      roll: this.viewer.camera.roll,
+      cartographic: this.viewer.camera.positionCartographic.clone()
+    };
+
+    // 切换场景模式
     this.viewer.scene.mode = targetMode;
+
     // 更新按钮文本
     buttonElement.innerHTML = targetMode === Cesium.SceneMode.SCENE3D ? '3D' : '2D';
 
+    // 等待场景模式切换完成后再恢复相机状态
+    const morphCompleteHandler = () => {
+      // 恢复相机状态
+      if (targetMode === Cesium.SceneMode.SCENE2D) {
+        // 2D模式：保持相同的经纬度和高度
+        this.viewer.camera.setView({
+          destination: Cesium.Cartesian3.fromRadians(
+            currentCameraState.cartographic.longitude,
+            currentCameraState.cartographic.latitude,
+            currentCameraState.cartographic.height
+          ),
+          orientation: {
+            heading: 0,
+            pitch: -Cesium.Math.PI_OVER_TWO,
+            roll: 0
+          }
+        });
+      } else {
+        // 3D模式：恢复原始视角
+        this.viewer.camera.setView({
+          destination: currentCameraState.position,
+          orientation: {
+            heading: currentCameraState.heading,
+            pitch: currentCameraState.pitch,
+            roll: currentCameraState.roll
+          }
+        });
+      }
+      // 移除事件监听器
+      this.viewer.scene.morphComplete.removeEventListener(morphCompleteHandler);
+    };
+    this.viewer.scene.morphComplete.addEventListener(morphCompleteHandler);
   }
 
   /**
@@ -1238,6 +1282,15 @@ export class CesiumMapToolbar {
     const mapType = this.mapTypes.find(mt => mt.id === mapTypeId);
     if (!mapType) return;
 
+    // 保存当前相机状态
+    const currentCameraState = {
+      position: this.viewer.camera.position.clone(),
+      heading: this.viewer.camera.heading,
+      pitch: this.viewer.camera.pitch,
+      roll: this.viewer.camera.roll,
+      height: this.viewer.camera.positionCartographic.height
+    };
+
     // 移除当前图层
     this.viewer.imageryLayers.removeAll();
 
@@ -1247,6 +1300,18 @@ export class CesiumMapToolbar {
       this.viewer.imageryLayers.addImageryProvider(layer);
     })
     this.currentMapType = mapTypeId;
+
+    // 恢复相机状态（延迟执行，确保图层加载完成）
+    setTimeout(() => {
+      this.viewer.camera.setView({
+        destination: currentCameraState.position,
+        orientation: {
+          heading: currentCameraState.heading,
+          pitch: currentCameraState.pitch,
+          roll: currentCameraState.roll
+        }
+      });
+    }, 100);
   }
 
   /**
@@ -1269,15 +1334,96 @@ export class CesiumMapToolbar {
   }
 
   /**
+   * 获取当前地图层级
+   * @returns 当前层级（1-18）
+   */
+  private getCurrentZoomLevel(): number {
+    const height = this.viewer.camera.positionCartographic.height;
+    return heightToZoomLevel(height);
+  }
+
+  /**
+   * 设置地图层级
+   * @param zoomLevel 目标层级（1-18）
+   */
+  private setZoomLevel(zoomLevel: number): void {
+    try {
+      const clampedLevel = Math.max(1, Math.min(18, zoomLevel));
+      const targetHeight = zoomLevelToHeight(clampedLevel);
+      
+      // 验证目标高度是否有效
+      if (!isFinite(targetHeight) || isNaN(targetHeight) || targetHeight <= 0) {
+        console.warn(`无效的目标高度: ${targetHeight}，使用默认层级 ${clampedLevel}`);
+        return;
+      }
+      
+      // 获取当前相机位置，如果获取失败则使用默认值
+      let currentPosition: Cesium.Cartographic;
+      try {
+        currentPosition = this.viewer.camera.positionCartographic.clone();
+        // 验证当前位置是否有效
+        if (!isFinite(currentPosition.longitude) || !isFinite(currentPosition.latitude)) {
+          // 使用默认位置（中国中心）
+          currentPosition = Cesium.Cartographic.fromDegrees(120.2052342, 30.2489634);
+        }
+      } catch (error) {
+        // 如果获取当前位置失败，使用默认位置
+        console.warn('获取当前相机位置失败，使用默认位置', error);
+        currentPosition = Cesium.Cartographic.fromDegrees(120.2052342, 30.2489634);
+      }
+      
+      // 设置新的相机高度，保持经纬度不变
+      this.viewer.camera.setView({
+        destination: Cesium.Cartesian3.fromRadians(
+          currentPosition.longitude,
+          currentPosition.latitude,
+          targetHeight
+        ),
+        orientation: {
+          heading: this.viewer.camera.heading,
+          pitch: this.viewer.camera.pitch,
+          roll: this.viewer.camera.roll
+        }
+      });
+    } catch (error) {
+      console.error('设置地图层级失败:', error);
+      // 如果设置失败，尝试恢复到安全的层级（10）
+      try {
+        const safeHeight = zoomLevelToHeight(10);
+        const safePosition = Cesium.Cartographic.fromDegrees(120.2052342, 30.2489634);
+        this.viewer.camera.setView({
+          destination: Cesium.Cartesian3.fromRadians(
+            safePosition.longitude,
+            safePosition.latitude,
+            safeHeight
+          )
+        });
+      } catch (recoveryError) {
+        console.error('恢复地图层级失败:', recoveryError);
+      }
+    }
+  }
+
+  /**
    * 放大
    */
   private zoomIn(): void {
-    const beforeLevel = this.viewer.camera.positionCartographic.height;
-    this.viewer.camera.zoomIn(this.viewer.camera.positionCartographic.height * 0.5);
-    const afterLevel = this.viewer.camera.positionCartographic.height;
+    const currentLevel = this.getCurrentZoomLevel();
+    const beforeHeight = this.viewer.camera.positionCartographic.height;
+    
+    // 如果已经是最大层级（18），不执行操作
+    if (currentLevel >= 18) {
+      return;
+    }
+    
+    // 增加层级（放大，高度减小）
+    const targetLevel = currentLevel + 1;
+    this.setZoomLevel(targetLevel);
+    
+    const afterHeight = this.viewer.camera.positionCartographic.height;
 
     if (this.zoomCallback?.onZoomIn) {
-      this.zoomCallback.onZoomIn(beforeLevel, afterLevel);
+      this.zoomCallback.onZoomIn(beforeHeight, afterHeight);
     }
   }
 
@@ -1285,12 +1431,22 @@ export class CesiumMapToolbar {
    * 缩小
    */
   private zoomOut(): void {
-    const beforeLevel = this.viewer.camera.positionCartographic.height;
-    this.viewer.camera.zoomOut(this.viewer.camera.positionCartographic.height * 0.5);
-    const afterLevel = this.viewer.camera.positionCartographic.height;
+    const currentLevel = this.getCurrentZoomLevel();
+    const beforeHeight = this.viewer.camera.positionCartographic.height;
+    
+    // 如果已经是最小层级（1），不执行操作
+    if (currentLevel <= 1) {
+      return;
+    }
+    
+    // 减少层级（缩小，高度增大）
+    const targetLevel = currentLevel - 1;
+    this.setZoomLevel(targetLevel);
+    
+    const afterHeight = this.viewer.camera.positionCartographic.height;
 
     if (this.zoomCallback?.onZoomOut) {
-      this.zoomCallback.onZoomOut(beforeLevel, afterLevel);
+      this.zoomCallback.onZoomOut(beforeHeight, afterHeight);
     }
   }
 

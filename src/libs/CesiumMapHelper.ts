@@ -49,7 +49,12 @@ class DrawHelper {
     
     // 监听场景模式变化
     this.scene.morphComplete.addEventListener(() => {
+      const oldOffsetHeight = this.offsetHeight;
       this.updateOffsetHeight();
+      // 如果偏移高度发生变化，更新所有已完成实体
+      if (oldOffsetHeight !== this.offsetHeight) {
+        this.updateFinishedEntitiesForModeChange();
+      }
     });
 
     // 确保启用地形深度测试以获得正确的高度
@@ -539,13 +544,21 @@ class DrawHelper {
       return;
     }
     let finalEntity: Cesium.Entity | null = null;
-    const positions = this.tempPositions.map((p) => p.clone());
+    // 保存原始地面位置（不包含offsetHeight）
+    const groundPositions = this.tempPositions.map((p) => {
+      const carto = Cesium.Cartographic.fromCartesian(p);
+      return Cesium.Cartesian3.fromRadians(
+        carto.longitude,
+        carto.latitude,
+        carto.height || 0
+      );
+    });
 
     if (this.drawMode === "line") {
       // 根据2D/3D模式创建最终线条
       if (this.offsetHeight > 0) {
         // 3D模式：使用抬高的位置
-        const elevatedPositions = positions.map(pos => {
+        const elevatedPositions = groundPositions.map(pos => {
           const carto = Cesium.Cartographic.fromCartesian(pos);
           return Cesium.Cartesian3.fromRadians(
             carto.longitude,
@@ -563,17 +576,21 @@ class DrawHelper {
             clampToGround: false,
           },
         });
+        // 保存原始地面位置
+        (finalEntity as any)._groundPositions = groundPositions;
       } else {
         // 2D模式：贴近地面
         finalEntity = this.entities.add({
           name: "绘制的线",
           polyline: {
-            positions: positions,
+            positions: groundPositions,
             width: 5,
             material: Cesium.Color.YELLOW,
             clampToGround: true,
           },
         });
+        // 保存原始地面位置
+        (finalEntity as any)._groundPositions = groundPositions;
       }
 
       // 标签已经在 updateDrawingEntity 中创建，这里不需要重复创建
@@ -581,7 +598,7 @@ class DrawHelper {
       // 根据2D/3D模式绘制最终多边形区域
       if (this.offsetHeight > 0) {
         // 3D模式：使用抬高的位置
-        const elevatedPositions = positions.map(pos => {
+        const elevatedPositions = groundPositions.map(pos => {
           const carto = Cesium.Cartographic.fromCartesian(pos);
           return Cesium.Cartesian3.fromRadians(
             carto.longitude,
@@ -601,12 +618,14 @@ class DrawHelper {
             heightReference: Cesium.HeightReference.NONE,
           },
         });
+        // 保存原始地面位置
+        (finalEntity as any)._groundPositions = groundPositions;
       } else {
         // 2D模式：贴近地面
         finalEntity = this.entities.add({
           name: "绘制的多边形区域",
           polygon: {
-            hierarchy: new Cesium.PolygonHierarchy(positions),
+            hierarchy: new Cesium.PolygonHierarchy(groundPositions),
             material: Cesium.Color.LIGHTGREEN.withAlpha(0.3), // 淡绿色填充
             outline: true,
             outlineColor: Cesium.Color.GREEN,
@@ -614,11 +633,13 @@ class DrawHelper {
             heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
           },
         });
+        // 保存原始地面位置
+        (finalEntity as any)._groundPositions = groundPositions;
       }
       // 添加面积标签
-      const area = this.calculatePolygonArea(positions);
+      const area = this.calculatePolygonArea(groundPositions);
       if (area > 0) {
-        const center = this.calculatePolygonCenter(positions);
+        const center = this.calculatePolygonCenter(groundPositions);
         const areaLabelEntity = this.entities.add({
           position: center,
           label: {
@@ -629,13 +650,15 @@ class DrawHelper {
             outlineWidth: 2,
             style: Cesium.LabelStyle.FILL_AND_OUTLINE,
             pixelOffset: new Cesium.Cartesian2(0, -20),
-            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+            heightReference: this.offsetHeight > 0 ? Cesium.HeightReference.RELATIVE_TO_GROUND : Cesium.HeightReference.CLAMP_TO_GROUND,
           },
         });
+        // 保存原始地面位置
+        (areaLabelEntity as any)._groundPosition = center;
         this.finishedLabelEntities.push(areaLabelEntity);
       }
-    } else if (this.drawMode === "rectangle" && positions.length >= 2) {
-      const rect = this.calculateRectangle(positions[0], positions[1]);
+    } else if (this.drawMode === "rectangle" && groundPositions.length >= 2) {
+      const rect = this.calculateRectangle(groundPositions[0], groundPositions[1]);
       if (this.offsetHeight > 0) {
         // 3D模式：使用挤压高度
         finalEntity = this.entities.add({
@@ -647,6 +670,8 @@ class DrawHelper {
             extrudedHeight: this.offsetHeight,
           },
         });
+        // 保存原始矩形坐标
+        (finalEntity as any)._groundRectangle = rect;
       } else {
         // 2D模式：贴近地面
         finalEntity = this.entities.add({
@@ -657,16 +682,20 @@ class DrawHelper {
             heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
           },
         });
+        // 保存原始矩形坐标
+        (finalEntity as any)._groundRectangle = rect;
       }
       // 添加面积标签
       const area = this.calculateRectangleArea(rect);
       if (area > 0) {
         const rectCenter = Cesium.Rectangle.center(rect);
+        const rectCenterPosition = Cesium.Cartesian3.fromRadians(
+          rectCenter.longitude,
+          rectCenter.latitude,
+          0
+        );
         const rectAreaLabelEntity = this.entities.add({
-          position: Cesium.Cartesian3.fromRadians(
-            rectCenter.longitude,
-            rectCenter.latitude
-          ),
+          position: rectCenterPosition,
           label: {
             text: `面积: ${area.toFixed(2)} km²`,
             font: "14px sans-serif",
@@ -675,9 +704,11 @@ class DrawHelper {
             outlineWidth: 2,
             style: Cesium.LabelStyle.FILL_AND_OUTLINE,
             pixelOffset: new Cesium.Cartesian2(0, -20),
-            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+            heightReference: this.offsetHeight > 0 ? Cesium.HeightReference.RELATIVE_TO_GROUND : Cesium.HeightReference.CLAMP_TO_GROUND,
           },
         });
+        // 保存原始地面位置
+        (rectAreaLabelEntity as any)._groundPosition = rectCenterPosition;
         this.finishedLabelEntities.push(rectAreaLabelEntity);
       }
     }
@@ -1099,6 +1130,148 @@ class DrawHelper {
     this.publicEntities.push(entity);
 
     return entity;
+  }
+
+  /**
+   * 更新所有已完成实体以适应场景模式变化
+   * 当从2D切换到3D或从3D切换到2D时，需要更新实体的高度参考和位置
+   */
+  private updateFinishedEntitiesForModeChange(): void {
+    const is3DMode = this.offsetHeight > 0;
+    
+    // 更新已完成的主要实体（线、多边形、矩形）
+    this.finishedEntities.forEach((entity) => {
+      if (!entity) return;
+      
+      if (entity.polyline) {
+        // 更新线条：使用保存的原始地面位置
+        const groundPositions = (entity as any)._groundPositions as Cesium.Cartesian3[] | undefined;
+        if (groundPositions && groundPositions.length > 0) {
+          if (is3DMode) {
+            // 切换到3D模式：抬高位置，取消贴地
+            const elevatedPositions = groundPositions.map(pos => {
+              const carto = Cesium.Cartographic.fromCartesian(pos);
+              return Cesium.Cartesian3.fromRadians(
+                carto.longitude,
+                carto.latitude,
+                (carto.height || 0) + this.offsetHeight
+              );
+            });
+            entity.polyline.positions = new Cesium.ConstantProperty(elevatedPositions);
+            entity.polyline.clampToGround = new Cesium.ConstantProperty(false);
+          } else {
+            // 切换到2D模式：使用原始地面位置，贴地
+            entity.polyline.positions = new Cesium.ConstantProperty(groundPositions);
+            entity.polyline.clampToGround = new Cesium.ConstantProperty(true);
+          }
+        }
+      } else if (entity.polygon) {
+        // 更新多边形：使用保存的原始地面位置
+        const groundPositions = (entity as any)._groundPositions as Cesium.Cartesian3[] | undefined;
+        if (groundPositions && groundPositions.length > 0) {
+          if (is3DMode) {
+            // 切换到3D模式：抬高位置
+            const elevatedPositions = groundPositions.map(pos => {
+              const carto = Cesium.Cartographic.fromCartesian(pos);
+              return Cesium.Cartesian3.fromRadians(
+                carto.longitude,
+                carto.latitude,
+                (carto.height || 0) + this.offsetHeight
+              );
+            });
+            entity.polygon.hierarchy = new Cesium.ConstantProperty(new Cesium.PolygonHierarchy(elevatedPositions));
+            entity.polygon.heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.NONE);
+          } else {
+            // 切换到2D模式：使用原始地面位置，贴地
+            entity.polygon.hierarchy = new Cesium.ConstantProperty(new Cesium.PolygonHierarchy(groundPositions));
+            entity.polygon.heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.CLAMP_TO_GROUND);
+          }
+        }
+      } else if (entity.rectangle) {
+        // 更新矩形：使用保存的原始矩形坐标
+        const groundRectangle = (entity as any)._groundRectangle as Cesium.Rectangle | undefined;
+        if (groundRectangle) {
+          if (is3DMode) {
+            entity.rectangle.heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.NONE);
+            entity.rectangle.extrudedHeight = new Cesium.ConstantProperty(this.offsetHeight);
+          } else {
+            entity.rectangle.heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.CLAMP_TO_GROUND);
+            entity.rectangle.extrudedHeight = undefined;
+          }
+        }
+      }
+    });
+    
+    // 更新标签实体
+    this.finishedLabelEntities.forEach((entity) => {
+      if (!entity || !entity.label) return;
+      
+      // 使用保存的原始地面位置
+      const groundPosition = (entity as any)._groundPosition as Cesium.Cartesian3 | undefined;
+      if (groundPosition) {
+        if (is3DMode) {
+          // 切换到3D模式：抬高标签位置
+          const carto = Cesium.Cartographic.fromCartesian(groundPosition);
+          const elevatedPosition = Cesium.Cartesian3.fromRadians(
+            carto.longitude,
+            carto.latitude,
+            (carto.height || 0) + this.offsetHeight
+          );
+          entity.position = new Cesium.ConstantPositionProperty(elevatedPosition);
+          entity.label.heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.RELATIVE_TO_GROUND);
+        } else {
+          // 切换到2D模式：使用原始地面位置，贴地
+          entity.position = new Cesium.ConstantPositionProperty(groundPosition);
+          entity.label.heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.CLAMP_TO_GROUND);
+        }
+      }
+    });
+    
+    // 更新点实体（点实体在绘制过程中创建，需要从当前位置推断原始位置）
+    this.finishedPointEntities.forEach((entity) => {
+      if (!entity || !entity.point) return;
+      
+      const position = entity.position?.getValue(Cesium.JulianDate.now()) as Cesium.Cartesian3;
+      if (position) {
+        const carto = Cesium.Cartographic.fromCartesian(position);
+        // 尝试从保存的原始位置获取，如果没有则从当前位置推断
+        const groundPosition = (entity as any)._groundPosition;
+        if (groundPosition) {
+          if (is3DMode) {
+            const carto = Cesium.Cartographic.fromCartesian(groundPosition);
+            const elevatedPosition = Cesium.Cartesian3.fromRadians(
+              carto.longitude,
+              carto.latitude,
+              (carto.height || 0) + this.offsetHeight
+            );
+            entity.position = new Cesium.ConstantPositionProperty(elevatedPosition);
+            entity.point.heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.RELATIVE_TO_GROUND);
+          } else {
+            entity.position = new Cesium.ConstantPositionProperty(groundPosition);
+            entity.point.heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.CLAMP_TO_GROUND);
+          }
+        } else {
+          // 如果没有保存的原始位置，从当前位置推断（兼容旧数据）
+          if (is3DMode) {
+            const elevatedPosition = Cesium.Cartesian3.fromRadians(
+              carto.longitude,
+              carto.latitude,
+              Math.max(0, (carto.height || 0) - this.offsetHeight) + this.offsetHeight
+            );
+            entity.position = new Cesium.ConstantPositionProperty(elevatedPosition);
+            entity.point.heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.RELATIVE_TO_GROUND);
+          } else {
+            const groundPos = Cesium.Cartesian3.fromRadians(
+              carto.longitude,
+              carto.latitude,
+              Math.max(0, (carto.height || 0) - this.offsetHeight)
+            );
+            entity.position = new Cesium.ConstantPositionProperty(groundPos);
+            entity.point.heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.CLAMP_TO_GROUND);
+          }
+        }
+      }
+    });
   }
 
   /**
