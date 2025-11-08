@@ -71,12 +71,12 @@ export async function initCesium(
     navigationHelpButton: false, // 禁用导航帮助按钮
     navigationInstructionsInitiallyVisible: false, // 禁用导航指令初始可见
     ...options
-  })
-  viewer.cesiumWidget.creditContainer.style.display = 'none';
-  viewer.scene.postProcessStages.fxaa.enabled=false;
+  });
+  (viewer.cesiumWidget.creditContainer as HTMLElement).style.display = 'none';
+  viewer.scene.postProcessStages.fxaa.enabled = false;
   // 地形提供者
   if (!options.terrainProvider && !options.terrain) {
-    viewer.terrainProvider = await createWorldTerrainAsync()
+    viewer.terrainProvider = await createWorldTerrainAsync();
   }
   const token = options.token || getViteTdToken();
   // 添加高德图影像图层

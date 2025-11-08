@@ -182,12 +182,19 @@ export class CesiumMapToolbar {
         if (entity.polyline) {
           // 测距完成
           const positions = entity.polyline.positions?.getValue(Cesium.JulianDate.now()) as Cartesian3[];
-          if (positions && this.measurementCallback?.onDistanceComplete) {
+          if (positions) {
             let totalDistance = 0;
             for (let i = 1; i < positions.length; i++) {
               totalDistance += Cesium.Cartesian3.distance(positions[i - 1], positions[i]);
             }
-            this.measurementCallback.onDistanceComplete(positions, totalDistance);
+            // 触发回调，传递原始距离值（米）
+            if (this.measurementCallback?.onDistanceComplete) {
+              this.measurementCallback.onDistanceComplete(positions, totalDistance);
+            } else {
+              // 如果没有提供回调，显示默认的格式化信息
+              const formattedDistance = this.formatDistance(totalDistance);
+              console.log(`测距完成，总距离: ${formattedDistance}`);
+            }
           }
         } else if (entity.polygon) {
           // 测面积完成
@@ -204,6 +211,21 @@ export class CesiumMapToolbar {
     this.drawHelper.onEntityRemoved((entity) => {
       console.log('实体被移除', entity);
     });
+  }
+
+  /**
+   * 格式化距离显示
+   * 超过1000m时转换为km，保留两位小数
+   * @param distance 距离（米）
+   * @returns 格式化后的距离字符串
+   */
+  private formatDistance(distance: number): string {
+    if (distance >= 1000) {
+      const km = distance / 1000;
+      return `${km.toFixed(2)} km`;
+    } else {
+      return `${distance.toFixed(2)} m`;
+    }
   }
 
   /**
@@ -466,14 +488,8 @@ export class CesiumMapToolbar {
         e.stopPropagation();
         this.handleButtonClick(config.id, button, config.callback);
       });
-    } else if (config.id === 'search') {
-      // 搜索按钮使用点击事件
-      button.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.handleButtonClick(config.id, button, config.callback);
-      });
     } else {
-      // 测量、图层切换按钮使用hover事件
+      // 搜索、测量、图层切换按钮使用hover事件
       button.addEventListener('mouseenter', () => {
         this.handleButtonClick(config.id, button, config.callback);
       });
@@ -492,6 +508,20 @@ export class CesiumMapToolbar {
     // 延迟关闭，给用户时间移动到菜单上
     setTimeout(() => {
       switch (buttonId) {
+        case 'search':
+          const searchContainer = this.toolbarElement.querySelector('.search-container');
+          if (searchContainer) {
+            // 检查是否在搜索框或输入框中
+            const isHoveringSearch = searchContainer.matches(':hover');
+            const searchInput = searchContainer.querySelector('input') as HTMLInputElement;
+            const isInputFocused = searchInput && document.activeElement === searchInput;
+            
+            // 如果不在搜索框上且输入框未聚焦，则关闭
+            if (!isHoveringSearch && !isInputFocused) {
+              searchContainer.remove();
+            }
+          }
+          break;
         case 'measure':
           const measureMenu = this.toolbarElement.querySelector('.measurement-menu');
           if (measureMenu && !measureMenu.matches(':hover')) {
@@ -509,9 +539,24 @@ export class CesiumMapToolbar {
   }
 
   /**
+   * 关闭搜索框
+   */
+  private closeSearchContainer(): void {
+    const searchContainer = this.toolbarElement.querySelector('.search-container');
+    if (searchContainer) {
+      searchContainer.remove();
+    }
+  }
+
+  /**
    * 处理按钮点击
    */
   private handleButtonClick(buttonId: string, buttonElement: HTMLElement, callback?: () => void): void {
+    // 如果触发的是非搜索按钮，先关闭搜索框
+    if (buttonId !== 'search') {
+      this.closeSearchContainer();
+    }
+
     switch (buttonId) {
       case 'search':
         this.toggleSearch(buttonElement);
@@ -546,9 +591,7 @@ export class CesiumMapToolbar {
   private toggleSearch(buttonElement: HTMLElement): void {
     const existingSearch = this.toolbarElement.querySelector('.search-container');
     if (existingSearch) {
-      // 如果搜索框已存在，关闭它
-      existingSearch.remove();
-      return;
+      return; // 如果搜索框已存在，不重复创建
     }
 
     const searchContainer = document.createElement('div');
@@ -558,8 +601,8 @@ export class CesiumMapToolbar {
       right: 100%;
       top: 0;
       margin-right: 8px;
-      background: white;
-      border: 1px solid #e0e0e0;
+      background: rgba(0, 40, 80, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.2);
       border-radius: 4px;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
       padding: 8px;
@@ -572,10 +615,14 @@ export class CesiumMapToolbar {
     searchInput.placeholder = '请输入地址';
     searchInput.style.cssText = `
       padding: 6px 8px;
-      border: 1px solid #ddd;
+      border: 1px solid rgba(255, 255, 255, 0.2);
       border-radius: 3px;
+      background: rgba(0, 40, 80, 0.95);
+      color: #fff;
       font-size: 14px;
       outline: none;
+      width: 100%;
+      box-sizing: border-box;
     `;
 
     const resultsContainer = document.createElement('div');
@@ -625,30 +672,90 @@ export class CesiumMapToolbar {
       }, 300);
     });
 
-    // 添加点击外部区域关闭搜索框的逻辑
-    const closeSearchOnClickOutside = (event: MouseEvent) => {
-      if (!searchContainer.contains(event.target as Node) &&
-        !buttonElement.contains(event.target as Node)) {
+    // 鼠标离开搜索框时关闭（延迟关闭，给用户时间移回按钮或其他区域）
+    let closeTimeout: ReturnType<typeof setTimeout>;
+    const handleSearchContainerLeave = (event: MouseEvent) => {
+      // 检查鼠标是否移到了其他工具栏按钮上
+      const target = event.relatedTarget as HTMLElement;
+      const isMovingToButton = target && (
+        target.closest('.cesium-toolbar-button') !== null ||
+        target.closest('.cesium-map-toolbar') !== null
+      );
+      
+      // 如果移到了其他按钮，立即关闭搜索框，让其他按钮的hover事件能正常触发
+      if (isMovingToButton) {
+        clearTimeout(closeTimeout);
         searchContainer.remove();
-        document.removeEventListener('click', closeSearchOnClickOutside);
-        document.removeEventListener('keydown', closeSearchOnEscape);
+        searchContainer.removeEventListener('mouseleave', handleSearchContainerLeave);
+        searchContainer.removeEventListener('mouseenter', handleSearchContainerEnter);
+        searchInput.removeEventListener('blur', handleInputBlur);
+        return;
       }
+      
+      closeTimeout = setTimeout(() => {
+        // 检查鼠标是否在搜索框、按钮或其他工具栏按钮上
+        const isHoveringSearch = searchContainer.matches(':hover');
+        const isHoveringButton = buttonElement.matches(':hover');
+        const isHoveringToolbar = this.toolbarElement.matches(':hover');
+        const isInputFocused = document.activeElement === searchInput;
+        
+        // 如果不在搜索框、按钮或工具栏上，且输入框未聚焦，则关闭
+        if (!isHoveringSearch && !isHoveringButton && !isHoveringToolbar && !isInputFocused) {
+          searchContainer.remove();
+          searchContainer.removeEventListener('mouseleave', handleSearchContainerLeave);
+          searchContainer.removeEventListener('mouseenter', handleSearchContainerEnter);
+          searchInput.removeEventListener('blur', handleInputBlur);
+        }
+      }, 150);
+    };
+
+    // 鼠标进入搜索框时清除关闭定时器
+    const handleSearchContainerEnter = () => {
+      clearTimeout(closeTimeout);
+    };
+
+    // 输入框失去焦点时的处理
+    const handleInputBlur = () => {
+      // 延迟检查，给用户时间点击搜索结果
+      setTimeout(() => {
+        const isHoveringSearch = searchContainer.matches(':hover');
+        const isHoveringButton = buttonElement.matches(':hover');
+        const isHoveringToolbar = this.toolbarElement.matches(':hover');
+        const isInputFocused = document.activeElement === searchInput;
+        
+        // 如果输入框重新获得焦点，不关闭
+        if (isInputFocused) {
+          return;
+        }
+        
+        if (!isHoveringSearch && !isHoveringButton && !isHoveringToolbar) {
+          searchContainer.remove();
+          searchContainer.removeEventListener('mouseleave', handleSearchContainerLeave);
+          searchContainer.removeEventListener('mouseenter', handleSearchContainerEnter);
+          searchInput.removeEventListener('blur', handleInputBlur);
+        }
+      }, 200);
     };
 
     // 添加ESC键关闭搜索框的逻辑
     const closeSearchOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         searchContainer.remove();
-        document.removeEventListener('click', closeSearchOnClickOutside);
+        searchContainer.removeEventListener('mouseleave', handleSearchContainerLeave);
+        searchContainer.removeEventListener('mouseenter', handleSearchContainerEnter);
+        searchInput.removeEventListener('blur', handleInputBlur);
         document.removeEventListener('keydown', closeSearchOnEscape);
       }
     };
 
-    // 延迟添加事件监听器，避免立即触发
+    // 绑定事件
+    searchContainer.addEventListener('mouseleave', handleSearchContainerLeave);
+    searchContainer.addEventListener('mouseenter', handleSearchContainerEnter);
+    searchInput.addEventListener('blur', handleInputBlur);
+    document.addEventListener('keydown', closeSearchOnEscape);
+
+    // 延迟聚焦，避免立即触发blur事件
     setTimeout(() => {
-      document.addEventListener('click', closeSearchOnClickOutside);
-      document.addEventListener('keydown', closeSearchOnEscape);
-      // 自动聚焦到搜索输入框
       searchInput.focus();
     }, 100);
   }
@@ -809,7 +916,9 @@ export class CesiumMapToolbar {
         menuItem.style.transform = 'scale(1.00)';
       });
 
-      menuItem.addEventListener('click', () => {
+      menuItem.addEventListener('click', (e) => {
+        e.stopPropagation(); // 阻止事件冒泡
+        e.preventDefault(); // 阻止默认行为
         this.handleMeasurementAction(item.id);
         menu.remove();
       });
@@ -834,10 +943,16 @@ export class CesiumMapToolbar {
   private handleMeasurementAction(action: string): void {
     switch (action) {
       case 'measure-area':
-        this.drawHelper.startDrawingPolygon();
+        // 延迟启动绘制，确保菜单点击事件完全处理完毕，避免第一次点击被消耗
+        setTimeout(() => {
+          this.drawHelper.startDrawingPolygon();
+        }, 50);
         break;
       case 'measure-distance':
-        this.drawHelper.startDrawingLine();
+        // 延迟启动绘制，确保菜单点击事件完全处理完毕，避免第一次点击被消耗
+        setTimeout(() => {
+          this.drawHelper.startDrawingLine();
+        }, 50);
         break;
       case 'clear-measurement':
         this.drawHelper.clearAll();

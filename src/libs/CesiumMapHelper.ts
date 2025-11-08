@@ -99,6 +99,7 @@ class DrawHelper {
     this.isDrawing = true;
     this.tempPositions = [];
     this.tempEntities = [];
+    this._doubleClickPending = false; // 重置双击标志，确保第一次点击能正常响应
 
     this.activateDrawingHandlers();
 
@@ -390,7 +391,7 @@ class DrawHelper {
           const labelEntity = this.entities.add({
             position: midPoint,
             label: {
-              text: `${distance.toFixed(2)} m`,
+              text: this.formatDistance(distance),
               font: "16px Arial",
               fillColor: Cesium.Color.WHITE,
               outlineColor: Cesium.Color.BLACK,
@@ -409,16 +410,17 @@ class DrawHelper {
       }
 
       // 添加总距离标签（在最后一个点）
-      if (positions.length > 1) {
+      // 注意：总距离应该只基于已确定的点（tempPositions），不包括预览点
+      if (this.tempPositions.length > 1) {
         let totalDistance = 0;
-        for (let i = 1; i < positions.length; i++) {
+        for (let i = 1; i < this.tempPositions.length; i++) {
           totalDistance += Cesium.Cartesian3.distance(
-            positions[i - 1],
-            positions[i]
+            this.tempPositions[i - 1],
+            this.tempPositions[i]
           );
         }
-        // 根据offsetHeight计算标签位置，与line的绘制方式保持一致
-        let labelPosition = positions[positions.length - 1];
+        // 根据offsetHeight计算标签位置，使用最后一个已确定的点
+        let labelPosition = this.tempPositions[this.tempPositions.length - 1];
         if (this.offsetHeight > 0) {
           // 3D模式：抬高标签位置
           const carto = Cesium.Cartographic.fromCartesian(labelPosition);
@@ -429,21 +431,31 @@ class DrawHelper {
           );
         }
         
+        const formattedDistance = this.formatDistance(totalDistance);
+        const labelText = `总长: ${formattedDistance}`;
+        // 计算总长标签的偏移位置，使其与分段标签保持一致的视觉风格
+        // 根据分段标签的数量决定总长标签的位置，避免重叠
+        const segmentCount = this.tempPositions.length - 1;
+        const labelOffset = segmentCount % 2 === 0 ? -35 : 35; // 与最后一个分段标签相反方向
+        
         const totalLabelEntity = this.entities.add({
           position: labelPosition,
           label: {
-            text: `总长: ${totalDistance.toFixed(2)} m`,
-            font: "18px Arial",
-            fillColor: Cesium.Color.YELLOW,
+            text: labelText,
+            font: "16px Arial", // 与分段标签使用相同的字体大小，保持视觉统一
+            fillColor: Cesium.Color.YELLOW, // 保持黄色以突出总长
             outlineColor: Cesium.Color.BLACK,
             outlineWidth: 3,
             style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-            pixelOffset: new Cesium.Cartesian2(0, 40),
-            heightReference: this.offsetHeight > 0 ? Cesium.HeightReference.NONE : Cesium.HeightReference.CLAMP_TO_GROUND,
+            pixelOffset: new Cesium.Cartesian2(0, labelOffset), // 使用与分段标签类似的偏移逻辑
+            heightReference: this.offsetHeight > 0 ? Cesium.HeightReference.RELATIVE_TO_GROUND : Cesium.HeightReference.CLAMP_TO_GROUND,
             scale: 1.0,
             showBackground: true,
-            backgroundColor: Cesium.Color.BLACK.withAlpha(0.9),
-            backgroundPadding: new Cesium.Cartesian2(8, 4),
+            backgroundColor: Cesium.Color.BLACK.withAlpha(0.8), // 与分段标签使用相同的背景透明度
+            backgroundPadding: new Cesium.Cartesian2(8, 4), // 稍微增加padding以容纳"总长:"前缀
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            verticalOrigin: Cesium.VerticalOrigin.CENTER,
+            horizontalOrigin: Cesium.HorizontalOrigin.CENTER, // 居中对齐，与分段标签保持一致
           },
         });
         this.tempLabelEntities.push(totalLabelEntity);
@@ -940,6 +952,25 @@ class DrawHelper {
       y / positions.length,
       z / positions.length
     );
+  }
+
+  /**
+   * 格式化距离显示
+   * 超过1000m时转换为km，保留两位小数
+   * @param distance 距离（米）
+   * @returns 格式化后的距离字符串
+   */
+  private formatDistance(distance: number): string {
+    // 确保距离是有效数字
+    if (!isFinite(distance) || isNaN(distance)) {
+      return '0.00 m';
+    }
+    if (distance >= 1000) {
+      const km = distance / 1000;
+      return `${km.toFixed(2)} km`;
+    } else {
+      return `${distance.toFixed(2)} m`;
+    }
   }
 
   // --- 回调注册 ---
