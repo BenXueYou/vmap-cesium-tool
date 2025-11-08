@@ -55,14 +55,27 @@ export const TDTMapTypes: MapType[] = [
       thumbnail: EleImg,
       provider: (token: string) => {
         return [
-            new Cesium.WebMapTileServiceImageryProvider({
-            url: `https://t{s}.tianditu.gov.cn/ter_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ter&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={TileMatrix}&TILEROW={TileRow}&TILECOL={TileCol}&tk=${token}`,
+           // 影像底图
+          new Cesium.WebMapTileServiceImageryProvider({
+            url: `https://t{s}.tianditu.gov.cn/img_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=img&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={TileMatrix}&TILEROW={TileRow}&TILECOL={TileCol}&tk=${token}`,
+            layer: "img",
+            style: "default",
+            format: "tiles",
+            subdomains: ["0", "1", "2", "3", "4", "5", "6", "7"],
+            tileMatrixSetID: "GoogleMapsCompatible",
+            minimumLevel: 1,
+            maximumLevel: 18,
+            credit: '© 天地图'
+          }),
+          // 影像标注
+          new Cesium.WebMapTileServiceImageryProvider({
+            url: `https://t{s}.tianditu.gov.cn/cia_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=cia&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={TileMatrix}&TILEROW={TileRow}&TILECOL={TileCol}&tk=${token}`,
             subdomains: ['0', '1', '2', '3', '4', '5', '6', '7'],
             minimumLevel: 1,
             maximumLevel: 18,
-            layer: "tdtVecBasicLayer",
+            layer: "cia",
             style: "default",
-            format: "image/jpeg",
+            format: "tiles",
             tileMatrixSetID: "GoogleMapsCompatible",
             credit: '© 天地图'
           })

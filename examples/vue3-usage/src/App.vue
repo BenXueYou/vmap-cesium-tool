@@ -21,18 +21,9 @@ onMounted(async () => {
   const { viewer: cesiumViewer } = await initCesium(
     "cesiumContainer",
     {
-      terrain: Cesium.Terrain.fromWorldTerrain(),
-      animation: false,
-      baseLayerPicker: false,
-      fullscreenButton: false,
-      geocoder: false,
-      homeButton: false,
-      infoBox: false,
-      sceneModePicker: false,
-      selectionIndicator: false,
-      timeline: false,
-      navigationHelpButton: false,
-      scene3DOnly: false,
+      token: '2cca1367384c44b8b0196b47108b2813',
+      mapType: 'tiandi',
+      isFly: true,
     }
   );
   viewer = cesiumViewer;

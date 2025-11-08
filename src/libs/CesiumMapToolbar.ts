@@ -1327,6 +1327,7 @@ export class CesiumMapToolbar {
 
     // 添加新图层
     const layers = mapType.provider(this.TD_Token);
+    // 添加天地图
     layers.forEach((layer) => {
       this.viewer.imageryLayers.addImageryProvider(layer);
     })
