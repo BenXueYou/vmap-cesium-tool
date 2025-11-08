@@ -7,9 +7,43 @@ import locationIcon from "../assets/images/toolbar/location@3x.png";
 import zoomInIcon from "../assets/images/toolbar/zoom-in@3x.png";
 import zoomOutIcon from "../assets/images/toolbar/zoom-out@3x.png";
 import fullscreenIcon from "../assets/images/toolbar/fullscreen@3x.png";
-
+import { getViteTdToken } from "../utils/common";
 import type { SearchResult } from "../libs/CesiumMapModel";
 
+// 天地图Token
+export const TD_Map_TOKEN = getViteTdToken();
+
+// 中国地图范围 - 覆盖整个中国
+export const China_Map_Bound = '73.5577,18.1597,135.0882,53.5609'
+
+// 中国地图中心点
+export const China_Map_Center = {
+  longitude: 104.1141,
+  latitude: 37.5503,
+  height: 10,
+}
+
+// 中国地图边界范围（用于限制地图显示区域）
+export const China_Map_Extent = {
+  west: 73.5577, // 最西端经度
+  south: 18.1597, // 最南端纬度
+  east: 135.0882, // 最东端经度
+  north: 53.5609, // 最北端纬度
+}
+
+export const TD_Map_Search_URL = (keywords: string, mapConfig: any, token = TD_Map_TOKEN) => {
+  const obj = {
+    start: 0,
+    count: 10,
+    queryType: 7,
+    keyWord: keywords,
+    mapBound: China_Map_Bound,
+    level: mapConfig?.defaultZoomLevel || 15,
+  }
+  return `http://api.tianditu.gov.cn/v2/search?postStr=${JSON.stringify(
+    obj,
+  )}&type=query&tk=${token}`
+}
 
 export const useToolBarConfig = (message: any) => {
 
@@ -56,8 +90,22 @@ export const useToolBarConfig = (message: any) => {
         color: "#007BFF",
         borderColor: "#0775D1",
         backgroundColor: "rgba(0, 0, 0, 0.52)",
-        callback: () => {
-          console.log("图层切换");
+        callback: (isChecked: boolean, toolbar?: any) => {
+          if (isChecked) {
+            console.log("绘制禁飞区开启");
+            // 显示禁飞区
+            if (toolbar && typeof toolbar.showNoFlyZones === 'function') {
+              toolbar.showNoFlyZones().catch((error: any) => {
+                console.error('显示禁飞区失败:', error);
+              });
+            }
+          } else {
+            console.log("绘制禁飞区关闭");
+            // 隐藏禁飞区
+            if (toolbar && typeof toolbar.hideNoFlyZones === 'function') {
+              toolbar.hideNoFlyZones();
+            }
+          }
         },
       },
       {
@@ -104,6 +152,34 @@ export const useToolBarConfig = (message: any) => {
     search: {
       onSearch: async (query: string): Promise<SearchResult[]> => {
         // 这里可以调用真实的地理编码API
+        try {
+          const url = TD_Map_Search_URL(query, China_Map_Extent);
+          const response = await fetch(url, {
+            method: "GET",
+            mode: "cors", // 允许跨域请求
+            credentials: "omit", // 不发送凭证信息
+            headers: {
+              Accept: "application/json",
+            },
+          });
+      
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+      
+          const data = await response.json();
+          const pois = data?.data?.pois || data?.pois || [];
+          return pois.map((location: any) => ({
+            name: location?.name || query,
+            address: location?.address || "",
+            longitude: Number(location?.lonlat.split(",")[0] || 0),
+            latitude: Number(location?.lonlat.split(",")[1] || 0),
+            height: 100,
+          }));
+        } catch (err) {
+          console.error('搜索失败:', err)
+          return []
+        }
         return [] as SearchResult[];
       },
       onSelect: (result: SearchResult) => {

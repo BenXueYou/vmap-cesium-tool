@@ -25,6 +25,7 @@
     "build": "vite build && vite build --mode lib",
     "build:lib": "vite build --mode lib",
     "build:plugin": "node scripts/build-plugin.js",
+    "generate:file-list": "node scripts/generate-file-list.js",
     "preview": "vite preview",
     "type-check": "vue-tsc --noEmit"
   },

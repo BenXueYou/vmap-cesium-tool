@@ -42,6 +42,37 @@ try {
     fs.copyFileSync('src/style.css', 'dist/style.css');
   }
 
+  // 处理 GeoJSON 文件
+  console.log('🗺️ 处理 GeoJSON 文件...');
+  const publicGeojsonDir = path.join(__dirname, '../public/geojson');
+  const distGeojsonDir = path.join(__dirname, '../dist/geojson');
+  
+  if (fs.existsSync(publicGeojsonDir)) {
+    // 确保 dist/geojson 目录存在
+    if (!fs.existsSync(distGeojsonDir)) {
+      fs.mkdirSync(distGeojsonDir, { recursive: true });
+    }
+    
+    // 读取所有 geojson 文件
+    const files = fs.readdirSync(publicGeojsonDir).filter(file => file.endsWith('.geojson'));
+    const fileList = files.map(file => file.replace('.geojson', ''));
+    
+    // 生成 file-list.json
+    const fileListPath = path.join(distGeojsonDir, 'file-list.json');
+    fs.writeFileSync(fileListPath, JSON.stringify(fileList, null, 2));
+    console.log(`   ✅ 生成文件列表: ${fileList.length} 个文件`);
+    
+    // 复制所有 geojson 文件
+    files.forEach(file => {
+      const srcPath = path.join(publicGeojsonDir, file);
+      const destPath = path.join(distGeojsonDir, file);
+      fs.copyFileSync(srcPath, destPath);
+    });
+    console.log(`   ✅ 复制 ${files.length} 个 GeoJSON 文件`);
+  } else {
+    console.log('   ⚠️  public/geojson 目录不存在，跳过 GeoJSON 文件处理');
+  }
+
   // 复制 README
   console.log('📖 复制文档...');
   if (fs.existsSync('PLUGIN_README.md')) {
@@ -59,7 +90,7 @@ try {
     main: 'index.js',
     module: 'index.js',
     types: 'index.d.ts',
-    files: ['index.js', 'index.d.ts', 'style.css', 'README.md'],
+    files: ['index.js', 'index.d.ts', 'style.css', 'README.md', 'geojson'],
     exports: {
       ".": {
         "import": "./index.js",
@@ -86,6 +117,7 @@ try {
   console.log('   - style.css (样式文件)');
   console.log('   - README.md (使用文档)');
   console.log('   - package.json (发布配置)');
+  console.log('   - geojson/ (GeoJSON 数据目录)');
 
 } catch (error) {
   console.error('❌ 构建失败:', error.message);

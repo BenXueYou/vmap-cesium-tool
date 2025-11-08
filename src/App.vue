@@ -19,6 +19,9 @@ import DrawHelper from "./libs/CesiumMapHelper";
 import { useToolBarConfig } from "./hooks/toolBarConfig";
 import { getViteTdToken } from "./utils/common";
 
+
+
+
 const message = ref("");
 let viewer = ref();
 let mapToolbar: CesiumMapToolbar | null = null;

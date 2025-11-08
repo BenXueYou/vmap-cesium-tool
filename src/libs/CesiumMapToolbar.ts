@@ -8,6 +8,7 @@ import type {
 
 import {  TDTMapTypes } from './CesiumMapConfig'
 import { heightToZoomLevel, zoomLevelToHeight } from '../utils/common';
+import { loadAllAirportNoFlyZones, type AirportNoFlyZone } from '../utils/geojson';
 
 
 /**
@@ -30,6 +31,10 @@ export class CesiumMapToolbar {
 
   // 地图类型配置
   public mapTypes: MapType[] = TDTMapTypes;
+
+  // 禁飞区相关
+  private noFlyZoneEntities: Cesium.Entity[] = [];
+  private isNoFlyZoneVisible: boolean = false;
 
   constructor(
     viewer: Viewer,
@@ -1026,7 +1031,7 @@ export class CesiumMapToolbar {
   /**
    * 切换图层
    */
-  private toggleLayers(buttonElement: HTMLElement, callback?: (param: any) => void): void {
+  private toggleLayers(buttonElement: HTMLElement, callback?: (param: any, toolbar?: CesiumMapToolbar) => void): void {
     const existingMenu = this.toolbarElement.querySelector('.layers-menu');
     if (existingMenu) {
       return; // 如果菜单已存在，不重复创建
@@ -1265,8 +1270,8 @@ export class CesiumMapToolbar {
           checkbox.style.fontWeight = 'bold';
           checkbox.style.fontSize = '12px';
         }
-        // 传递新的状态（取反，因为点击后状态会改变）
-        callback?.(!isChecked);
+        // 传递新的状态（取反，因为点击后状态会改变）和 toolbar 实例
+        callback?.(!isChecked, this);
       });
 
       overlaySection.appendChild(overlayItem);
@@ -1277,6 +1282,17 @@ export class CesiumMapToolbar {
     menu.appendChild(overlaySection);
 
     this.toolbarElement.insertBefore(menu, buttonElement);
+
+    // 如果机场禁飞区默认勾选且尚未加载，则自动加载
+    const airportOption = overlayOptions.find(opt => opt.id === 'airport');
+    if (airportOption && !this.isNoFlyZoneVisible) {
+      // 延迟加载，避免阻塞菜单显示
+      setTimeout(() => {
+        this.showNoFlyZones().catch((error) => {
+          console.error('自动加载禁飞区失败:', error);
+        });
+      }, 100);
+    }
 
     // 鼠标离开菜单区域时关闭
     const closeMenu = () => {
@@ -1522,9 +1538,93 @@ export class CesiumMapToolbar {
   }
 
   /**
+   * 加载并显示机场禁飞区
+   */
+  public async showNoFlyZones(): Promise<void> {
+    if (this.isNoFlyZoneVisible) {
+      return; // 已经显示，无需重复加载
+    }
+
+    try {
+      // 加载所有机场禁飞区数据
+      const noFlyZones = await loadAllAirportNoFlyZones();
+      
+      // 清除之前的实体（如果有）
+      this.hideNoFlyZones();
+
+      // 为每个禁飞区创建实体
+      noFlyZones.forEach((zone) => {
+        const coordinates = zone.feature.geometry.coordinates[0]; // 获取外环坐标
+        
+        // 将 GeoJSON 坐标转换为 Cesium Cartesian3 数组
+        const positions = coordinates.map((coord: number[]) => {
+          const [longitude, latitude] = coord;
+          return Cesium.Cartesian3.fromDegrees(longitude, latitude, 0);
+        });
+
+        // 创建多边形实体
+        const entity = this.viewer.entities.add({
+          name: zone.name,
+          polygon: {
+            hierarchy: new Cesium.PolygonHierarchy(positions),
+            material: Cesium.Color.RED.withAlpha(0.3), // 红色半透明填充
+            outline: true,
+            outlineColor: Cesium.Color.RED,
+            outlineWidth: 2,
+            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+            extrudedHeight: 0,
+          },
+          description: `机场禁飞区: ${zone.name}`,
+        });
+
+        this.noFlyZoneEntities.push(entity);
+      });
+
+      this.isNoFlyZoneVisible = true;
+      console.log(`已加载 ${noFlyZones.length} 个机场禁飞区`);
+    } catch (error) {
+      console.error('加载机场禁飞区失败:', error);
+    }
+  }
+
+  /**
+   * 隐藏机场禁飞区
+   */
+  public hideNoFlyZones(): void {
+    // 移除所有禁飞区实体
+    this.noFlyZoneEntities.forEach((entity) => {
+      this.viewer.entities.remove(entity);
+    });
+    this.noFlyZoneEntities = [];
+    this.isNoFlyZoneVisible = false;
+  }
+
+  /**
+   * 切换机场禁飞区显示状态
+   */
+  public toggleNoFlyZones(): Promise<void> {
+    if (this.isNoFlyZoneVisible) {
+      this.hideNoFlyZones();
+      return Promise.resolve();
+    } else {
+      return this.showNoFlyZones();
+    }
+  }
+
+  /**
+   * 获取禁飞区显示状态
+   */
+  public getNoFlyZoneVisible(): boolean {
+    return this.isNoFlyZoneVisible;
+  }
+
+  /**
    * 销毁工具栏
    */
   destroy(): void {
+    // 清理禁飞区实体
+    this.hideNoFlyZones();
+    
     if (this.toolbarElement && this.toolbarElement.parentNode) {
       this.toolbarElement.parentNode.removeChild(this.toolbarElement);
     }

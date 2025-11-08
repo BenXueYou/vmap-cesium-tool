@@ -19,6 +19,8 @@ export default defineConfig(({ mode }) => {
           outDir: 'dist',
           insertTypesEntry: true
         })
+        // 注意：GeoJSON 文件的复制由 build-plugin.js 处理
+        // 因为 vite-plugin-static-copy 在库模式下可能不工作
       ],
       build: {
         lib: {
@@ -53,6 +55,12 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       port: 3000,
+      fs: {
+        // 允许访问项目根目录以外的文件
+        strict: false,
+      },
     },
+    // 确保 .geojson 文件被正确处理
+    assetsInclude: ['**/*.geojson'],
   };
 });
