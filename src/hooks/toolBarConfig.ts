@@ -56,6 +56,9 @@ export const useToolBarConfig = (message: any) => {
         color: "#007BFF",
         borderColor: "#0775D1",
         backgroundColor: "rgba(0, 0, 0, 0.52)",
+        callback: () => {
+          console.log("图层切换");
+        },
       },
       {
         size: 36,

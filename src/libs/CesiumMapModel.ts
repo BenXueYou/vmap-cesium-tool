@@ -48,6 +48,7 @@ export interface CustomButtonConfig {
   activeColor?: string;
   backgroundColor?: string;
   activeIcon?: string | HTMLElement | false;
+  callback?: () => void;
   onClick?: (buttonId: string, buttonElement: HTMLElement) => void;
 }
 

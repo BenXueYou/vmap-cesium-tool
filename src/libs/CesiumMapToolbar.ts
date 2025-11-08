@@ -133,9 +133,9 @@ export class CesiumMapToolbar {
       color: config.color,
       hoverColor: config.hoverColor,
       activeColor: config.activeColor,
-      backgroundColor: config.backgroundColor
-    };
-
+      backgroundColor: config.backgroundColor,
+      callback: config?.callback || (() => {})
+    };  
     const buttonElement = this.createButton(buttonConfig);
     this.toolbarElement.appendChild(buttonElement);
 
@@ -314,6 +314,7 @@ export class CesiumMapToolbar {
           borderColor: customButton.borderColor || defaultButton?.borderColor || '',
           borderWidth: customButton.borderWidth || defaultButton?.borderWidth || 1,
           borderStyle: customButton.borderStyle || defaultButton?.borderStyle || 'solid',
+          callback: customButton.callback || defaultButton?.callback || (() => {}),
           color: customButton.color || defaultButton?.color || 'rgba(66, 133, 244, 0.4)',
         };
       });
@@ -1203,16 +1204,26 @@ export class CesiumMapToolbar {
       `;
 
       const checkbox = document.createElement('div');
+      // 机场禁飞区默认勾选
+      const isDefaultChecked = option.id === 'airport';
       checkbox.style.cssText = `
         width: 18px;
         height: 18px;
         border: 2px solid rgba(255, 255, 255, 0.5);
         border-radius: 3px;
-        background: transparent;
+        background: ${isDefaultChecked ? '#023C61' : 'transparent'};
         display: flex;
         align-items: center;
         justify-content: center;
       `;
+      
+      // 如果是默认勾选，设置勾选标记
+      if (isDefaultChecked) {
+        checkbox.innerHTML = '✓';
+        checkbox.style.color = '#ffffff';
+        checkbox.style.fontWeight = 'bold';
+        checkbox.style.fontSize = '12px';
+      }
 
       const icon = document.createElement('span');
       icon.textContent = option.icon;
@@ -1243,7 +1254,7 @@ export class CesiumMapToolbar {
 
       overlayItem.addEventListener('click', () => {
         // 切换复选框状态（可以根据需要实现具体的图层逻辑）
-        const isChecked = checkbox.style.background === '#ffffff';
+        const isChecked = checkbox.style.background === '#023C61' || checkbox.style.background === 'rgb(2, 60, 97)';
         if (isChecked) {
           checkbox.style.background = 'transparent';
           checkbox.innerHTML = '';
@@ -1254,7 +1265,8 @@ export class CesiumMapToolbar {
           checkbox.style.fontWeight = 'bold';
           checkbox.style.fontSize = '12px';
         }
-        callback?.(isChecked);
+        // 传递新的状态（取反，因为点击后状态会改变）
+        callback?.(!isChecked);
       });
 
       overlaySection.appendChild(overlayItem);
