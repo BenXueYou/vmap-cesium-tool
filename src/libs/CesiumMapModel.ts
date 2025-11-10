@@ -88,6 +88,10 @@ export interface MapType {
   name: string;
   thumbnail: string;
   provider: (token: string) => Cesium.ImageryProvider[];
+  // 三维地图专用：地形提供者
+  terrainProvider?: (token: string) => Cesium.TerrainProvider | null;
+  // 三维地图专用：地名服务配置
+  geoWTFS?: (token: string, viewer: Cesium.Viewer) => any | null;
 }
 
 // 配置接口定义

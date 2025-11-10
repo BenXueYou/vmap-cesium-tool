@@ -36,6 +36,9 @@ export class CesiumMapToolbar {
   private noFlyZoneEntities: Cesium.Entity[] = [];
   private isNoFlyZoneVisible: boolean = false;
 
+  // 三维地名服务实例
+  private currentGeoWTFS: any = null;
+
   constructor(
     viewer: Viewer,
     container: HTMLElement,
@@ -1322,16 +1325,59 @@ export class CesiumMapToolbar {
       height: this.viewer.camera.positionCartographic.height
     };
 
+    // 清理之前的三维地名服务实例
+    if (this.currentGeoWTFS) {
+      try {
+        // 如果 GeoWTFS 有销毁方法，调用它
+        if (typeof this.currentGeoWTFS.destroy === 'function') {
+          this.currentGeoWTFS.destroy();
+        } else if (typeof this.currentGeoWTFS.remove === 'function') {
+          this.currentGeoWTFS.remove();
+        }
+      } catch (error) {
+        console.warn('清理三维地名服务失败:', error);
+      }
+      this.currentGeoWTFS = null;
+    }
+
     // 移除当前图层
     this.viewer.imageryLayers.removeAll();
+
+    // 如果是三维地图类型，设置地形提供者
+    if (mapTypeId === '3d' && mapType.terrainProvider) {
+      const terrainProvider = mapType.terrainProvider(this.TD_Token);
+      if (terrainProvider) {
+        this.viewer.terrainProvider = terrainProvider;
+      } else {
+        console.warn('三维地形提供者创建失败，使用默认地形');
+      }
+    } else {
+      // 切换到非三维地图时，恢复默认地形
+      // 这里可以根据需要设置默认地形，或者保持当前地形
+      // 如果之前使用的是三维地形，可能需要恢复为默认地形
+      // 暂时保持当前地形不变，避免频繁切换
+    }
 
     // 添加新图层
     const layers = mapType.provider(this.TD_Token);
     // 添加天地图
     layers.forEach((layer) => {
       this.viewer.imageryLayers.addImageryProvider(layer);
-    })
+    });
+    
     this.currentMapType = mapTypeId;
+
+    // 如果是三维地图类型，初始化三维地名服务
+    if (mapTypeId === '3d' && mapType.geoWTFS) {
+      try {
+        const wtfs = mapType.geoWTFS(this.TD_Token, this.viewer);
+        if (wtfs) {
+          this.currentGeoWTFS = wtfs;
+        }
+      } catch (error) {
+        console.error('初始化三维地名服务失败:', error);
+      }
+    }
 
     // 恢复相机状态（延迟执行，确保图层加载完成）
     setTimeout(() => {
@@ -1647,6 +1693,20 @@ export class CesiumMapToolbar {
   destroy(): void {
     // 清理禁飞区实体
     this.hideNoFlyZones();
+    
+    // 清理三维地名服务实例
+    if (this.currentGeoWTFS) {
+      try {
+        if (typeof this.currentGeoWTFS.destroy === 'function') {
+          this.currentGeoWTFS.destroy();
+        } else if (typeof this.currentGeoWTFS.remove === 'function') {
+          this.currentGeoWTFS.remove();
+        }
+      } catch (error) {
+        console.warn('销毁三维地名服务失败:', error);
+      }
+      this.currentGeoWTFS = null;
+    }
     
     if (this.toolbarElement && this.toolbarElement.parentNode) {
       this.toolbarElement.parentNode.removeChild(this.toolbarElement);
