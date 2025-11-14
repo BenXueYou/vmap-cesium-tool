@@ -23,6 +23,8 @@ class DrawHelper {
   private publicEntities: Cesium.Entity[] = []; // 通过公共方法创建的实体
   private _doubleClickPending: boolean = false; // 双击判断
   private currentLineEntity: Cesium.Entity | null = null; // 当前正在绘制的线条实体（用于复用）
+  private currentPolygonEntity: Cesium.Entity | null = null; // 当前正在绘制的多边形实体
+  private currentRectangleEntity: Cesium.Entity | null = null; // 当前正在绘制的矩形实体
   private currentSegmentLabels: Cesium.Entity[] = []; // 当前分段标签实体数组（用于复用）
   private currentTotalLabel: Cesium.Entity | null = null; // 当前总距离标签实体（用于复用）
   // 事件处理器
@@ -111,6 +113,8 @@ class DrawHelper {
     
     // 重置实体复用变量
     this.currentLineEntity = null;
+    this.currentPolygonEntity = null;
+    this.currentRectangleEntity = null;
     this.currentSegmentLabels = [];
     this.currentTotalLabel = null;
 
@@ -271,6 +275,8 @@ class DrawHelper {
 
       // 重置复用变量
       this.currentLineEntity = null;
+      this.currentPolygonEntity = null;
+      this.currentRectangleEntity = null;
       this.currentSegmentLabels = [];
       this.currentTotalLabel = null;
 
@@ -338,6 +344,22 @@ class DrawHelper {
           this.tempEntities.splice(index, 1);
         }
         this.currentLineEntity = null;
+      }
+      if (this.currentPolygonEntity) {
+        this.entities.remove(this.currentPolygonEntity);
+        const index = this.tempEntities.indexOf(this.currentPolygonEntity);
+        if (index > -1) {
+          this.tempEntities.splice(index, 1);
+        }
+        this.currentPolygonEntity = null;
+      }
+      if (this.currentRectangleEntity) {
+        this.entities.remove(this.currentRectangleEntity);
+        const index = this.tempEntities.indexOf(this.currentRectangleEntity);
+        if (index > -1) {
+          this.tempEntities.splice(index, 1);
+        }
+        this.currentRectangleEntity = null;
       }
       // 清理分段标签
       this.currentSegmentLabels.forEach((entity) => {
@@ -554,66 +576,88 @@ class DrawHelper {
         }
       }
     } else if (this.drawMode === "polygon") {
-      // 根据2D/3D模式绘制多边形区域
-      if (this.offsetHeight > 0) {
-        // 3D模式：使用抬高的位置
-        const elevatedPositions = positions.map(pos => {
-          const carto = Cesium.Cartographic.fromCartesian(pos);
-          return Cesium.Cartesian3.fromRadians(
-            carto.longitude,
-            carto.latitude,
-            (carto.height || 0) + this.offsetHeight
-          );
-        });
-        
-        activeEntity = this.entities.add({
-          polygon: {
-            hierarchy: new Cesium.CallbackProperty(() => {
-              return new Cesium.PolygonHierarchy(elevatedPositions);
-            }, false),
-            material: Cesium.Color.LIGHTGREEN.withAlpha(0.3), // 淡绿色填充
-            outline: true,
-            outlineColor: Cesium.Color.GREEN,
-            outlineWidth: 2,
-            heightReference: Cesium.HeightReference.NONE,
-          },
-        });
+      const committedPositions = [...this.tempPositions];
+      const polygonSource =
+        previewPoint && this.tempPositions.length >= 2
+          ? [...committedPositions, previewPoint]
+          : committedPositions;
+
+      if (polygonSource.length >= 3) {
+        const polygonPositions =
+          this.offsetHeight > 0
+            ? polygonSource.map((pos) => {
+                const carto = Cesium.Cartographic.fromCartesian(pos);
+                return Cesium.Cartesian3.fromRadians(
+                  carto.longitude,
+                  carto.latitude,
+                  (carto.height || 0) + this.offsetHeight
+                );
+              })
+            : polygonSource;
+        const heightReference =
+          this.offsetHeight > 0
+            ? Cesium.HeightReference.NONE
+            : Cesium.HeightReference.CLAMP_TO_GROUND;
+
+        if (this.currentPolygonEntity) {
+          this.currentPolygonEntity.polygon!.hierarchy =
+            new Cesium.ConstantProperty(
+              new Cesium.PolygonHierarchy(polygonPositions)
+            );
+          this.currentPolygonEntity.polygon!.heightReference =
+            new Cesium.ConstantProperty(heightReference);
+        } else {
+          activeEntity = this.entities.add({
+            polygon: {
+              hierarchy: new Cesium.ConstantProperty(
+                new Cesium.PolygonHierarchy(polygonPositions)
+              ),
+              material: Cesium.Color.LIGHTGREEN.withAlpha(0.3), // 淡绿色填充
+              outline: true,
+              outlineColor: Cesium.Color.GREEN,
+              outlineWidth: 2,
+              heightReference,
+            },
+          });
+          this.currentPolygonEntity = activeEntity;
+        }
       } else {
-        // 2D模式：贴近地面
-        activeEntity = this.entities.add({
-          polygon: {
-            hierarchy: new Cesium.CallbackProperty(() => {
-              return new Cesium.PolygonHierarchy(positions);
-            }, false),
-            material: Cesium.Color.LIGHTGREEN.withAlpha(0.3), // 淡绿色填充
-            outline: true,
-            outlineColor: Cesium.Color.GREEN,
-            outlineWidth: 2,
-            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-          },
-        });
+        if (this.currentPolygonEntity) {
+          this.entities.remove(this.currentPolygonEntity);
+          const index = this.tempEntities.indexOf(this.currentPolygonEntity);
+          if (index > -1) {
+            this.tempEntities.splice(index, 1);
+          }
+          this.currentPolygonEntity = null;
+        }
       }
     } else if (this.drawMode === "rectangle" && positions.length >= 2) {
       const rect = this.calculateRectangle(positions[0], positions[1]);
-      if (this.offsetHeight > 0) {
-        // 3D模式：使用挤压高度
-        activeEntity = this.entities.add({
-          rectangle: {
-            coordinates: rect,
-            material: Cesium.Color.GREEN.withAlpha(0.5),
-            heightReference: Cesium.HeightReference.NONE,
-            extrudedHeight: this.offsetHeight,
-          },
-        });
+      const rectHeightReference =
+        this.offsetHeight > 0
+          ? Cesium.HeightReference.NONE
+          : Cesium.HeightReference.CLAMP_TO_GROUND;
+
+      if (this.currentRectangleEntity) {
+        this.currentRectangleEntity.rectangle!.coordinates =
+          new Cesium.ConstantProperty(rect);
+        this.currentRectangleEntity.rectangle!.heightReference =
+          new Cesium.ConstantProperty(rectHeightReference);
+        this.currentRectangleEntity.rectangle!.extrudedHeight =
+          this.offsetHeight > 0
+            ? new Cesium.ConstantProperty(this.offsetHeight)
+            : undefined;
       } else {
-        // 2D模式：贴近地面
         activeEntity = this.entities.add({
           rectangle: {
             coordinates: rect,
             material: Cesium.Color.GREEN.withAlpha(0.5),
-            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+            heightReference: rectHeightReference,
+            extrudedHeight:
+              this.offsetHeight > 0 ? this.offsetHeight : undefined,
           },
         });
+        this.currentRectangleEntity = activeEntity;
       }
     }
 
@@ -731,7 +775,7 @@ class DrawHelper {
         const areaLabelEntity = this.entities.add({
           position: center,
           label: {
-            text: `面积: ${area.toFixed(2)} km²`,
+            text: `面积: ${this.formatArea(area)}`,
             font: "14px sans-serif",
             fillColor: Cesium.Color.WHITE,
             outlineColor: Cesium.Color.BLACK,
@@ -785,7 +829,7 @@ class DrawHelper {
         const rectAreaLabelEntity = this.entities.add({
           position: rectCenterPosition,
           label: {
-            text: `面积: ${area.toFixed(2)} km²`,
+            text: `面积: ${this.formatArea(area)}`,
             font: "14px sans-serif",
             fillColor: Cesium.Color.WHITE,
             outlineColor: Cesium.Color.BLACK,
@@ -826,6 +870,8 @@ class DrawHelper {
     
     // 重置复用变量
     this.currentLineEntity = null;
+    this.currentPolygonEntity = null;
+    this.currentRectangleEntity = null;
     this.currentSegmentLabels = [];
     this.currentTotalLabel = null;
 
@@ -1100,6 +1146,21 @@ class DrawHelper {
     } else {
       return `${distance.toFixed(2)} m`;
     }
+  }
+
+  /**
+   * 格式化面积显示
+   * @param areaKm2 面积（平方公里）
+   */
+  private formatArea(areaKm2: number): string {
+    if (!isFinite(areaKm2) || isNaN(areaKm2)) {
+      return "0.00 m²";
+    }
+    if (areaKm2 >= 1) {
+      return `${areaKm2.toFixed(2)} km²`;
+    }
+    const areaM2 = areaKm2 * 1e6;
+    return `${areaM2.toFixed(2)} m²`;
   }
 
   // --- 回调注册 ---
