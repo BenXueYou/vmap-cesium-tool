@@ -83,10 +83,6 @@ export class CesiumMapToolbar {
     // 自动加载禁飞区（如果默认勾选）
     this.autoLoadNoFlyZones();
 
-    // 监听场景模式变化，保持禁飞区在2D/3D下显示一致
-    this.viewer.scene.morphComplete.addEventListener(() => {
-      this.updateNoFlyZoneEntitiesForMode();
-    });
   }
 
   public setMapTypes(mapTypes: MapType[]): void {
@@ -1302,53 +1298,13 @@ export class CesiumMapToolbar {
     // 移除当前图层
     this.viewer.imageryLayers.removeAll();
 
-    // 如果是三维地图类型，设置地形提供者
-    if (mapTypeId === '3d' && mapType.terrainProvider) {
-      const terrainProvider = mapType.terrainProvider(this.TD_Token);
-      if (terrainProvider) {
-        this.viewer.terrainProvider = terrainProvider;
-      } else {
-        console.warn('三维地形提供者创建失败，使用默认地形');
-      }
-    } else {
-      // 切换到非三维地图时，恢复默认地形
-      // 这里可以根据需要设置默认地形，或者保持当前地形
-      // 如果之前使用的是三维地形，可能需要恢复为默认地形
-      // 暂时保持当前地形不变，避免频繁切换
-    }
-
     // 添加新图层
     const layers = mapType.provider(this.TD_Token);
     // 添加天地图
     layers.forEach((layer) => {
       this.viewer.imageryLayers.addImageryProvider(layer);
     });
-
     this.currentMapType = mapTypeId;
-
-    // 如果是三维地图类型，初始化三维地名服务
-    if (mapTypeId === '3d' && mapType.geoWTFS) {
-      try {
-        const wtfs = mapType.geoWTFS(this.TD_Token, this.viewer);
-        if (wtfs) {
-          this.currentGeoWTFS = wtfs;
-        }
-      } catch (error) {
-        console.error('初始化三维地名服务失败:', error);
-      }
-    }
-
-    // 恢复相机状态（延迟执行，确保图层加载完成）
-    setTimeout(() => {
-      this.viewer.camera.setView({
-        destination: currentCameraState.position,
-        orientation: {
-          heading: currentCameraState.heading,
-          pitch: currentCameraState.pitch,
-          roll: currentCameraState.roll
-        }
-      });
-    }, 100);
   }
 
   /**
@@ -1625,33 +1581,6 @@ export class CesiumMapToolbar {
       height: is3DMode ? 0 : undefined,
       extrudedHeight: is3DMode ? this.noFlyZoneExtrudedHeight : undefined,
     };
-  }
-
-  /**
-   * 根据当前场景模式更新禁飞区渲染
-   */
-  private updateNoFlyZoneEntitiesForMode(): void {
-    if (!this.noFlyZoneEntities.length) return;
-    const is3DMode = this.viewer.scene.mode === Cesium.SceneMode.SCENE3D;
-
-    this.noFlyZoneEntities.forEach((entity) => {
-      const polygon = entity.polygon;
-      if (!polygon) return;
-
-      polygon.perPositionHeight = new Cesium.ConstantProperty(is3DMode);
-      polygon.heightReference = new Cesium.ConstantProperty(
-        is3DMode ? Cesium.HeightReference.NONE : Cesium.HeightReference.CLAMP_TO_GROUND
-      );
-      polygon.height = is3DMode ? new Cesium.ConstantProperty(0) : undefined;
-      polygon.extrudedHeight = is3DMode
-        ? new Cesium.ConstantProperty(this.noFlyZoneExtrudedHeight)
-        : undefined;
-      polygon.closeTop = new Cesium.ConstantProperty(true);
-      polygon.closeBottom = new Cesium.ConstantProperty(true);
-      polygon.classificationType = new Cesium.ConstantProperty(
-        Cesium.ClassificationType.BOTH
-      );
-    });
   }
 
   /**
