@@ -9,6 +9,7 @@
 import { ref, onMounted } from "vue";
 import { CesiumMapToolbar, initCesium } from "vmap-cesium-toolbar";
 import * as Cesium from "cesium";
+import { heightToZoomLevel, zoomLevelToHeight, getViteTdToken } from "./common";
 
 const message = ref("");
 let viewer: any;
@@ -21,7 +22,7 @@ onMounted(async () => {
   const { viewer: cesiumViewer } = await initCesium(
     "cesiumContainer",
     {
-      token: '2cca1367384c44b8b0196b47108b2813',
+      token: getViteTdToken(),
       mapType: 'tiandi',
       isFly: true,
     }
@@ -87,6 +88,7 @@ onMounted(async () => {
         },
       }
     );
+    toolbar.setTDToken(getViteTdToken());
   }
 });
 </script>
