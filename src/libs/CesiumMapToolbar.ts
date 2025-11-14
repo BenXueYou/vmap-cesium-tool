@@ -1007,8 +1007,7 @@ export class CesiumMapToolbar {
       border: 1px solid rgba(255, 255, 255, 0.2);
       border-radius: 8px;
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-      padding: 16px;
-      min-width: 500px;
+      padding: 10px 12px;
       max-width: 520px;
       z-index: 1001;
       display: flex;
@@ -1048,6 +1047,7 @@ export class CesiumMapToolbar {
     this.mapTypes.forEach(mapType => {
       const mapTypeItem = document.createElement('div');
       mapTypeItem.style.cssText = `
+        width: 100px;
         position: relative;
         cursor: pointer;
         border-radius: 4px;
@@ -1396,7 +1396,6 @@ export class CesiumMapToolbar {
       }
     }
   }
-
   /**
    * 放大
    */
