@@ -984,12 +984,11 @@ export class CesiumMapToolbar {
     const targetMode = currentMode === Cesium.SceneMode.SCENE3D
       ? Cesium.SceneMode.SCENE2D
       : Cesium.SceneMode.SCENE3D;
-
+    buttonElement.innerHTML = targetMode === Cesium.SceneMode.SCENE3D ? '3D' : '2D';
     // 切换场景模式
     this.viewer.scene.mode = targetMode;
 
     // 更新按钮文本
-    buttonElement.innerHTML = targetMode === Cesium.SceneMode.SCENE3D ? '3D' : '2D';
   }
 
   /**
