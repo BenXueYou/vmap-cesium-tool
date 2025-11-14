@@ -27,6 +27,7 @@ class DrawHelper {
   private currentRectangleEntity: Cesium.Entity | null = null; // 当前正在绘制的矩形实体
   private currentSegmentLabels: Cesium.Entity[] = []; // 当前分段标签实体数组（用于复用）
   private currentTotalLabel: Cesium.Entity | null = null; // 当前总距离标签实体（用于复用）
+  private currentLinePositions: Cesium.Cartesian3[] = []; // 当前线条的位置数组（用于 CallbackProperty）
   // 事件处理器
   private screenSpaceEventHandler: Cesium.ScreenSpaceEventHandler | null = null;
   // 回调函数
@@ -117,6 +118,7 @@ class DrawHelper {
     this.currentRectangleEntity = null;
     this.currentSegmentLabels = [];
     this.currentTotalLabel = null;
+    this.currentLinePositions = [];
 
     this.activateDrawingHandlers();
 
@@ -344,6 +346,7 @@ class DrawHelper {
           this.tempEntities.splice(index, 1);
         }
         this.currentLineEntity = null;
+        this.currentLinePositions = [];
       }
       if (this.currentPolygonEntity) {
         this.entities.remove(this.currentPolygonEntity);
@@ -401,13 +404,30 @@ class DrawHelper {
 
       // 复用或创建线条实体
       if (this.currentLineEntity) {
-        // 更新现有实体的位置
-        this.currentLineEntity.polyline!.positions = new Cesium.ConstantProperty(elevatedPositions);
+        // 更新现有实体的位置 - 直接更新数组内容，避免替换 Property 对象
+        // 使用 CallbackProperty 可以避免频繁替换 Property 导致的闪烁
+        const positionsProperty = this.currentLineEntity.polyline!.positions;
+        if (positionsProperty instanceof Cesium.CallbackProperty) {
+          // 如果已经是 CallbackProperty，直接更新引用的数组
+          this.currentLinePositions.length = 0;
+          this.currentLinePositions.push(...elevatedPositions);
+        } else {
+          // 如果不是 CallbackProperty，创建新的 CallbackProperty
+          this.currentLinePositions = [...elevatedPositions];
+          this.currentLineEntity.polyline!.positions = new Cesium.CallbackProperty(
+            () => this.currentLinePositions,
+            false
+          );
+        }
       } else {
-        // 创建新的线条实体
+        // 创建新的线条实体，使用 CallbackProperty 以便动态更新
+        this.currentLinePositions = [...elevatedPositions];
         activeEntity = this.entities.add({
           polyline: {
-            positions: elevatedPositions,
+            positions: new Cesium.CallbackProperty(
+              () => this.currentLinePositions,
+              false
+            ),
             width: 5,
             material: Cesium.Color.YELLOW,
             clampToGround: this.offsetHeight === 0,
@@ -908,6 +928,7 @@ class DrawHelper {
     this.currentLineEntity = null;
     this.currentSegmentLabels = [];
     this.currentTotalLabel = null;
+    this.currentLinePositions = [];
 
     if (resetMode) {
       this.drawMode = null;
