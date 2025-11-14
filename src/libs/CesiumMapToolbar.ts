@@ -1,12 +1,13 @@
 import * as Cesium from 'cesium';
 import type { Viewer, Cartesian3 } from 'cesium';
 import DrawHelper from './CesiumMapHelper';
-import type { 
-  ButtonConfig, MapType, SearchResult, ToolbarConfig, 
-  SearchCallback, MeasurementCallback, ZoomCallback, CustomButtonConfig 
+import type {
+  ButtonConfig, MapType, SearchResult, ToolbarConfig,
+  SearchCallback, MeasurementCallback, ZoomCallback, CustomButtonConfig
 } from './CesiumMapModel';
 
-import {  TDTMapTypes } from './CesiumMapConfig'
+import { TDTMapTypes } from './CesiumMapConfig'
+import { TD_Map_Search_URL, China_Map_Extent } from '../hooks/useMap';
 import { heightToZoomLevel, zoomLevelToHeight } from '../utils/common';
 import { loadAllAirportNoFlyZones, type AirportNoFlyZone } from '../utils/geojson';
 
@@ -35,6 +36,7 @@ export class CesiumMapToolbar {
   // 禁飞区相关
   private noFlyZoneEntities: Cesium.Entity[] = [];
   private isNoFlyZoneVisible: boolean = false;
+  private isNoFlyZoneChecked: boolean = true;
 
   // 三维地名服务实例
   private currentGeoWTFS: any = null;
@@ -145,8 +147,8 @@ export class CesiumMapToolbar {
       hoverColor: config.hoverColor,
       activeColor: config.activeColor,
       backgroundColor: config.backgroundColor,
-      callback: config?.callback || (() => {})
-    };  
+      callback: config?.callback || (() => { })
+    };
     const buttonElement = this.createButton(buttonConfig);
     this.toolbarElement.appendChild(buttonElement);
 
@@ -325,7 +327,7 @@ export class CesiumMapToolbar {
           borderColor: customButton.borderColor || defaultButton?.borderColor || '',
           borderWidth: customButton.borderWidth || defaultButton?.borderWidth || 1,
           borderStyle: customButton.borderStyle || defaultButton?.borderStyle || 'solid',
-          callback: customButton.callback || defaultButton?.callback || (() => {}),
+          callback: customButton.callback || defaultButton?.callback || (() => { }),
           color: customButton.color || defaultButton?.color || 'rgba(66, 133, 244, 0.4)',
         };
       });
@@ -528,7 +530,7 @@ export class CesiumMapToolbar {
             const isHoveringSearch = searchContainer.matches(':hover');
             const searchInput = searchContainer.querySelector('input') as HTMLInputElement;
             const isInputFocused = searchInput && document.activeElement === searchInput;
-            
+
             // 如果不在搜索框上且输入框未聚焦，则关闭
             if (!isHoveringSearch && !isInputFocused) {
               searchContainer.remove();
@@ -680,7 +682,31 @@ export class CesiumMapToolbar {
           }
         } else {
           // 默认搜索逻辑
-          this.performDefaultSearch(query, resultsContainer);
+          // this.performDefaultSearch(query, resultsContainer);
+          const url = TD_Map_Search_URL(query, China_Map_Extent);
+          const response = await fetch(url, {
+            method: "GET",
+            mode: "cors", // 允许跨域请求
+            credentials: "omit", // 不发送凭证信息
+            headers: {
+              Accept: "application/json",
+            },
+          });
+
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+
+          const data = await response.json();
+          const pois = data?.data?.pois || data?.pois || [];
+          const results = pois.map((location: any) => ({
+            name: location?.name || query,
+            address: location?.address || "",
+            longitude: Number(location?.lonlat.split(",")[0] || 0),
+            latitude: Number(location?.lonlat.split(",")[1] || 0),
+            height: 100,
+          }));
+          this.displaySearchResults(results, resultsContainer);
         }
       }, 300);
     });
@@ -694,7 +720,7 @@ export class CesiumMapToolbar {
         target.closest('.cesium-toolbar-button') !== null ||
         target.closest('.cesium-map-toolbar') !== null
       );
-      
+
       // 如果移到了其他按钮，立即关闭搜索框，让其他按钮的hover事件能正常触发
       if (isMovingToButton) {
         clearTimeout(closeTimeout);
@@ -704,14 +730,14 @@ export class CesiumMapToolbar {
         searchInput.removeEventListener('blur', handleInputBlur);
         return;
       }
-      
+
       closeTimeout = setTimeout(() => {
         // 检查鼠标是否在搜索框、按钮或其他工具栏按钮上
         const isHoveringSearch = searchContainer.matches(':hover');
         const isHoveringButton = buttonElement.matches(':hover');
         const isHoveringToolbar = this.toolbarElement.matches(':hover');
         const isInputFocused = document.activeElement === searchInput;
-        
+
         // 如果不在搜索框、按钮或工具栏上，且输入框未聚焦，则关闭
         if (!isHoveringSearch && !isHoveringButton && !isHoveringToolbar && !isInputFocused) {
           searchContainer.remove();
@@ -735,12 +761,12 @@ export class CesiumMapToolbar {
         const isHoveringButton = buttonElement.matches(':hover');
         const isHoveringToolbar = this.toolbarElement.matches(':hover');
         const isInputFocused = document.activeElement === searchInput;
-        
+
         // 如果输入框重新获得焦点，不关闭
         if (isInputFocused) {
           return;
         }
-        
+
         if (!isHoveringSearch && !isHoveringButton && !isHoveringToolbar) {
           searchContainer.remove();
           searchContainer.removeEventListener('mouseleave', handleSearchContainerLeave);
@@ -840,38 +866,6 @@ export class CesiumMapToolbar {
     if (this.searchCallback?.onSelect) {
       this.searchCallback.onSelect(result);
     }
-  }
-
-  /**
-   * 默认搜索逻辑
-   */
-  private performDefaultSearch(query: string, container: HTMLElement): void {
-    // 模拟搜索结果
-    const mockResults: SearchResult[] = [
-      {
-        name: '人工智能产业园',
-        address: '浙江省杭州市西湖区',
-        longitude: 120.16,
-        latitude: 30.28,
-        height: 100
-      },
-      {
-        name: '人工智能产业园',
-        address: '浙江省杭州市西湖区',
-        longitude: 120.16,
-        latitude: 30.28,
-        height: 100
-      },
-      {
-        name: '人工智能产业园',
-        address: '浙江省杭州市西湖区',
-        longitude: 120.16,
-        latitude: 30.28,
-        height: 100
-      }
-    ];
-
-    this.displaySearchResults(mockResults, container);
   }
 
   /**
@@ -985,53 +979,11 @@ export class CesiumMapToolbar {
       ? Cesium.SceneMode.SCENE2D
       : Cesium.SceneMode.SCENE3D;
 
-    // 保存当前相机状态
-    const currentCameraState = {
-      position: this.viewer.camera.position.clone(),
-      heading: this.viewer.camera.heading,
-      pitch: this.viewer.camera.pitch,
-      roll: this.viewer.camera.roll,
-      cartographic: this.viewer.camera.positionCartographic.clone()
-    };
-
     // 切换场景模式
     this.viewer.scene.mode = targetMode;
 
     // 更新按钮文本
     buttonElement.innerHTML = targetMode === Cesium.SceneMode.SCENE3D ? '3D' : '2D';
-
-    // 等待场景模式切换完成后再恢复相机状态
-    const morphCompleteHandler = () => {
-      // 恢复相机状态
-      if (targetMode === Cesium.SceneMode.SCENE2D) {
-        // 2D模式：保持相同的经纬度和高度
-        this.viewer.camera.setView({
-          destination: Cesium.Cartesian3.fromRadians(
-            currentCameraState.cartographic.longitude,
-            currentCameraState.cartographic.latitude,
-            currentCameraState.cartographic.height
-          ),
-          orientation: {
-            heading: 0,
-            pitch: -Cesium.Math.PI_OVER_TWO,
-            roll: 0
-          }
-        });
-      } else {
-        // 3D模式：恢复原始视角
-        this.viewer.camera.setView({
-          destination: currentCameraState.position,
-          orientation: {
-            heading: currentCameraState.heading,
-            pitch: currentCameraState.pitch,
-            roll: currentCameraState.roll
-          }
-        });
-      }
-      // 移除事件监听器
-      this.viewer.scene.morphComplete.removeEventListener(morphCompleteHandler);
-    };
-    this.viewer.scene.morphComplete.addEventListener(morphCompleteHandler);
   }
 
   /**
@@ -1216,7 +1168,7 @@ export class CesiumMapToolbar {
 
       const checkbox = document.createElement('div');
       // 机场禁飞区默认勾选
-      const isDefaultChecked = option.id === 'airport';
+      const isDefaultChecked = this.isNoFlyZoneChecked;
       checkbox.style.cssText = `
         width: 18px;
         height: 18px;
@@ -1227,7 +1179,7 @@ export class CesiumMapToolbar {
         align-items: center;
         justify-content: center;
       `;
-      
+
       // 如果是默认勾选，设置勾选标记
       if (isDefaultChecked) {
         checkbox.innerHTML = '✓';
@@ -1265,7 +1217,8 @@ export class CesiumMapToolbar {
 
       overlayItem.addEventListener('click', () => {
         // 切换复选框状态（可以根据需要实现具体的图层逻辑）
-        const isChecked = checkbox.style.background === '#023C61' || checkbox.style.background === 'rgb(2, 60, 97)';
+        // const isChecked = checkbox.style.background === '#023C61' || checkbox.style.background === 'rgb(2, 60, 97)';
+        const isChecked = this.isNoFlyZoneChecked;
         if (isChecked) {
           checkbox.style.background = 'transparent';
           checkbox.innerHTML = '';
@@ -1277,6 +1230,7 @@ export class CesiumMapToolbar {
           checkbox.style.fontSize = '12px';
         }
         // 传递新的状态（取反，因为点击后状态会改变）和 toolbar 实例
+        this.isNoFlyZoneChecked = !this.isNoFlyZoneChecked;
         callback?.(!isChecked, this);
       });
 
@@ -1364,7 +1318,7 @@ export class CesiumMapToolbar {
     layers.forEach((layer) => {
       this.viewer.imageryLayers.addImageryProvider(layer);
     });
-    
+
     this.currentMapType = mapTypeId;
 
     // 如果是三维地图类型，初始化三维地名服务
@@ -1428,13 +1382,13 @@ export class CesiumMapToolbar {
     try {
       const clampedLevel = Math.max(1, Math.min(18, zoomLevel));
       const targetHeight = zoomLevelToHeight(clampedLevel);
-      
+
       // 验证目标高度是否有效
       if (!isFinite(targetHeight) || isNaN(targetHeight) || targetHeight <= 0) {
         console.warn(`无效的目标高度: ${targetHeight}，使用默认层级 ${clampedLevel}`);
         return;
       }
-      
+
       // 获取当前相机位置，如果获取失败则使用默认值
       let currentPosition: Cesium.Cartographic;
       try {
@@ -1449,7 +1403,7 @@ export class CesiumMapToolbar {
         console.warn('获取当前相机位置失败，使用默认位置', error);
         currentPosition = Cesium.Cartographic.fromDegrees(120.2052342, 30.2489634);
       }
-      
+
       // 设置新的相机高度，保持经纬度不变
       this.viewer.camera.setView({
         destination: Cesium.Cartesian3.fromRadians(
@@ -1488,16 +1442,16 @@ export class CesiumMapToolbar {
   private zoomIn(): void {
     const currentLevel = this.getCurrentZoomLevel();
     const beforeHeight = this.viewer.camera.positionCartographic.height;
-    
+
     // 如果已经是最大层级（18），不执行操作
     if (currentLevel >= 18) {
       return;
     }
-    
+
     // 增加层级（放大，高度减小）
     const targetLevel = currentLevel + 1;
     this.setZoomLevel(targetLevel);
-    
+
     const afterHeight = this.viewer.camera.positionCartographic.height;
 
     if (this.zoomCallback?.onZoomIn) {
@@ -1511,16 +1465,16 @@ export class CesiumMapToolbar {
   private zoomOut(): void {
     const currentLevel = this.getCurrentZoomLevel();
     const beforeHeight = this.viewer.camera.positionCartographic.height;
-    
+
     // 如果已经是最小层级（1），不执行操作
     if (currentLevel <= 1) {
       return;
     }
-    
+
     // 减少层级（缩小，高度增大）
     const targetLevel = currentLevel - 1;
     this.setZoomLevel(targetLevel);
-    
+
     const afterHeight = this.viewer.camera.positionCartographic.height;
 
     if (this.zoomCallback?.onZoomOut) {
@@ -1598,14 +1552,14 @@ export class CesiumMapToolbar {
     try {
       // 加载所有机场禁飞区数据
       const noFlyZones = await loadAllAirportNoFlyZones();
-      
+
       // 清除之前的实体（如果有）
       this.hideNoFlyZones();
 
       // 为每个禁飞区创建实体
       noFlyZones.forEach((zone) => {
         const coordinates = zone.feature.geometry.coordinates[0]; // 获取外环坐标
-        
+
         // 将 GeoJSON 坐标转换为 Cesium Cartesian3 数组
         const positions = coordinates.map((coord: number[]) => {
           const [longitude, latitude] = coord;
@@ -1676,7 +1630,7 @@ export class CesiumMapToolbar {
     // 检查机场禁飞区是否默认勾选
     // 在 toggleLayers 方法中，airport 选项默认是勾选的
     const isDefaultChecked = true; // 机场禁飞区默认勾选
-    
+
     if (isDefaultChecked && !this.isNoFlyZoneVisible) {
       // 延迟加载，避免阻塞工具栏创建
       setTimeout(() => {
@@ -1693,7 +1647,7 @@ export class CesiumMapToolbar {
   destroy(): void {
     // 清理禁飞区实体
     this.hideNoFlyZones();
-    
+
     // 清理三维地名服务实例
     if (this.currentGeoWTFS) {
       try {
@@ -1707,7 +1661,7 @@ export class CesiumMapToolbar {
       }
       this.currentGeoWTFS = null;
     }
-    
+
     if (this.toolbarElement && this.toolbarElement.parentNode) {
       this.toolbarElement.parentNode.removeChild(this.toolbarElement);
     }
