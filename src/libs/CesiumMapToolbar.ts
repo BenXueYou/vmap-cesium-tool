@@ -37,6 +37,7 @@ export class CesiumMapToolbar {
   private noFlyZoneEntities: Cesium.Entity[] = [];
   private isNoFlyZoneVisible: boolean = false;
   private isNoFlyZoneChecked: boolean = true;
+  private readonly noFlyZoneExtrudedHeight = 100;
 
   // 三维地名服务实例
   private currentGeoWTFS: any = null;
@@ -81,6 +82,11 @@ export class CesiumMapToolbar {
 
     // 自动加载禁飞区（如果默认勾选）
     this.autoLoadNoFlyZones();
+
+    // 监听场景模式变化，保持禁飞区在2D/3D下显示一致
+    this.viewer.scene.morphComplete.addEventListener(() => {
+      this.updateNoFlyZoneEntitiesForMode();
+    });
   }
 
   public setMapTypes(mapTypes: MapType[]): void {
@@ -1569,17 +1575,10 @@ export class CesiumMapToolbar {
         // 创建多边形实体
         const entity = this.viewer.entities.add({
           name: zone.name,
-          polygon: {
-            hierarchy: new Cesium.PolygonHierarchy(positions),
-            material: Cesium.Color.RED.withAlpha(0.3), // 红色半透明填充
-            outline: true,
-            outlineColor: Cesium.Color.RED,
-            outlineWidth: 2,
-            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-            extrudedHeight: 0,
-          },
+          polygon: this.createNoFlyZonePolygonOptions(positions),
           description: `机场禁飞区: ${zone.name}`,
         });
+        (entity as any).disableDepthTestDistance = Number.POSITIVE_INFINITY;
 
         this.noFlyZoneEntities.push(entity);
       });
@@ -1601,6 +1600,59 @@ export class CesiumMapToolbar {
     });
     this.noFlyZoneEntities = [];
     this.isNoFlyZoneVisible = false;
+  }
+
+  /**
+   * 根据当前场景模式配置禁飞区多边形
+   */
+  private createNoFlyZonePolygonOptions(
+    positions: Cartesian3[]
+  ): Cesium.PolygonGraphics.ConstructorOptions {
+    const is3DMode = this.viewer.scene.mode === Cesium.SceneMode.SCENE3D;
+
+    return {
+      hierarchy: new Cesium.PolygonHierarchy(positions),
+      material: Cesium.Color.RED.withAlpha(0.3),
+      outline: true,
+      outlineColor: Cesium.Color.RED,
+      outlineWidth: 2,
+      perPositionHeight: is3DMode,
+      closeTop: true,
+      closeBottom: true,
+      classificationType: Cesium.ClassificationType.BOTH,
+      heightReference: is3DMode
+        ? Cesium.HeightReference.NONE
+        : Cesium.HeightReference.CLAMP_TO_GROUND,
+      height: is3DMode ? 0 : undefined,
+      extrudedHeight: is3DMode ? this.noFlyZoneExtrudedHeight : undefined,
+    };
+  }
+
+  /**
+   * 根据当前场景模式更新禁飞区渲染
+   */
+  private updateNoFlyZoneEntitiesForMode(): void {
+    if (!this.noFlyZoneEntities.length) return;
+    const is3DMode = this.viewer.scene.mode === Cesium.SceneMode.SCENE3D;
+
+    this.noFlyZoneEntities.forEach((entity) => {
+      const polygon = entity.polygon;
+      if (!polygon) return;
+
+      polygon.perPositionHeight = new Cesium.ConstantProperty(is3DMode);
+      polygon.heightReference = new Cesium.ConstantProperty(
+        is3DMode ? Cesium.HeightReference.NONE : Cesium.HeightReference.CLAMP_TO_GROUND
+      );
+      polygon.height = is3DMode ? new Cesium.ConstantProperty(0) : undefined;
+      polygon.extrudedHeight = is3DMode
+        ? new Cesium.ConstantProperty(this.noFlyZoneExtrudedHeight)
+        : undefined;
+      polygon.closeTop = new Cesium.ConstantProperty(true);
+      polygon.closeBottom = new Cesium.ConstantProperty(true);
+      polygon.classificationType = new Cesium.ConstantProperty(
+        Cesium.ClassificationType.BOTH
+      );
+    });
   }
 
   /**
