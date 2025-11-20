@@ -109,6 +109,8 @@ export interface InitOptions {
   terrainShadows?: any; // Cesium.ShadowMode
   contextOptions?: any; // Cesium.ContextOptions
   scene3DOnly?: boolean;
+  isFlyTo?: boolean;
+  isFly?: boolean;
   selectionIndicator?: boolean;
   navigationHelpButton?: boolean;
   fullscreenButton?: boolean;

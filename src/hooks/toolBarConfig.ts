@@ -146,7 +146,6 @@ export const useToolBarConfig = (message: any) => {
           console.error('搜索失败:', err)
           return []
         }
-        return [] as SearchResult[];
       },
       onSelect: (result: SearchResult) => {
         message.value = `已定位到: ${result.name}`;

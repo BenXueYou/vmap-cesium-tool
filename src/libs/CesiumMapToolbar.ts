@@ -37,7 +37,7 @@ export class CesiumMapToolbar {
   private noFlyZoneEntities: Cesium.Entity[] = [];
   private isNoFlyZoneVisible: boolean = false;
   private isNoFlyZoneChecked: boolean = true;
-  private readonly noFlyZoneExtrudedHeight = 100;
+  private readonly noFlyZoneExtrudedHeight = 500;
 
   // 三维地名服务实例
   private currentGeoWTFS: any = null;
@@ -1246,7 +1246,7 @@ export class CesiumMapToolbar {
 
     // 注意：禁飞区已经在创建 toolbar 后自动加载，这里不需要重复加载
     // 如果禁飞区尚未加载，说明自动加载可能失败了，可以在这里尝试加载
-    if (!this.isNoFlyZoneVisible) {
+    if (!this.isNoFlyZoneVisible  && this.isNoFlyZoneChecked) {
       // 延迟加载，避免阻塞菜单显示
       setTimeout(() => {
         this.showNoFlyZones().catch((error) => {
@@ -1608,8 +1608,7 @@ export class CesiumMapToolbar {
   private async autoLoadNoFlyZones(): Promise<void> {
     // 检查机场禁飞区是否默认勾选
     // 在 toggleLayers 方法中，airport 选项默认是勾选的
-    const isDefaultChecked = true; // 机场禁飞区默认勾选
-
+    const isDefaultChecked = this.isNoFlyZoneChecked; // 机场禁飞区默认勾选
     if (isDefaultChecked && !this.isNoFlyZoneVisible) {
       // 延迟加载，避免阻塞工具栏创建
       setTimeout(() => {
