@@ -41,7 +41,8 @@ interface InitOptions {
   terrainExaggeration?: number // 地形夸张系数
   maximumScreenSpaceError?: number // 最大屏幕空间误差
   maximumNumberOfLoadedTiles?: number // 最大加载瓦片数量
-  token?: string // 访问令牌
+  token?: string, // 访问令牌
+  cesiumToken?: string // 访问令牌
 }
 
 interface MapCenter {
@@ -58,7 +59,7 @@ export async function initCesium(
   mapCenter: MapCenter = { longitude: 120.2052342, latitude: 30.2489634, height: 1000, pitch: -45, heading: 0 },
   defaultAccessToken = (import.meta as any).env.VITE_CESIUM_TOKEN
 ): Promise<{ viewer: CesiumViewer; initialCenter: MapCenter }> {
-  Ion.defaultAccessToken = defaultAccessToken
+  Ion.defaultAccessToken = options.cesiumToken || defaultAccessToken
   const viewer = new Viewer(containerId, {
     animation: false, // 禁用动画
     baseLayerPicker: false, // 禁用基础图层选择器

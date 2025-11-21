@@ -101,6 +101,7 @@ export interface MapCenter {
 // 初始化选项接口
 export interface InitOptions {
   token?: string;
+  cesiumToken?: string;
   terrain?: any; // Cesium.Terrain
   terrainProvider?: any; // Cesium.TerrainProvider
   mapType?: string;
@@ -206,7 +207,7 @@ export declare function initCesium(
   containerId: string,
   options: InitOptions,
   mapCenter?: MapCenter,
-  cesiumtToken?: string
+  cesiumToken?: String
 ): Promise<{ viewer: Viewer; initialCenter: MapCenter }>;
 
 // 默认导出
