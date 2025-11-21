@@ -55,9 +55,10 @@ interface MapCenter {
 export async function initCesium(
   containerId: string,
   options: InitOptions,
-  mapCenter: MapCenter = { longitude: 120.2052342, latitude: 30.2489634, height: 1000, pitch: -45, heading: 0 }
+  mapCenter: MapCenter = { longitude: 120.2052342, latitude: 30.2489634, height: 1000, pitch: -45, heading: 0 },
+  defaultAccessToken = (import.meta as any).env.VITE_CESIUM_TOKEN
 ): Promise<{ viewer: CesiumViewer; initialCenter: MapCenter }> {
-  Ion.defaultAccessToken = (import.meta as any).env.VITE_CESIUM_TOKEN
+  Ion.defaultAccessToken = defaultAccessToken
   const viewer = new Viewer(containerId, {
     animation: false, // 禁用动画
     baseLayerPicker: false, // 禁用基础图层选择器

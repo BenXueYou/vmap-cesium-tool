@@ -205,7 +205,8 @@ export declare class DrawHelper {
 export declare function initCesium(
   containerId: string,
   options: InitOptions,
-  mapCenter?: MapCenter
+  mapCenter?: MapCenter,
+  cesiumtToken?: string
 ): Promise<{ viewer: Viewer; initialCenter: MapCenter }>;
 
 // 默认导出
