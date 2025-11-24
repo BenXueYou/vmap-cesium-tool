@@ -983,7 +983,8 @@ export class CesiumMapToolbar {
       ? Cesium.SceneMode.SCENE2D
       : Cesium.SceneMode.SCENE3D;
     buttonElement.innerHTML = targetMode === Cesium.SceneMode.SCENE3D ? '3D' : '2D';
-    // 计算当前屏幕中心对应的地面经纬度和当前高度，作为切换后的对齐目标
+
+    // 计算当前屏幕中心对应的地面经纬度，作为切换后的对齐目标（如果能成功拾取）
     const canvas = scene.canvas;
     const centerWindowPos = new Cesium.Cartesian2(
       canvas.clientWidth / 2,
@@ -997,16 +998,6 @@ export class CesiumMapToolbar {
       if (Cesium.defined(pickPos)) {
         centerCartographic = Cesium.Cartographic.fromCartesian(pickPos as Cesium.Cartesian3);
       }
-    }
-
-    // 兜底：如果 pick 失败，则使用当前相机的经纬度
-    if (!centerCartographic) {
-      const camCarto = camera.positionCartographic;
-      centerCartographic = new Cesium.Cartographic(
-        camCarto.longitude,
-        camCarto.latitude,
-        0
-      );
     }
 
     const currentHeight = camera.positionCartographic.height;
@@ -1023,30 +1014,32 @@ export class CesiumMapToolbar {
       anyHelper.handleSceneModeChanged();
     }
 
-    // 在新模式下，将相机对准同一经纬度
-    const lon = centerCartographic.longitude;
-    const lat = centerCartographic.latitude;
+    // 只有在成功拾取到屏幕中心地面点时，才在新模式下重设相机视角
+    if (centerCartographic) {
+      const lon = centerCartographic.longitude;
+      const lat = centerCartographic.latitude;
 
-    if (targetMode === Cesium.SceneMode.SCENE2D) {
-      // 2D：以俯视方式查看同一中心点
-      camera.setView({
-        destination: Cesium.Cartesian3.fromRadians(lon, lat, currentHeight),
-        orientation: {
-          heading: 0.0,
-          pitch: -Math.PI / 2,
-          roll: 0.0,
-        },
-      });
-    } else {
-      // 3D：保持类似高度，同时尽量保持原有朝向
-      camera.setView({
-        destination: Cesium.Cartesian3.fromRadians(lon, lat, currentHeight),
-        orientation: {
-          heading: savedHeading,
-          pitch: savedPitch,
-          roll: savedRoll,
-        },
-      });
+      if (targetMode === Cesium.SceneMode.SCENE2D) {
+        // 2D：以俯视方式查看同一中心点
+        camera.setView({
+          destination: Cesium.Cartesian3.fromRadians(lon, lat, currentHeight),
+          orientation: {
+            heading: 0.0,
+            pitch: -Math.PI / 2,
+            roll: 0.0,
+          },
+        });
+      } else {
+        // 3D：保持类似高度，同时尽量保持原有朝向
+        camera.setView({
+          destination: Cesium.Cartesian3.fromRadians(lon, lat, currentHeight),
+          orientation: {
+            heading: savedHeading,
+            pitch: savedPitch,
+            roll: savedRoll,
+          },
+        });
+      }
     }
 
     // 更新按钮文本

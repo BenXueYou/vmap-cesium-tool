@@ -219,17 +219,33 @@ class DrawHelper {
     // 首先尝试从地形拾取
     const ray = this.viewer.camera.getPickRay(windowPosition);
     if (ray) {
-      const position = this.scene.globe.pick(ray, this.scene);
+      const position = this.scene.globe.pick(ray, this.scene) as Cesium.Cartesian3 | undefined;
       if (Cesium.defined(position)) {
-        return position;
+        // 防御性检查：确保拾取到的位置不包含 NaN/Infinity
+        if (
+          Number.isFinite(position.x) &&
+          Number.isFinite(position.y) &&
+          Number.isFinite(position.z)
+        ) {
+          return position;
+        }
       }
     }
     // 如果地形拾取失败，回退到椭球体拾取
     const ellipsoidPosition = this.viewer.camera.pickEllipsoid(
       windowPosition,
       this.scene.globe.ellipsoid
-    );
-    return ellipsoidPosition ?? null;
+    ) as Cesium.Cartesian3 | undefined;
+    if (ellipsoidPosition) {
+      if (
+        Number.isFinite(ellipsoidPosition.x) &&
+        Number.isFinite(ellipsoidPosition.y) &&
+        Number.isFinite(ellipsoidPosition.z)
+      ) {
+        return ellipsoidPosition;
+      }
+    }
+    return null;
   }
 
   /**
@@ -527,7 +543,12 @@ class DrawHelper {
               billboard: {
                 image: segmentImage,
                 pixelOffset: new Cesium.ConstantProperty(new Cesium.Cartesian2(0, labelOffset)),
-                heightReference: new Cesium.ConstantProperty(Cesium.HeightReference.RELATIVE_TO_GROUND),
+                // 3D 使用 RELATIVE_TO_GROUND，2D 关闭贴地以保证可见
+                heightReference: new Cesium.ConstantProperty(
+                  this.offsetHeight > 0
+                    ? Cesium.HeightReference.RELATIVE_TO_GROUND
+                    : Cesium.HeightReference.NONE
+                ),
                 verticalOrigin: new Cesium.ConstantProperty(Cesium.VerticalOrigin.CENTER),
                 horizontalOrigin: new Cesium.ConstantProperty(Cesium.HorizontalOrigin.CENTER),
                 scale: new Cesium.ConstantProperty(1.0),
@@ -603,7 +624,11 @@ class DrawHelper {
             billboard: {
               image,
               pixelOffset: new Cesium.ConstantProperty(new Cesium.Cartesian2(0, -35)),
-              heightReference: new Cesium.ConstantProperty(Cesium.HeightReference.RELATIVE_TO_GROUND),
+              heightReference: new Cesium.ConstantProperty(
+                this.offsetHeight > 0
+                  ? Cesium.HeightReference.RELATIVE_TO_GROUND
+                  : Cesium.HeightReference.NONE
+              ),
               verticalOrigin: new Cesium.ConstantProperty(Cesium.VerticalOrigin.BOTTOM),
               horizontalOrigin: new Cesium.ConstantProperty(Cesium.HorizontalOrigin.CENTER),
               scale: new Cesium.ConstantProperty(1.0),
@@ -849,7 +874,11 @@ class DrawHelper {
           billboard: {
             image: areaImage,
             pixelOffset: new Cesium.ConstantProperty(new Cesium.Cartesian2(0, -25)),
-            heightReference: new Cesium.ConstantProperty(Cesium.HeightReference.RELATIVE_TO_GROUND),
+            heightReference: new Cesium.ConstantProperty(
+              this.offsetHeight > 0
+                ? Cesium.HeightReference.RELATIVE_TO_GROUND
+                : Cesium.HeightReference.NONE
+            ),
             verticalOrigin: new Cesium.ConstantProperty(Cesium.VerticalOrigin.BOTTOM),
             horizontalOrigin: new Cesium.ConstantProperty(Cesium.HorizontalOrigin.CENTER),
             scale: new Cesium.ConstantProperty(1.0),
@@ -916,7 +945,11 @@ class DrawHelper {
           billboard: {
             image: areaImage,
             pixelOffset: new Cesium.ConstantProperty(new Cesium.Cartesian2(0, -25)),
-            heightReference: new Cesium.ConstantProperty(Cesium.HeightReference.RELATIVE_TO_GROUND),
+            heightReference: new Cesium.ConstantProperty(
+              this.offsetHeight > 0
+                ? Cesium.HeightReference.RELATIVE_TO_GROUND
+                : Cesium.HeightReference.NONE
+            ),
             verticalOrigin: new Cesium.ConstantProperty(Cesium.VerticalOrigin.BOTTOM),
             horizontalOrigin: new Cesium.ConstantProperty(Cesium.HorizontalOrigin.CENTER),
             scale: new Cesium.ConstantProperty(1.0),
@@ -1394,8 +1427,18 @@ class DrawHelper {
       
       if (entity.polyline) {
         // 更新线条：使用保存的原始地面位置
-        const groundPositions = (entity as any)._groundPositions as Cesium.Cartesian3[] | undefined;
-        if (groundPositions && groundPositions.length > 0) {
+        const rawGroundPositions = (entity as any)._groundPositions as Cesium.Cartesian3[] | undefined;
+        if (rawGroundPositions && rawGroundPositions.length > 0) {
+          // 过滤掉包含 NaN/Infinity 的无效点
+          const groundPositions = rawGroundPositions.filter((pos) =>
+            pos &&
+            Number.isFinite(pos.x) &&
+            Number.isFinite(pos.y) &&
+            Number.isFinite(pos.z)
+          );
+          if (groundPositions.length === 0) {
+            return;
+          }
           if (is3DMode) {
             // 切换到3D模式：抬高位置，取消贴地
             const elevatedPositions = groundPositions.map(pos => {
@@ -1416,8 +1459,17 @@ class DrawHelper {
         }
       } else if (entity.polygon) {
         // 更新多边形：使用保存的原始地面位置
-        const groundPositions = (entity as any)._groundPositions as Cesium.Cartesian3[] | undefined;
-        if (groundPositions && groundPositions.length > 0) {
+        const rawGroundPositions = (entity as any)._groundPositions as Cesium.Cartesian3[] | undefined;
+        if (rawGroundPositions && rawGroundPositions.length > 0) {
+          const groundPositions = rawGroundPositions.filter((pos) =>
+            pos &&
+            Number.isFinite(pos.x) &&
+            Number.isFinite(pos.y) &&
+            Number.isFinite(pos.z)
+          );
+          if (groundPositions.length === 0) {
+            return;
+          }
           if (is3DMode) {
             // 切换到3D模式：抬高位置
             const elevatedPositions = groundPositions.map(pos => {
