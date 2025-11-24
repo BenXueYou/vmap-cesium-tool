@@ -976,13 +976,78 @@ export class CesiumMapToolbar {
    * 切换2D/3D视图
    */
   private toggle2D3D(buttonElement: HTMLElement): void {
-    const currentMode = this.viewer.scene.mode;
+    const scene = this.viewer.scene;
+    const camera = scene.camera;
+    const currentMode = scene.mode;
     const targetMode = currentMode === Cesium.SceneMode.SCENE3D
       ? Cesium.SceneMode.SCENE2D
       : Cesium.SceneMode.SCENE3D;
     buttonElement.innerHTML = targetMode === Cesium.SceneMode.SCENE3D ? '3D' : '2D';
-    // 切换场景模式
-    this.viewer.scene.mode = targetMode;
+    // 计算当前屏幕中心对应的地面经纬度和当前高度，作为切换后的对齐目标
+    const canvas = scene.canvas;
+    const centerWindowPos = new Cesium.Cartesian2(
+      canvas.clientWidth / 2,
+      canvas.clientHeight / 2
+    );
+
+    let centerCartographic: Cesium.Cartographic | null = null;
+    const pickRay = camera.getPickRay(centerWindowPos);
+    if (pickRay) {
+      const pickPos = scene.globe.pick(pickRay, scene);
+      if (Cesium.defined(pickPos)) {
+        centerCartographic = Cesium.Cartographic.fromCartesian(pickPos as Cesium.Cartesian3);
+      }
+    }
+
+    // 兜底：如果 pick 失败，则使用当前相机的经纬度
+    if (!centerCartographic) {
+      const camCarto = camera.positionCartographic;
+      centerCartographic = new Cesium.Cartographic(
+        camCarto.longitude,
+        camCarto.latitude,
+        0
+      );
+    }
+
+    const currentHeight = camera.positionCartographic.height;
+    const savedHeading = camera.heading;
+    const savedPitch = camera.pitch;
+    const savedRoll = camera.roll;
+
+    // 先直接切换场景模式（无动画），避免 Cesium 内部 morph 造成视角闪动
+    scene.mode = targetMode;
+
+    // 通知 DrawHelper：场景模式已变化，需要更新偏移和已完成实体
+    const anyHelper = this.drawHelper as any;
+    if (anyHelper && typeof anyHelper.handleSceneModeChanged === 'function') {
+      anyHelper.handleSceneModeChanged();
+    }
+
+    // 在新模式下，将相机对准同一经纬度
+    const lon = centerCartographic.longitude;
+    const lat = centerCartographic.latitude;
+
+    if (targetMode === Cesium.SceneMode.SCENE2D) {
+      // 2D：以俯视方式查看同一中心点
+      camera.setView({
+        destination: Cesium.Cartesian3.fromRadians(lon, lat, currentHeight),
+        orientation: {
+          heading: 0.0,
+          pitch: -Math.PI / 2,
+          roll: 0.0,
+        },
+      });
+    } else {
+      // 3D：保持类似高度，同时尽量保持原有朝向
+      camera.setView({
+        destination: Cesium.Cartesian3.fromRadians(lon, lat, currentHeight),
+        orientation: {
+          heading: savedHeading,
+          pitch: savedPitch,
+          roll: savedRoll,
+        },
+      });
+    }
 
     // 更新按钮文本
   }

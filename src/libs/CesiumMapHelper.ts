@@ -48,6 +48,7 @@ class DrawHelper {
     if (!viewer || !(viewer instanceof Cesium.Viewer)) {
       throw new Error("Invalid Cesium Viewer instance provided.");
     }
+
     this.viewer = viewer;
     this.scene = viewer.scene;
     this.entities = viewer.entities;
@@ -55,18 +56,24 @@ class DrawHelper {
     // 根据地图模式设置偏移高度
     this.updateOffsetHeight();
     
-    // 监听场景模式变化
+    // 监听场景模式变化（保留，以兼容可能存在的 morphTo2D/3D 调用）
     this.scene.morphComplete.addEventListener(() => {
-      const oldOffsetHeight = this.offsetHeight;
-      this.updateOffsetHeight();
-      // 如果偏移高度发生变化，更新所有已完成实体
-      if (oldOffsetHeight !== this.offsetHeight) {
-        this.updateFinishedEntitiesForModeChange();
-      }
+      this.handleSceneModeChanged();
     });
 
     // 确保启用地形深度测试以获得正确的高度
     this.scene.globe.depthTestAgainstTerrain = true;
+  }
+
+  /**
+   * 外部调用：在场景模式（2D/3D）切换后，更新偏移高度并重算已完成实体
+   */
+  public handleSceneModeChanged(): void {
+    const oldOffsetHeight = this.offsetHeight;
+    this.updateOffsetHeight();
+    if (oldOffsetHeight !== this.offsetHeight) {
+      this.updateFinishedEntitiesForModeChange();
+    }
   }
 
   /**
@@ -473,15 +480,23 @@ class DrawHelper {
             endPos,
             new Cesium.Cartesian3()
           );
-          
+
+          // 保存未加偏移的地面位置，用于 2D/3D 切换时复原
+          let groundMidPoint = midPoint;
+          const midCarto = Cesium.Cartographic.fromCartesian(midPoint);
+          groundMidPoint = Cesium.Cartesian3.fromRadians(
+            midCarto.longitude,
+            midCarto.latitude,
+            midCarto.height || 0
+          );
+
           // 计算抬高的中点位置（如果需要）
           let elevatedMidPoint = midPoint;
           if (this.offsetHeight > 0) {
-            const carto = Cesium.Cartographic.fromCartesian(midPoint);
             elevatedMidPoint = Cesium.Cartesian3.fromRadians(
-              carto.longitude,
-              carto.latitude,
-              (carto.height || 0) + this.offsetHeight
+              midCarto.longitude,
+              midCarto.latitude,
+              (midCarto.height || 0) + this.offsetHeight
             );
           }
           
@@ -493,6 +508,9 @@ class DrawHelper {
             const segEntity = this.currentSegmentLabels[i];
             segEntity.position = new Cesium.ConstantPositionProperty(elevatedMidPoint);
             segEntity.billboard!.pixelOffset = new Cesium.ConstantProperty(new Cesium.Cartesian2(0, labelOffset));
+
+            // 每次更新都同步 groundPosition，确保 2D/3D 切换时位置基于最新的中点
+            (segEntity as any)._groundPosition = groundMidPoint;
 
             // 仅当文本变化时才重建 Canvas，避免频繁纹理更新导致闪烁
             const lastText = (segEntity as any)._segmentText as string | undefined;
@@ -517,6 +535,7 @@ class DrawHelper {
               },
             });
             (segBillboardEntity as any)._segmentText = segmentText;
+            (segBillboardEntity as any)._groundPosition = groundMidPoint;
             this.currentSegmentLabels.push(segBillboardEntity);
             this.tempLabelEntities.push(segBillboardEntity);
           }
@@ -548,13 +567,23 @@ class DrawHelper {
         }
         
         // 计算标签位置
-        let labelPosition = this.tempPositions[this.tempPositions.length - 1];
+        const lastPos = this.tempPositions[this.tempPositions.length - 1];
+        const lastCarto = Cesium.Cartographic.fromCartesian(lastPos);
+
+        // groundPosition：未加偏移的地面位置，用于 2D/3D 切换时复原
+        const groundLabelPosition = Cesium.Cartesian3.fromRadians(
+          lastCarto.longitude,
+          lastCarto.latitude,
+          lastCarto.height || 0
+        );
+
+        // 显示用位置：根据当前 offsetHeight 决定是否抬高
+        let labelPosition = groundLabelPosition;
         if (this.offsetHeight > 0) {
-          const carto = Cesium.Cartographic.fromCartesian(labelPosition);
           labelPosition = Cesium.Cartesian3.fromRadians(
-            carto.longitude,
-            carto.latitude,
-            (carto.height || 0) + this.offsetHeight
+            lastCarto.longitude,
+            lastCarto.latitude,
+            (lastCarto.height || 0) + this.offsetHeight
           );
         }
         const formattedDistance = this.formatDistance(totalDistance);
@@ -565,6 +594,8 @@ class DrawHelper {
           // 更新现有总距离 billboard
           this.currentTotalLabel.position = new Cesium.ConstantPositionProperty(labelPosition);
           this.currentTotalLabel.billboard.image = new Cesium.ConstantProperty(image);
+          // 每次更新都同步 groundPosition，确保 2D/3D 切换时位置基于最新的最后一个点
+          (this.currentTotalLabel as any)._groundPosition = groundLabelPosition;
         } else {
           // 创建新的总距离 billboard
           const totalBillboardEntity = this.entities.add({
@@ -580,6 +611,7 @@ class DrawHelper {
             },
           });
           this.currentTotalLabel = totalBillboardEntity;
+          (this.currentTotalLabel as any)._groundPosition = groundLabelPosition;
           this.tempLabelEntities.push(totalBillboardEntity);
         }
       } else {
@@ -632,7 +664,7 @@ class DrawHelper {
               ),
               material: Cesium.Color.LIGHTGREEN.withAlpha(0.3), // 淡绿色填充
               outline: true,
-              outlineColor: Cesium.Color.GREEN,
+              outlineColor: Cesium.Color.DARKGREEN, // 深绿色边框
               outlineWidth: 2,
               heightReference,
             },
@@ -763,7 +795,7 @@ class DrawHelper {
             hierarchy: new Cesium.PolygonHierarchy(elevatedPositions),
             material: Cesium.Color.LIGHTGREEN.withAlpha(0.3), // 淡绿色填充
             outline: true,
-            outlineColor: Cesium.Color.GREEN,
+            outlineColor: Cesium.Color.DARKGREEN, // 深绿色边框
             outlineWidth: 2,
             heightReference: Cesium.HeightReference.NONE,
           },
@@ -778,7 +810,7 @@ class DrawHelper {
             hierarchy: new Cesium.PolygonHierarchy(groundPositions),
             material: Cesium.Color.LIGHTGREEN.withAlpha(0.3), // 淡绿色填充
             outline: true,
-            outlineColor: Cesium.Color.GREEN,
+            outlineColor: Cesium.Color.DARKGREEN, // 深绿色边框
             outlineWidth: 2,
             heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
           },
@@ -786,25 +818,46 @@ class DrawHelper {
         // 保存原始地面位置
         (finalEntity as any)._groundPositions = groundPositions;
       }
-      // 添加面积标签
+      // 添加面积标签（使用 billboard+canvas，与测距样式保持一致）
       const area = this.calculatePolygonArea(groundPositions);
       if (area > 0) {
         const center = this.calculatePolygonCenter(groundPositions);
+
+        // groundCenter：未加偏移的地面中心位置
+        const centerCarto = Cesium.Cartographic.fromCartesian(center);
+        const groundCenter = Cesium.Cartesian3.fromRadians(
+          centerCarto.longitude,
+          centerCarto.latitude,
+          centerCarto.height || 0
+        );
+
+        // 显示用位置：根据 offsetHeight 决定是否抬高
+        let displayCenter = groundCenter;
+        if (this.offsetHeight > 0) {
+          displayCenter = Cesium.Cartesian3.fromRadians(
+            centerCarto.longitude,
+            centerCarto.latitude,
+            (centerCarto.height || 0) + this.offsetHeight
+          );
+        }
+
+        const areaText = `面积: ${this.formatArea(area)}`;
+        const areaImage = this.createTotalLengthBillboardImage(areaText);
+
         const areaLabelEntity = this.entities.add({
-          position: center,
-          label: {
-            text: `面积: ${this.formatArea(area)}`,
-            font: "14px sans-serif",
-            fillColor: Cesium.Color.WHITE,
-            outlineColor: Cesium.Color.BLACK,
-            outlineWidth: 2,
-            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-            pixelOffset: new Cesium.Cartesian2(0, -20),
-            heightReference: this.offsetHeight > 0 ? Cesium.HeightReference.RELATIVE_TO_GROUND : Cesium.HeightReference.CLAMP_TO_GROUND,
+          position: displayCenter,
+          billboard: {
+            image: areaImage,
+            pixelOffset: new Cesium.ConstantProperty(new Cesium.Cartesian2(0, -25)),
+            heightReference: new Cesium.ConstantProperty(Cesium.HeightReference.RELATIVE_TO_GROUND),
+            verticalOrigin: new Cesium.ConstantProperty(Cesium.VerticalOrigin.BOTTOM),
+            horizontalOrigin: new Cesium.ConstantProperty(Cesium.HorizontalOrigin.CENTER),
+            scale: new Cesium.ConstantProperty(1.0),
+            disableDepthTestDistance: new Cesium.ConstantProperty(Number.POSITIVE_INFINITY),
           },
         });
-        // 保存原始地面位置
-        (areaLabelEntity as any)._groundPosition = center;
+        // 保存原始地面位置，供 2D/3D 切换时复原
+        (areaLabelEntity as any)._groundPosition = groundCenter;
         this.finishedLabelEntities.push(areaLabelEntity);
       }
     } else if (this.drawMode === "rectangle" && groundPositions.length >= 2) {
@@ -835,30 +888,43 @@ class DrawHelper {
         // 保存原始矩形坐标
         (finalEntity as any)._groundRectangle = rect;
       }
-      // 添加面积标签
+      // 添加面积标签（使用 billboard+canvas，与测距样式保持一致）
       const area = this.calculateRectangleArea(rect);
       if (area > 0) {
         const rectCenter = Cesium.Rectangle.center(rect);
-        const rectCenterPosition = Cesium.Cartesian3.fromRadians(
+        const rectCenterGround = Cesium.Cartesian3.fromRadians(
           rectCenter.longitude,
           rectCenter.latitude,
           0
         );
+
+        // 显示用位置：根据 offsetHeight 决定是否抬高
+        let rectDisplayCenter = rectCenterGround;
+        if (this.offsetHeight > 0) {
+          rectDisplayCenter = Cesium.Cartesian3.fromRadians(
+            rectCenter.longitude,
+            rectCenter.latitude,
+            this.offsetHeight
+          );
+        }
+
+        const areaText = `面积: ${this.formatArea(area)}`;
+        const areaImage = this.createTotalLengthBillboardImage(areaText);
+
         const rectAreaLabelEntity = this.entities.add({
-          position: rectCenterPosition,
-          label: {
-            text: `面积: ${this.formatArea(area)}`,
-            font: "14px sans-serif",
-            fillColor: Cesium.Color.WHITE,
-            outlineColor: Cesium.Color.BLACK,
-            outlineWidth: 2,
-            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-            pixelOffset: new Cesium.Cartesian2(0, -20),
-            heightReference: this.offsetHeight > 0 ? Cesium.HeightReference.RELATIVE_TO_GROUND : Cesium.HeightReference.CLAMP_TO_GROUND,
+          position: rectDisplayCenter,
+          billboard: {
+            image: areaImage,
+            pixelOffset: new Cesium.ConstantProperty(new Cesium.Cartesian2(0, -25)),
+            heightReference: new Cesium.ConstantProperty(Cesium.HeightReference.RELATIVE_TO_GROUND),
+            verticalOrigin: new Cesium.ConstantProperty(Cesium.VerticalOrigin.BOTTOM),
+            horizontalOrigin: new Cesium.ConstantProperty(Cesium.HorizontalOrigin.CENTER),
+            scale: new Cesium.ConstantProperty(1.0),
+            disableDepthTestDistance: new Cesium.ConstantProperty(Number.POSITIVE_INFINITY),
           },
         });
         // 保存原始地面位置
-        (rectAreaLabelEntity as any)._groundPosition = rectCenterPosition;
+        (rectAreaLabelEntity as any)._groundPosition = rectCenterGround;
         this.finishedLabelEntities.push(rectAreaLabelEntity);
       }
     }
@@ -1385,13 +1451,16 @@ class DrawHelper {
       }
     });
     
-    // 更新标签实体
+    // 更新标签实体（面积 label + 距离 billboard）
     this.finishedLabelEntities.forEach((entity) => {
-      if (!entity || !entity.label) return;
-      
+      if (!entity) return;
+
       // 使用保存的原始地面位置
       const groundPosition = (entity as any)._groundPosition as Cesium.Cartesian3 | undefined;
-      if (groundPosition) {
+      if (!groundPosition) return;
+
+      if (entity.label) {
+        // 处理面积等使用 Cesium.Label 的标签
         if (is3DMode) {
           // 切换到3D模式：抬高标签位置
           const carto = Cesium.Cartographic.fromCartesian(groundPosition);
@@ -1406,6 +1475,22 @@ class DrawHelper {
           // 切换到2D模式：使用原始地面位置，贴地
           entity.position = new Cesium.ConstantPositionProperty(groundPosition);
           entity.label.heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.CLAMP_TO_GROUND);
+        }
+      } else if (entity.billboard) {
+        // 处理测距总长 / 分段的 billboard 标签
+        if (is3DMode) {
+          const carto = Cesium.Cartographic.fromCartesian(groundPosition);
+          const elevatedPosition = Cesium.Cartesian3.fromRadians(
+            carto.longitude,
+            carto.latitude,
+            (carto.height || 0) + this.offsetHeight
+          );
+          entity.position = new Cesium.ConstantPositionProperty(elevatedPosition);
+          entity.billboard.heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.RELATIVE_TO_GROUND);
+        } else {
+          // 2D 模式下对 billboard 贴地支持有限，这里直接使用地面 Cartesian3，关闭贴地
+          entity.position = new Cesium.ConstantPositionProperty(groundPosition);
+          entity.billboard.heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.NONE);
         }
       }
     });
