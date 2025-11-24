@@ -28,6 +28,8 @@ class DrawHelper {
   private currentSegmentLabels: Cesium.Entity[] = []; // 当前分段标签实体数组（用于复用）
   private currentTotalLabel: Cesium.Entity | null = null; // 当前总距离标签实体（用于复用）
   private currentLinePositions: Cesium.Cartesian3[] = []; // 当前线条的位置数组（用于 CallbackProperty）
+  // 总长标签预热标记，避免首次创建时背景与文字错位
+  private isTotalLabelWarmedUp: boolean = false;
   // 事件处理器
   private screenSpaceEventHandler: Cesium.ScreenSpaceEventHandler | null = null;
   // 回调函数
@@ -82,6 +84,8 @@ class DrawHelper {
    * 开始绘制线条
    */
   startDrawingLine(): void {
+    // 在正式测距前，预热一次总长标签的字体与背景布局，避免首次创建时错位
+    this.warmupTotalLengthLabel();
     this.startDrawing("line");
   }
 
@@ -502,7 +506,7 @@ class DrawHelper {
                 outlineWidth: 3,
                 style: Cesium.LabelStyle.FILL_AND_OUTLINE,
                 pixelOffset: new Cesium.Cartesian2(0, labelOffset),
-                heightReference: this.offsetHeight > 0 ? Cesium.HeightReference.RELATIVE_TO_GROUND : Cesium.HeightReference.CLAMP_TO_GROUND,
+                heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND,
                 scale: 1.0,
                 showBackground: true,
                 backgroundColor: Cesium.Color.BLACK.withAlpha(0.8),
@@ -549,40 +553,30 @@ class DrawHelper {
             (carto.height || 0) + this.offsetHeight
           );
         }
-        
         const formattedDistance = this.formatDistance(totalDistance);
         const labelText = `总长: ${formattedDistance}`;
-        const segmentCount = this.tempPositions.length - 1;
-        const labelOffset = segmentCount % 2 === 0 ? -35 : 35;
-        
-        if (this.currentTotalLabel) {
-          // 更新现有总距离标签
+        const image = this.createTotalLengthBillboardImage(labelText);
+
+        if (this.currentTotalLabel && this.currentTotalLabel.billboard) {
+          // 更新现有总距离 billboard
           this.currentTotalLabel.position = new Cesium.ConstantPositionProperty(labelPosition);
-          this.currentTotalLabel.label!.text = new Cesium.ConstantProperty(labelText);
+          this.currentTotalLabel.billboard.image = new Cesium.ConstantProperty(image);
         } else {
-          // 创建新的总距离标签
-          const totalLabelEntity = this.entities.add({
+          // 创建新的总距离 billboard
+          const totalBillboardEntity = this.entities.add({
             position: labelPosition,
-            label: {
-              text: labelText,
-              font: "16px Arial",
-              fillColor: Cesium.Color.YELLOW,
-              outlineColor: Cesium.Color.BLACK,
-              outlineWidth: 3,
-              style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-              pixelOffset: new Cesium.Cartesian2(0, labelOffset),
-              heightReference: this.offsetHeight > 0 ? Cesium.HeightReference.RELATIVE_TO_GROUND : Cesium.HeightReference.CLAMP_TO_GROUND,
-              scale: 1.0,
-              showBackground: true,
-              backgroundColor: Cesium.Color.BLACK.withAlpha(0.8),
-              backgroundPadding: new Cesium.Cartesian2(8, 4),
-              disableDepthTestDistance: Number.POSITIVE_INFINITY,
-              verticalOrigin: Cesium.VerticalOrigin.CENTER,
-              horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+            billboard: {
+              image,
+              pixelOffset: new Cesium.ConstantProperty(new Cesium.Cartesian2(0, -35)),
+              heightReference: new Cesium.ConstantProperty(Cesium.HeightReference.RELATIVE_TO_GROUND),
+              verticalOrigin: new Cesium.ConstantProperty(Cesium.VerticalOrigin.BOTTOM),
+              horizontalOrigin: new Cesium.ConstantProperty(Cesium.HorizontalOrigin.CENTER),
+              scale: new Cesium.ConstantProperty(1.0),
+              disableDepthTestDistance: new Cesium.ConstantProperty(Number.POSITIVE_INFINITY),
             },
           });
-          this.currentTotalLabel = totalLabelEntity;
-          this.tempLabelEntities.push(totalLabelEntity);
+          this.currentTotalLabel = totalBillboardEntity;
+          this.tempLabelEntities.push(totalBillboardEntity);
         }
       } else {
         // 点数不足，移除总距离标签
@@ -1184,6 +1178,48 @@ class DrawHelper {
     return `${areaM2.toFixed(2)} m²`;
   }
 
+  /**
+   * 使用 Canvas 绘制总长文本，生成用于 billboard 的图片
+   */
+  private createTotalLengthBillboardImage(text: string): HTMLCanvasElement {
+    const paddingX = 12;
+    const paddingY = 6;
+    const font = "bold 16px 'Microsoft YaHei', 'PingFang SC', sans-serif";
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      // 兜底：返回一个小画布避免报错
+      canvas.width = 1;
+      canvas.height = 1;
+      return canvas;
+    }
+
+    // 先测量文本宽度
+    ctx.font = font;
+    const metrics = ctx.measureText(text);
+    const textWidth = metrics.width;
+    const textHeight = 20; // 近似行高
+
+    canvas.width = Math.ceil(textWidth + paddingX * 2);
+    canvas.height = Math.ceil(textHeight + paddingY * 2);
+
+    // 再次设置字体（重新设置会重置部分状态）
+    ctx.font = font;
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center';
+
+    // 绘制半透明黑色背景
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // 绘制白色文本
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+
+    return canvas;
+  }
+
   // --- 回调注册 ---
 
   /**
@@ -1208,6 +1244,62 @@ class DrawHelper {
    */
   onEntityRemoved(callback: (entity: Cesium.Entity) => void): void {
     this.onEntityRemovedCallback = callback;
+  }
+
+  /**
+   * 总长标签预热：创建一个隐藏的、与总长标签样式一致的 label
+   * 让 Cesium 预先构建字体图集和背景布局，避免首次真正显示时背景与文字错位
+   */
+  private warmupTotalLengthLabel(): void {
+    if (this.isTotalLabelWarmedUp) return;
+
+    // 使用当前相机中心位置作为预热标签的位置
+    let carto: Cesium.Cartographic;
+    try {
+      carto = this.viewer.camera.positionCartographic.clone();
+    } catch {
+      // 如果获取失败，使用一个默认位置
+      carto = Cesium.Cartographic.fromDegrees(120.2052342, 30.2489634, this.offsetHeight);
+    }
+
+    const position = Cesium.Cartesian3.fromRadians(
+      carto.longitude,
+      carto.latitude,
+      (carto.height || 0) + this.offsetHeight
+    );
+
+    const warmupLabel = this.entities.add({
+      position,
+      label: {
+        text: "总长: 0.00 m",
+        font: "bold 16px 'Microsoft YaHei', 'PingFang SC', sans-serif",
+        fillColor: Cesium.Color.WHITE,
+        outlineColor: Cesium.Color.BLACK,
+        outlineWidth: 2,
+        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+        pixelOffset: new Cesium.Cartesian2(0, -35),
+        heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND,
+        scale: 1.0,
+        showBackground: true,
+        backgroundPadding: new Cesium.Cartesian2(6, 3),
+        backgroundColor: Cesium.Color.BLACK.withAlpha(0.8),
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+        horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+        show: false,
+      },
+    });
+
+    this.isTotalLabelWarmedUp = true;
+
+    // 下一帧移除预热标签，避免在场景中残留
+    requestAnimationFrame(() => {
+      try {
+        this.entities.remove(warmupLabel);
+      } catch {
+        // 安全忽略移除错误
+      }
+    });
   }
 
   /**
