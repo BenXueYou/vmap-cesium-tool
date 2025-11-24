@@ -42,6 +42,14 @@ export class CesiumMapToolbar {
   // 三维地名服务实例
   private currentGeoWTFS: any = null;
 
+  // 当前测量模式：none（未测量）、distance（测距）、area（测面）
+  private currentMeasureMode: 'none' | 'distance' | 'area' = 'none';
+
+  // 对外暴露的测量相关 API
+  public readonly measurement = {
+    getMeasureMode: (): 'none' | 'distance' | 'area' => this.currentMeasureMode,
+  };
+
   constructor(
     viewer: Viewer,
     container: HTMLElement,
@@ -222,6 +230,9 @@ export class CesiumMapToolbar {
           }
         }
       }
+
+      // 无论线还是面，绘制完成后都认为退出测量交互
+      this.currentMeasureMode = 'none';
     });
 
     this.drawHelper.onEntityRemoved((entity) => {
@@ -952,18 +963,21 @@ export class CesiumMapToolbar {
   private handleMeasurementAction(action: string): void {
     switch (action) {
       case 'measure-area':
+        this.currentMeasureMode = 'area';
         // 延迟启动绘制，确保菜单点击事件完全处理完毕，避免第一次点击被消耗
         setTimeout(() => {
           this.drawHelper.startDrawingPolygon();
         }, 50);
         break;
       case 'measure-distance':
+        this.currentMeasureMode = 'distance';
         // 延迟启动绘制，确保菜单点击事件完全处理完毕，避免第一次点击被消耗
         setTimeout(() => {
           this.drawHelper.startDrawingLine();
         }, 50);
         break;
       case 'clear-measurement':
+        this.currentMeasureMode = 'none';
         this.drawHelper.clearAll();
         if (this.measurementCallback?.onClear) {
           this.measurementCallback.onClear();
