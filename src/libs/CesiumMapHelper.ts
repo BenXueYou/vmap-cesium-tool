@@ -460,7 +460,7 @@ class DrawHelper {
         this.currentSegmentLabels = this.currentSegmentLabels.slice(0, currentSegmentCount);
       }
 
-      // 更新或创建分段标签
+      // 更新或创建分段标签（使用 billboard+canvas）
       for (let i = 0; i < currentSegmentCount; i++) {
         const startPos = positions[i];
         const endPos = positions[i + 1];
@@ -486,35 +486,39 @@ class DrawHelper {
           }
           
           const labelOffset = i % 2 === 0 ? -25 : 25;
+          const segmentText = this.formatDistance(distance);
           
-          if (i < this.currentSegmentLabels.length) {
-            // 更新现有标签
-            const labelEntity = this.currentSegmentLabels[i];
-            if (labelEntity) {
-              labelEntity.position = new Cesium.ConstantPositionProperty(elevatedMidPoint);
-              labelEntity.label!.text = new Cesium.ConstantProperty(this.formatDistance(distance));
+          if (i < this.currentSegmentLabels.length && this.currentSegmentLabels[i].billboard) {
+            // 更新现有 billboard
+            const segEntity = this.currentSegmentLabels[i];
+            segEntity.position = new Cesium.ConstantPositionProperty(elevatedMidPoint);
+            segEntity.billboard!.pixelOffset = new Cesium.ConstantProperty(new Cesium.Cartesian2(0, labelOffset));
+
+            // 仅当文本变化时才重建 Canvas，避免频繁纹理更新导致闪烁
+            const lastText = (segEntity as any)._segmentText as string | undefined;
+            if (lastText !== segmentText) {
+              const segmentImage = this.createSegmentLengthBillboardImage(segmentText);
+              segEntity.billboard!.image = new Cesium.ConstantProperty(segmentImage);
+              (segEntity as any)._segmentText = segmentText;
             }
           } else {
-            // 创建新标签
-            const labelEntity = this.entities.add({
+            // 创建新 billboard
+            const segmentImage = this.createSegmentLengthBillboardImage(segmentText);
+            const segBillboardEntity = this.entities.add({
               position: elevatedMidPoint,
-              label: {
-                text: this.formatDistance(distance),
-                font: "16px Arial",
-                fillColor: Cesium.Color.WHITE,
-                outlineColor: Cesium.Color.BLACK,
-                outlineWidth: 3,
-                style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-                pixelOffset: new Cesium.Cartesian2(0, labelOffset),
-                heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND,
-                scale: 1.0,
-                showBackground: true,
-                backgroundColor: Cesium.Color.BLACK.withAlpha(0.8),
-                backgroundPadding: new Cesium.Cartesian2(6, 3),
+              billboard: {
+                image: segmentImage,
+                pixelOffset: new Cesium.ConstantProperty(new Cesium.Cartesian2(0, labelOffset)),
+                heightReference: new Cesium.ConstantProperty(Cesium.HeightReference.RELATIVE_TO_GROUND),
+                verticalOrigin: new Cesium.ConstantProperty(Cesium.VerticalOrigin.CENTER),
+                horizontalOrigin: new Cesium.ConstantProperty(Cesium.HorizontalOrigin.CENTER),
+                scale: new Cesium.ConstantProperty(1.0),
+                disableDepthTestDistance: new Cesium.ConstantProperty(Number.POSITIVE_INFINITY),
               },
             });
-            this.currentSegmentLabels.push(labelEntity);
-            this.tempLabelEntities.push(labelEntity);
+            (segBillboardEntity as any)._segmentText = segmentText;
+            this.currentSegmentLabels.push(segBillboardEntity);
+            this.tempLabelEntities.push(segBillboardEntity);
           }
         } else {
           // 距离太小，移除对应的标签（如果存在）
@@ -1218,6 +1222,15 @@ class DrawHelper {
     ctx.fillText(text, canvas.width / 2, canvas.height / 2);
 
     return canvas;
+  }
+
+  /**
+   * 使用 Canvas 绘制分段长度文本，生成用于 billboard 的图片
+   * 样式与总长保持一致，便于统一视觉
+   */
+  private createSegmentLengthBillboardImage(text: string): HTMLCanvasElement {
+    // 目前与总长样式一致，后续如需区分可单独调整
+    return this.createTotalLengthBillboardImage(text);
   }
 
   // --- 回调注册 ---
