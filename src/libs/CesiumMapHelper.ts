@@ -34,11 +34,11 @@ class DrawHelper {
   private screenSpaceEventHandler: Cesium.ScreenSpaceEventHandler | null = null;
   // 回调函数
   private onDrawStartCallback: (() => void) | null = null;
-  private onDrawEndCallback: ((entity: Cesium.Entity | null) => void) | null =
-    null;
-  private onEntityRemovedCallback: ((entity: Cesium.Entity) => void) | null =
-    null;
+  private onDrawEndCallback: ((entity: Cesium.Entity | null) => void) | null = null;
+  private onEntityRemovedCallback: ((entity: Cesium.Entity) => void) | null = null;
   private offsetHeight: number = 2;
+  // 记录绘制前地形深度测试开关，用于绘制结束或取消时恢复
+  private originalDepthTestAgainstTerrain: boolean | null = null;
 
   /**
    * 构造函数
@@ -57,12 +57,22 @@ class DrawHelper {
     this.updateOffsetHeight();
     
     // 监听场景模式变化（保留，以兼容可能存在的 morphTo2D/3D 调用）
-    this.scene.morphComplete.addEventListener(() => {
-      this.handleSceneModeChanged();
-    });
+    // this.scene.morphComplete.addEventListener(() => {
+    //   this.handleSceneModeChanged();
+    // });
 
     // 确保启用地形深度测试以获得正确的高度
     this.scene.globe.depthTestAgainstTerrain = true;
+  }
+
+  /**
+   * 判断一个 Cartesian3 是否为有效坐标（x/y/z 都是有限数字）
+   */
+  private isValidCartesian3(pos: Cesium.Cartesian3 | null | undefined): pos is Cesium.Cartesian3 {
+    return !!pos &&
+      Number.isFinite(pos.x) &&
+      Number.isFinite(pos.y) &&
+      Number.isFinite(pos.z);
   }
 
   /**
@@ -130,6 +140,12 @@ class DrawHelper {
     this.currentSegmentLabels = [];
     this.currentTotalLabel = null;
     this.currentLinePositions = [];
+
+    // 方案A：开始绘制时临时关闭地形深度测试，避免线/面/点被山体遮挡
+    if (this.originalDepthTestAgainstTerrain === null) {
+      this.originalDepthTestAgainstTerrain = this.scene.globe.depthTestAgainstTerrain;
+    }
+    this.scene.globe.depthTestAgainstTerrain = false;
 
     this.activateDrawingHandlers();
 
@@ -218,7 +234,8 @@ class DrawHelper {
   ): Cesium.Cartesian3 | null {
     // 首先尝试从地形拾取
     const ray = this.viewer.camera.getPickRay(windowPosition);
-    if (ray) {
+    // 仅在地形瓦片已加载完成时才尝试 globe.pick，避免早期不稳定状态
+    if (ray && this.scene.mode === Cesium.SceneMode.SCENE3D && this.scene.globe.tilesLoaded) {
       const position = this.scene.globe.pick(ray, this.scene) as Cesium.Cartesian3 | undefined;
       if (Cesium.defined(position)) {
         // 防御性检查：确保拾取到的位置不包含 NaN/Infinity
@@ -253,6 +270,14 @@ class DrawHelper {
    * @param position 世界坐标
    */
   private addPoint(position: Cesium.Cartesian3): void {
+    // 在 3D 模式下，若地形尚未加载完成且当前为测面模式，则忽略点击，避免早期不稳定坐标
+    if (
+      this.drawMode === "polygon" &&
+      this.scene.mode === Cesium.SceneMode.SCENE3D &&
+      !this.scene.globe.tilesLoaded
+    ) {
+      return;
+    }
     this.tempPositions.push(position.clone());
 
     // 根据2D/3D模式设置点的高度
@@ -260,7 +285,7 @@ class DrawHelper {
     const elevatedPosition = Cesium.Cartesian3.fromRadians(
       carto.longitude,
       carto.latitude,
-      (carto.height || 0) + (this.drawMode !== "line" ? 0 : this.offsetHeight)
+      (carto.height || 0) + this.offsetHeight
     );
 
     const pointEntity = this.entities.add({
@@ -270,7 +295,8 @@ class DrawHelper {
         color: Cesium.Color.RED,
         outlineColor: Cesium.Color.WHITE,
         outlineWidth: 3,
-        heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND,
+        // 不再贴地抬高，统一使用 NONE，与线/面高度一致
+        heightReference: Cesium.HeightReference.NONE,
         scaleByDistance: new Cesium.NearFarScalar(1.5e2, 1.0, 1.5e7, 0.5),
       },
     });
@@ -335,7 +361,7 @@ class DrawHelper {
           color: Cesium.Color.RED,
           outlineColor: Cesium.Color.WHITE,
           outlineWidth: 3,
-          heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND,
+          heightReference: Cesium.HeightReference.NONE,
           scaleByDistance: new Cesium.NearFarScalar(1.5e2, 1.0, 1.5e7, 0.5),
         },
       });
@@ -651,11 +677,22 @@ class DrawHelper {
         }
       }
     } else if (this.drawMode === "polygon") {
-      const committedPositions = [...this.tempPositions];
+      // 在 3D 模式且地形未加载完成时，不创建最终多边形，直接取消本次绘制
+      if (this.scene.mode === Cesium.SceneMode.SCENE3D && !this.scene.globe.tilesLoaded) {
+        this.endDrawingInternal(true);
+        return;
+      }
+      // 在 3D 模式下如果地形尚未加载完成，不创建多边形预览，避免触发贴地相关的内部错误
+      if (this.scene.mode === Cesium.SceneMode.SCENE3D && !this.scene.globe.tilesLoaded) {
+        return;
+      }
+      // 仅使用有效坐标构建多边形预览
+      const committedPositions = this.tempPositions.filter((p) => this.isValidCartesian3(p));
+      const sourceBase = committedPositions;
       const polygonSource =
-        previewPoint && this.tempPositions.length >= 2
-          ? [...committedPositions, previewPoint]
-          : committedPositions;
+        previewPoint && this.isValidCartesian3(previewPoint) && sourceBase.length >= 2
+          ? [...sourceBase, previewPoint]
+          : sourceBase;
 
       if (polygonSource.length >= 3) {
         const polygonPositions =
@@ -708,10 +745,8 @@ class DrawHelper {
       }
     } else if (this.drawMode === "rectangle" && positions.length >= 2) {
       const rect = this.calculateRectangle(positions[0], positions[1]);
-      const rectHeightReference =
-        this.offsetHeight > 0
-          ? Cesium.HeightReference.NONE
-          : Cesium.HeightReference.CLAMP_TO_GROUND;
+      // 不再贴地，统一使用悬浮高度
+      const rectHeightReference = Cesium.HeightReference.NONE;
 
       if (this.currentRectangleEntity) {
         this.currentRectangleEntity.rectangle!.coordinates =
@@ -751,8 +786,15 @@ class DrawHelper {
       return;
     }
     let finalEntity: Cesium.Entity | null = null;
-    // 保存原始地面位置（不包含offsetHeight）
-    const groundPositions = this.tempPositions.map((p) => {
+    // 先过滤掉无效坐标，再保存原始地面位置（不包含offsetHeight）
+    const validTempPositions = this.tempPositions.filter((p) => this.isValidCartesian3(p));
+    if (validTempPositions.length < (this.drawMode === "polygon" ? 3 : 2)) {
+      // 过滤后点数不足，取消绘制
+      this.endDrawingInternal(true);
+      return;
+    }
+
+    const groundPositions = validTempPositions.map((p) => {
       const carto = Cesium.Cartographic.fromCartesian(p);
       return Cesium.Cartesian3.fromRadians(
         carto.longitude,
@@ -828,7 +870,7 @@ class DrawHelper {
         // 保存原始地面位置
         (finalEntity as any)._groundPositions = groundPositions;
       } else {
-        // 2D模式：贴近地面
+        // 2D模式：也改为悬浮，不再贴地
         finalEntity = this.entities.add({
           name: "绘制的多边形区域",
           polygon: {
@@ -837,7 +879,7 @@ class DrawHelper {
             outline: true,
             outlineColor: Cesium.Color.DARKGREEN, // 深绿色边框
             outlineWidth: 2,
-            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+            heightReference: Cesium.HeightReference.NONE,
           },
         });
         // 保存原始地面位置
@@ -905,13 +947,13 @@ class DrawHelper {
         // 保存原始矩形坐标
         (finalEntity as any)._groundRectangle = rect;
       } else {
-        // 2D模式：贴近地面
+        // 2D模式：也改为悬浮，不再贴地
         finalEntity = this.entities.add({
           name: "绘制的矩形",
           rectangle: {
             coordinates: rect,
             material: Cesium.Color.GREEN.withAlpha(0.5),
-            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+            heightReference: Cesium.HeightReference.NONE,
           },
         });
         // 保存原始矩形坐标
@@ -992,10 +1034,13 @@ class DrawHelper {
     this.currentSegmentLabels = [];
     this.currentTotalLabel = null;
 
-    if (true) { // resetMode
-      this.drawMode = null;
-      this.isDrawing = false;
-      this.deactivateDrawingHandlers();
+    // 完成绘制后，恢复绘图状态和事件，并恢复地形深度测试开关
+    this.drawMode = null;
+    this.isDrawing = false;
+    this.deactivateDrawingHandlers();
+    if (this.originalDepthTestAgainstTerrain !== null) {
+      this.scene.globe.depthTestAgainstTerrain = this.originalDepthTestAgainstTerrain;
+      this.originalDepthTestAgainstTerrain = null;
     }
 
     // 触发结束绘制回调
@@ -1031,6 +1076,11 @@ class DrawHelper {
       this.drawMode = null;
       this.isDrawing = false;
       this.deactivateDrawingHandlers();
+      // 取消绘制时同样恢复地形深度测试开关
+      if (this.originalDepthTestAgainstTerrain !== null) {
+        this.scene.globe.depthTestAgainstTerrain = this.originalDepthTestAgainstTerrain;
+        this.originalDepthTestAgainstTerrain = null;
+      }
     }
   }
 
@@ -1213,13 +1263,30 @@ class DrawHelper {
   }
 
   private calculatePolygonArea(positions: Cesium.Cartesian3[]): number {
-    if (positions.length < 3) return 0;
+    // 防御性检查：过滤掉无效坐标，避免 cartesianToCartographic 过程中产生 NaN
+    const validPositions = positions.filter((p) => this.isValidCartesian3(p));
+    if (validPositions.length < 3) return 0;
+
     const ellipsoid = this.scene.globe.ellipsoid;
     let area = 0;
-    const len = positions.length;
+    const len = validPositions.length;
     for (let i = 0; i < len; i++) {
-      const p1 = ellipsoid.cartesianToCartographic(positions[i]);
-      const p2 = ellipsoid.cartesianToCartographic(positions[(i + 1) % len]);
+      const p1Cartesian = validPositions[i];
+      const p2Cartesian = validPositions[(i + 1) % len];
+
+      if (!this.isValidCartesian3(p1Cartesian) || !this.isValidCartesian3(p2Cartesian)) {
+        return 0;
+      }
+
+      const p1 = ellipsoid.cartesianToCartographic(p1Cartesian);
+      const p2 = ellipsoid.cartesianToCartographic(p2Cartesian);
+
+      if (!p1 || !p2 ||
+          !Number.isFinite(p1.longitude) || !Number.isFinite(p1.latitude) ||
+          !Number.isFinite(p2.longitude) || !Number.isFinite(p2.latitude)) {
+        return 0;
+      }
+
       area +=
         (p2.longitude - p1.longitude) *
         (2 + Math.sin(p1.latitude) + Math.sin(p2.latitude));
@@ -1231,19 +1298,22 @@ class DrawHelper {
   private calculatePolygonCenter(
     positions: Cesium.Cartesian3[]
   ): Cesium.Cartesian3 {
-    if (positions.length === 0) return Cesium.Cartesian3.ZERO;
+    // 仅使用有效的 Cartesian3 参与中心点计算
+    const validPositions = positions.filter((p) => this.isValidCartesian3(p));
+    if (validPositions.length === 0) return Cesium.Cartesian3.ZERO;
+
     let x = 0,
       y = 0,
       z = 0;
-    for (let i = 0; i < positions.length; i++) {
-      x += positions[i].x;
-      y += positions[i].y;
-      z += positions[i].z;
+    for (let i = 0; i < validPositions.length; i++) {
+      x += validPositions[i].x;
+      y += validPositions[i].y;
+      z += validPositions[i].z;
     }
     return new Cesium.Cartesian3(
-      x / positions.length,
-      y / positions.length,
-      z / positions.length
+      x / validPositions.length,
+      y / validPositions.length,
+      z / validPositions.length
     );
   }
 

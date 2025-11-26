@@ -41,6 +41,8 @@ onMounted(async () => {
       isFly: true,
     }
   );
+  // 调试用：挂到全局
+  (window as any).cesiumViewer = cesiumViewer;
   viewer.value = cesiumViewer;
   viewer.value.scene.globe.depthTestAgainstTerrain = true; // 启用地形深度测
   viewer.value._cesiumWidget._creditContainer.style.display = "none"; // 去掉左下角的Cesium商标
@@ -65,8 +67,16 @@ onMounted(async () => {
       mapInitialCenter // 传递从initCesium获取的初始中心点
     );
     mapToolbar.setTDToken(TDT_TK);
+
+    setTimeout(() => {
+      console.log(refreshMeasureMode(mapToolbar));
+    }, 10000)
   }
 });
+
+const refreshMeasureMode = (mapToolbar: CesiumMapToolbar|null) => {
+  return mapToolbar?.measurement.getMeasureMode();
+};
 // 清理资源
 onBeforeUnmount(() => {
   if (mapToolbar) {

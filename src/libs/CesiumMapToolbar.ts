@@ -1646,10 +1646,9 @@ export class CesiumMapToolbar {
       closeTop: true,
       closeBottom: true,
       classificationType: Cesium.ClassificationType.BOTH,
-      heightReference: is3DMode
-        ? Cesium.HeightReference.NONE
-        : Cesium.HeightReference.CLAMP_TO_GROUND,
-      height: is3DMode ? 0 : undefined,
+      // 不再贴地，统一使用悬浮高度
+      heightReference: Cesium.HeightReference.NONE,
+      height: 0,
       extrudedHeight: is3DMode ? this.noFlyZoneExtrudedHeight : undefined,
     };
   }
