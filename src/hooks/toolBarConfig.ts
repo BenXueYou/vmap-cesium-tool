@@ -177,14 +177,14 @@ export const useToolBarConfig = (message: any) => {
     },
     // 缩放回调
     zoom: {
-      onZoomIn: (beforeLevel: any, afterLevel: any) => {
+      onZoomIn: (beforeLevel: any, afterLevel: any, currentLevel: any) => {
         console.log(
-          `放大: ${beforeLevel.toFixed(0)} -> ${afterLevel.toFixed(0)}`
+          `放大: ${beforeLevel.toFixed(0)} -> ${afterLevel.toFixed(0)}: ${currentLevel.toFixed(0)}`
         );
       },
-      onZoomOut: (beforeLevel: any, afterLevel: any) => {
+      onZoomOut: (beforeLevel: any, afterLevel: any, currentLevel: any) => {
         console.log(
-          `缩小: ${beforeLevel.toFixed(0)} -> ${afterLevel.toFixed(0)}`
+          `缩小: ${beforeLevel.toFixed(0)} -> ${afterLevel.toFixed(0)}: ${currentLevel.toFixed(0)}`
         );
       },
     },

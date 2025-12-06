@@ -17,17 +17,17 @@ import { loadAllAirportNoFlyZones, type AirportNoFlyZone } from '../utils/geojso
  * 提供搜索、测量、2D/3D切换、图层切换、定位、缩放、全屏等功能
  */
 export class CesiumMapToolbar {
-  private viewer: Viewer;
-  private drawHelper: DrawHelper;
-  private container: HTMLElement;
-  private toolbarElement!: HTMLElement;
-  private config: ToolbarConfig;
-  private searchCallback?: SearchCallback;
-  private measurementCallback?: MeasurementCallback;
-  private zoomCallback?: ZoomCallback;
-  private initialCenter?: { longitude: number; latitude: number; height: number };
-  private isFullscreen: boolean = false;
-  private currentMapType: string = 'imagery';
+  private viewer: Viewer; // Cesium地图查看器实例
+  private drawHelper: DrawHelper; // 绘图助手实例
+  private container: HTMLElement; // 容器元素
+  private toolbarElement!: HTMLElement; // 工具栏元素
+  private config: ToolbarConfig; // 工具栏配置
+  private searchCallback?: SearchCallback; // 搜索回调函数
+  private measurementCallback?: MeasurementCallback; // 测量回调函数
+  private zoomCallback?: ZoomCallback; // 缩放回调函数
+  private initialCenter?: { longitude: number; latitude: number; height: number }; // 初始中心点
+  private isFullscreen: boolean = false; // 是否全屏
+  private currentMapType: string = 'imagery'; // 当前地图类型
   public TD_Token: string = 'your_tianditu_token_here'; // 请替换为您的天地图密钥
 
   // 地图类型配置
@@ -36,6 +36,8 @@ export class CesiumMapToolbar {
   // 禁飞区相关
   private noFlyZoneEntities: Cesium.Entity[] = [];
   private isNoFlyZoneVisible: boolean = false;
+  // 防止并发重复加载禁飞区
+  private isNoFlyZoneLoading: boolean = false;
   private isNoFlyZoneChecked: boolean = true;
   private readonly noFlyZoneExtrudedHeight = 1000;
 
@@ -91,6 +93,37 @@ export class CesiumMapToolbar {
     // 自动加载禁飞区（如果默认勾选）
     this.autoLoadNoFlyZones();
 
+    // 监听相机缩放，限制层级范围
+    this.setupCameraZoomLimitListener();
+
+  }
+  /**
+ * 监听相机缩放，限制层级范围到 [1, 18]，并参考当前底图的 maximumLevel
+ */
+  private setupCameraZoomLimitListener(): void {
+    const camera = this.viewer.camera;
+    camera.changed.addEventListener(() => {
+      // 当前由任何方式（包括鼠标滚轮）产生的层级
+      const currentLevel = this.getCurrentZoomLevel();
+      // 1. 先按全局范围 [1, 18] 限制
+      let clampedLevel = Math.max(1, Math.min(18, currentLevel));
+      // 2. 再按当前底图 provider 的 maximumLevel 收紧（参考 zoomIn 逻辑）
+      const curMapType = this.mapTypes.find(mt => mt.id === this.currentMapType);
+      let maximumLevel = 18
+      if (curMapType) {
+        const providers = curMapType.provider(this.TD_Token) || [];
+        maximumLevel = providers[0]?.maximumLevel || 18;
+        if (clampedLevel > maximumLevel) {
+          clampedLevel = maximumLevel;
+        }
+      }
+      // 如果层级已经在允许范围内，不做任何处理
+      if (clampedLevel === 1 || currentLevel >= maximumLevel ) {
+        // 3. 把相机层级“拉回”到允许范围（会同时修正滚轮缩放过头的情况）
+        this.setZoomLevel(clampedLevel);
+      }
+
+    });
   }
 
   public setMapTypes(mapTypes: MapType[]): void {
@@ -694,32 +727,34 @@ export class CesiumMapToolbar {
             resultsContainer.innerHTML = '<div style="padding: 8px; color: #666;">搜索失败</div>';
           }
         } else {
-          // 默认搜索逻辑
-          // this.performDefaultSearch(query, resultsContainer);
-          const url = TD_Map_Search_URL(query, China_Map_Extent);
-          const response = await fetch(url, {
-            method: "GET",
-            mode: "cors", // 允许跨域请求
-            credentials: "omit", // 不发送凭证信息
-            headers: {
-              Accept: "application/json",
-            },
-          });
+          // 默认搜索逻辑：使用天地图 POI 搜索接口
+          try {
+            const url = TD_Map_Search_URL(query, China_Map_Extent);
+            const response = await fetch(url, {
+              method: 'GET',
+              mode: 'cors',
+              credentials: 'omit',
+              headers: { Accept: 'application/json' }
+            });
 
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+            const pois = data?.data?.pois || data?.pois || [];
+            const results = pois.map((location: any) => ({
+              name: location?.name || query,
+              address: location?.address || '',
+              longitude: Number(location?.lonlat?.split(',')[0] || 0),
+              latitude: Number(location?.lonlat?.split(',')[1] || 0),
+              height: 100,
+            }));
+            this.displaySearchResults(results, resultsContainer);
+          } catch (error) {
+            console.error('默认搜索失败:', error);
+            resultsContainer.innerHTML = '<div style="padding: 8px; color: #666;">搜索失败</div>';
           }
-
-          const data = await response.json();
-          const pois = data?.data?.pois || data?.pois || [];
-          const results = pois.map((location: any) => ({
-            name: location?.name || query,
-            address: location?.address || "",
-            longitude: Number(location?.lonlat.split(",")[0] || 0),
-            latitude: Number(location?.lonlat.split(",")[1] || 0),
-            height: 100,
-          }));
-          this.displaySearchResults(results, resultsContainer);
         }
       }, 300);
     });
@@ -1318,7 +1353,7 @@ export class CesiumMapToolbar {
 
     // 注意：禁飞区已经在创建 toolbar 后自动加载，这里不需要重复加载
     // 如果禁飞区尚未加载，说明自动加载可能失败了，可以在这里尝试加载
-    if (!this.isNoFlyZoneVisible  && this.isNoFlyZoneChecked) {
+    if (!this.isNoFlyZoneVisible && this.isNoFlyZoneChecked) {
       // 延迟加载，避免阻塞菜单显示
       setTimeout(() => {
         this.showNoFlyZones().catch((error) => {
@@ -1474,20 +1509,19 @@ export class CesiumMapToolbar {
   private zoomIn(): void {
     const currentLevel = this.getCurrentZoomLevel();
     const beforeHeight = this.viewer.camera.positionCartographic.height;
-
-    // 如果已经是最大层级（18），不执行操作
-    if (currentLevel >= 18) {
-      return;
+    const curMapType = this.mapTypes.find((im) => im.id === this.currentMapType)
+    if (curMapType && curMapType.provider(this.TD_Token)) {
+      const providerList = curMapType.provider(this.TD_Token)
+      const maximumLevel = providerList[0].maximumLevel || 18
+      if (currentLevel >= maximumLevel) return
     }
-
     // 增加层级（放大，高度减小）
     const targetLevel = currentLevel + 1;
     this.setZoomLevel(targetLevel);
-
     const afterHeight = this.viewer.camera.positionCartographic.height;
 
     if (this.zoomCallback?.onZoomIn) {
-      this.zoomCallback.onZoomIn(beforeHeight, afterHeight);
+      this.zoomCallback.onZoomIn(beforeHeight, afterHeight, currentLevel);
     }
   }
 
@@ -1497,7 +1531,6 @@ export class CesiumMapToolbar {
   private zoomOut(): void {
     const currentLevel = this.getCurrentZoomLevel();
     const beforeHeight = this.viewer.camera.positionCartographic.height;
-
     // 如果已经是最小层级（1），不执行操作
     if (currentLevel <= 1) {
       return;
@@ -1510,7 +1543,7 @@ export class CesiumMapToolbar {
     const afterHeight = this.viewer.camera.positionCartographic.height;
 
     if (this.zoomCallback?.onZoomOut) {
-      this.zoomCallback.onZoomOut(beforeHeight, afterHeight);
+      this.zoomCallback.onZoomOut(beforeHeight, afterHeight, currentLevel);
     }
   }
 
@@ -1577,9 +1610,11 @@ export class CesiumMapToolbar {
    * 加载并显示机场禁飞区
    */
   public async showNoFlyZones(): Promise<void> {
-    if (this.isNoFlyZoneVisible) {
-      return; // 已经显示，无需重复加载
+    if (this.isNoFlyZoneVisible || this.isNoFlyZoneLoading) {
+      return; // 已经显示或正在加载，避免重复
     }
+
+    this.isNoFlyZoneLoading = true;
 
     try {
       // 加载所有机场禁飞区数据
@@ -1599,20 +1634,52 @@ export class CesiumMapToolbar {
         });
 
         // 创建多边形实体
+        const polygonOptions = this.createNoFlyZonePolygonOptions(positions);
         const entity = this.viewer.entities.add({
           name: zone.name,
-          polygon: this.createNoFlyZonePolygonOptions(positions),
+          polygon: polygonOptions,
           description: `机场禁飞区: ${zone.name}`,
         });
         (entity as any).disableDepthTestDistance = Number.POSITIVE_INFINITY;
 
         this.noFlyZoneEntities.push(entity);
+
+        // 如果存在 extrudedHeight（3D 模式），单独添加顶面边界的 polyline，
+        // 这样可以只显示顶面的轮廓，避免 polygon 在 top/bottom 同时绘制 outline 导致“重叠”外观。
+        try {
+          const is3DMode = this.viewer.scene.mode === Cesium.SceneMode.SCENE3D;
+          const extruded = polygonOptions.extrudedHeight;
+          const topHeight = typeof extruded === 'number' ? extruded : polygonOptions.height || 0;
+          if (is3DMode && topHeight > 0) {
+            const topPositions = positions.map((p) => {
+              const carto = Cesium.Cartographic.fromCartesian(p);
+              return Cesium.Cartesian3.fromRadians(carto.longitude, carto.latitude, topHeight);
+            });
+
+            const outlineEntity = this.viewer.entities.add({
+              name: `${zone.name}_top_outline`,
+              polyline: {
+                positions: topPositions,
+                width: 2,
+                material: Cesium.Color.RED,
+                clampToGround: false,
+              }
+            });
+            (outlineEntity as any).disableDepthTestDistance = Number.POSITIVE_INFINITY;
+            this.noFlyZoneEntities.push(outlineEntity);
+          }
+        } catch (e) {
+          // 忽略边界绘制失败，不影响主多边形显示
+        }
       });
 
       this.isNoFlyZoneVisible = true;
       console.log(`已加载 ${noFlyZones.length} 个机场禁飞区`);
     } catch (error) {
       console.error('加载机场禁飞区失败:', error);
+    }
+    finally {
+      this.isNoFlyZoneLoading = false;
     }
   }
 
@@ -1631,42 +1698,50 @@ export class CesiumMapToolbar {
   /**
    * 根据当前场景模式配置禁飞区多边形
    */
+  /**
+   * 创建禁飞区多边形配置选项
+   * @param positions - 多边形的顶点坐标数组，使用笛卡尔坐标系
+   * @returns 返回一个包含多边形图形配置选项的对象
+   */
   private createNoFlyZonePolygonOptions(
-    positions: Cartesian3[]
-  ): Cesium.PolygonGraphics.ConstructorOptions {
-    const is3DMode = this.viewer.scene.mode === Cesium.SceneMode.SCENE3D;
+    positions: Cartesian3[]  // 笛卡尔3D坐标数组，用于定义多边形的顶点
+  ): Cesium.PolygonGraphics.ConstructorOptions {  // 返回类型为Cesium多边形图形的构造选项
+    const is3DMode = this.viewer.scene.mode === Cesium.SceneMode.SCENE3D;  // 判断当前场景是否为3D模式
 
     const hoverHeight = is3DMode ? 2 : 0; // 可根据需要调大到 5-10m 来避免近裁剪
 
+    // 在3D模式下设置悬停高度为2米，2D模式下为0
     // 将传入 positions 标准化为海拔 0（避免 positions 中意外的高度影响渲染）
-    const normalizedPositions = positions.map((p) => {
+    const normalizedPositions = positions.map((p) => {  // 遍历所有坐标点进行标准化处理
       try {
-        const carto = Cesium.Cartographic.fromCartesian(p);
-        return Cesium.Cartesian3.fromRadians(carto.longitude, carto.latitude, 0);
+        const carto = Cesium.Cartographic.fromCartesian(p);  // 将笛卡尔坐标转换为地理坐标
+        return Cesium.Cartesian3.fromRadians(carto.longitude, carto.latitude, 0);  // 转换回笛卡尔坐标，并设置高度为0
       } catch (e) {
         return p; // 若转换失败则回退使用原点
       }
     });
     // 确保场景不会因地形深度测试而遮挡实体（只需设置一次，安全操作）
     try {
-      if (this.viewer && this.viewer.scene && this.viewer.scene.globe) {
-        this.viewer.scene.globe.depthTestAgainstTerrain = false;
+      if (this.viewer && this.viewer.scene && this.viewer.scene.globe) {  // 检查viewer及其相关组件是否存在
+        this.viewer.scene.globe.depthTestAgainstTerrain = false;  // 禁用地形深度测试，防止地形遮挡实体
       }
     } catch (e) {
       // 忽略无法设置的情况
     }
 
     return {
-      hierarchy: new Cesium.PolygonHierarchy(normalizedPositions),
-      material: Cesium.Color.RED.withAlpha(0.3),
-      outline: true,
-      outlineColor: Cesium.Color.RED,
-      outlineWidth: 2,
-      perPositionHeight: false,
-      heightReference: Cesium.HeightReference.NONE,
-      height: hoverHeight,
-      extrudedHeight: is3DMode ? this.noFlyZoneExtrudedHeight : undefined,
-      classificationType: Cesium.ClassificationType.BOTH,
+      hierarchy: new Cesium.PolygonHierarchy(normalizedPositions),  // 设置多边形的层级结构，使用标准化后的坐标
+      material: Cesium.Color.RED.withAlpha(0.3),  // 设置多边形填充材质为半透明红色
+      // 在 3D 模式下，我们不依赖 polygon 自带的 outline（会在 top/bottom 同时渲染），
+      // 代码中会单独绘制顶面轮廓 polyline，避免重复/重叠视觉效果。
+      outline: is3DMode ? false : true,
+      outlineColor: Cesium.Color.RED,  // 设置轮廓颜色为红色
+      outlineWidth: 2,  // 设置轮廓宽度为2像素
+      perPositionHeight: false,  // 不使用每个点的高度
+      heightReference: Cesium.HeightReference.NONE,  // 不参考地形高度
+      height: hoverHeight,  // 设置多边形底部高度
+      extrudedHeight: is3DMode ? this.noFlyZoneExtrudedHeight : undefined,  // 3D模式下设置拉伸高度
+      classificationType: Cesium.ClassificationType.BOTH,  // 设置分类类型，同时在地形和3D模型上显示
     };
   }
 

@@ -78,8 +78,8 @@ export interface MeasurementCallback {
 
 // 缩放回调接口
 export interface ZoomCallback {
-  onZoomIn?: (beforeLevel: number, afterLevel: number) => void;
-  onZoomOut?: (beforeLevel: number, afterLevel: number) => void;
+  onZoomIn?: (beforeHeight: number, afterHeight: number, currentLevel: number) => void;
+  onZoomOut?: (beforeHeight: number, afterHeight: number, currentLevel: number) => void;
 }
 
 // 地图类型接口
