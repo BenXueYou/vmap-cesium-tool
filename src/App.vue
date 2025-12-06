@@ -18,17 +18,13 @@ import type { ToolbarConfig } from "./libs/CesiumMapModel";
 import DrawHelper from "./libs/CesiumMapHelper";
 import { useToolBarConfig } from "./hooks/toolBarConfig";
 import { getViteTdToken } from "./utils/common";
+import * as Cesium from "cesium";
 
-
-
-
-const message = ref("");
 let viewer = ref();
-let mapToolbar: CesiumMapToolbar | null = null;
+const message = ref("");
 let drawHelper: DrawHelper | null = null;
+let mapToolbar: CesiumMapToolbar | null = null;
 const TDT_TK = getViteTdToken();
-const CesiumToken = import.meta.env.VITE_CESIUM_TOKEN;
-
 const { toolbarConfig, toolbarCallback } = useToolBarConfig(message);
 
 // 初始化地图
@@ -36,10 +32,12 @@ onMounted(async () => {
   const { viewer: cesiumViewer, initialCenter } = await initCesium(
     "cesiumContainer",
     {
+      isFly: true,
       token: TDT_TK,
       mapType: 'tiandi',
-      isFly: true,
-    }
+      baseLayerPicker: false,
+      terrainProvider: new Cesium.EllipsoidTerrainProvider(),
+    },
   );
   // 调试用：挂到全局
   (window as any).cesiumViewer = cesiumViewer;
@@ -58,25 +56,17 @@ onMounted(async () => {
       latitude: initialCenter.latitude,
       height: initialCenter.height,
     };
-
     mapToolbar = new CesiumMapToolbar(
       viewer.value,
       container,
       toolbarConfig as ToolbarConfig,
       toolbarCallback,
-      mapInitialCenter // 传递从initCesium获取的初始中心点
+      mapInitialCenter
     );
     mapToolbar.setTDToken(TDT_TK);
-
-    setTimeout(() => {
-      console.log(refreshMeasureMode(mapToolbar));
-    }, 10000)
   }
 });
 
-const refreshMeasureMode = (mapToolbar: CesiumMapToolbar|null) => {
-  return mapToolbar?.measurement.getMeasureMode();
-};
 // 清理资源
 onBeforeUnmount(() => {
   if (mapToolbar) {

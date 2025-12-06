@@ -37,7 +37,7 @@ export class CesiumMapToolbar {
   private noFlyZoneEntities: Cesium.Entity[] = [];
   private isNoFlyZoneVisible: boolean = false;
   private isNoFlyZoneChecked: boolean = true;
-  private readonly noFlyZoneExtrudedHeight = 500;
+  private readonly noFlyZoneExtrudedHeight = 1000;
 
   // 三维地名服务实例
   private currentGeoWTFS: any = null;
@@ -1636,20 +1636,37 @@ export class CesiumMapToolbar {
   ): Cesium.PolygonGraphics.ConstructorOptions {
     const is3DMode = this.viewer.scene.mode === Cesium.SceneMode.SCENE3D;
 
+    const hoverHeight = is3DMode ? 2 : 0; // 可根据需要调大到 5-10m 来避免近裁剪
+
+    // 将传入 positions 标准化为海拔 0（避免 positions 中意外的高度影响渲染）
+    const normalizedPositions = positions.map((p) => {
+      try {
+        const carto = Cesium.Cartographic.fromCartesian(p);
+        return Cesium.Cartesian3.fromRadians(carto.longitude, carto.latitude, 0);
+      } catch (e) {
+        return p; // 若转换失败则回退使用原点
+      }
+    });
+    // 确保场景不会因地形深度测试而遮挡实体（只需设置一次，安全操作）
+    try {
+      if (this.viewer && this.viewer.scene && this.viewer.scene.globe) {
+        this.viewer.scene.globe.depthTestAgainstTerrain = false;
+      }
+    } catch (e) {
+      // 忽略无法设置的情况
+    }
+
     return {
-      hierarchy: new Cesium.PolygonHierarchy(positions),
+      hierarchy: new Cesium.PolygonHierarchy(normalizedPositions),
       material: Cesium.Color.RED.withAlpha(0.3),
       outline: true,
       outlineColor: Cesium.Color.RED,
       outlineWidth: 2,
-      perPositionHeight: is3DMode,
-      closeTop: true,
-      closeBottom: true,
-      classificationType: Cesium.ClassificationType.BOTH,
-      // 不再贴地，统一使用悬浮高度
+      perPositionHeight: false,
       heightReference: Cesium.HeightReference.NONE,
-      height: 0,
+      height: hoverHeight,
       extrudedHeight: is3DMode ? this.noFlyZoneExtrudedHeight : undefined,
+      classificationType: Cesium.ClassificationType.BOTH,
     };
   }
 

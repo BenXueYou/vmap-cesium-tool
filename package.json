@@ -1,6 +1,6 @@
 {
   "name": "@xingm/vmap-cesium-toolbar",
-  "version": "0.0.1-alpha.5",
+  "version": "0.0.1-alpha.7",
   "description": "A powerful Cesium map toolbar plugin with drawing, measurement, and interaction features",
   "type": "module",
   "main": "dist/index.js",
@@ -59,10 +59,10 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-username/vmap-cesium-toolbar.git"
+    "url": "https://github.com/benxueyou/vmap-cesium-toolbar.git"
   },
   "bugs": {
-    "url": "https://github.com/your-username/vmap-cesium-toolbar/issues"
+    "url": "https://github.com/benxueyou/vmap-cesium-toolbar/issues"
   },
-  "homepage": "https://github.com/your-username/vmap-cesium-toolbar#readme"
+  "homepage": "https://github.com/benxueyou/vmap-cesium-toolbar#readme"
 }
