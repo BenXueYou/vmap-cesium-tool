@@ -695,21 +695,18 @@ class DrawHelper {
           : sourceBase;
 
       if (polygonSource.length >= 3) {
-        const polygonPositions =
-          this.offsetHeight > 0
-            ? polygonSource.map((pos) => {
-                const carto = Cesium.Cartographic.fromCartesian(pos);
-                return Cesium.Cartesian3.fromRadians(
-                  carto.longitude,
-                  carto.latitude,
-                  (carto.height || 0) + this.offsetHeight
-                );
-              })
-            : polygonSource;
-        const heightReference =
-          this.offsetHeight > 0
-            ? Cesium.HeightReference.NONE
-            : Cesium.HeightReference.CLAMP_TO_GROUND;
+        // 无论 2D/3D，预览多边形一律使用悬浮高度，避免 CLAMP_TO_GROUND 与 outline 组合触发 Cesium terrain 警告
+        const polygonPositions = polygonSource.map((pos) => {
+          const carto = Cesium.Cartographic.fromCartesian(pos);
+          const baseHeight = carto.height || 0;
+          const extraHeight = this.offsetHeight > 0 ? this.offsetHeight : 0.1;
+          return Cesium.Cartesian3.fromRadians(
+            carto.longitude,
+            carto.latitude,
+            baseHeight + extraHeight
+          );
+        });
+        const heightReference = Cesium.HeightReference.NONE;
 
         if (this.currentPolygonEntity) {
           this.currentPolygonEntity.polygon!.hierarchy =
