@@ -36,6 +36,12 @@ class DrawHelper {
   private onDrawStartCallback: (() => void) | null = null;
   private onDrawEndCallback: ((entity: Cesium.Entity | null) => void) | null = null;
   private onEntityRemovedCallback: ((entity: Cesium.Entity) => void) | null = null;
+  private onMeasureCompleteCallback: ((result: {
+    type: "line" | "polygon" | "rectangle";
+    positions: Cesium.Cartesian3[];
+    distance?: number;
+    areaKm2?: number;
+  }) => void) | null = null;
   private offsetHeight: number = 2;
   // 记录绘制前地形深度测试开关，用于绘制结束或取消时恢复
   private originalDepthTestAgainstTerrain: boolean | null = null;
@@ -677,11 +683,6 @@ class DrawHelper {
         }
       }
     } else if (this.drawMode === "polygon") {
-      // 在 3D 模式且地形未加载完成时，不创建最终多边形，直接取消本次绘制
-      if (this.scene.mode === Cesium.SceneMode.SCENE3D && !this.scene.globe.tilesLoaded) {
-        this.endDrawingInternal(true);
-        return;
-      }
       // 在 3D 模式下如果地形尚未加载完成，不创建多边形预览，避免触发贴地相关的内部错误
       if (this.scene.mode === Cesium.SceneMode.SCENE3D && !this.scene.globe.tilesLoaded) {
         return;
@@ -783,6 +784,10 @@ class DrawHelper {
       return;
     }
     let finalEntity: Cesium.Entity | null = null;
+    let measureType: "line" | "polygon" | "rectangle" | null = null;
+    let measurePositions: Cesium.Cartesian3[] = [];
+    let measureDistance: number | undefined;
+    let measureAreaKm2: number | undefined;
     // 先过滤掉无效坐标，再保存原始地面位置（不包含offsetHeight）
     const validTempPositions = this.tempPositions.filter((p) => this.isValidCartesian3(p));
     if (validTempPositions.length < (this.drawMode === "polygon" ? 3 : 2)) {
@@ -838,6 +843,16 @@ class DrawHelper {
         // 保存原始地面位置
         (finalEntity as any)._groundPositions = groundPositions;
       }
+      measureType = "line";
+      measurePositions = groundPositions;
+      let totalDistance = 0;
+      for (let i = 1; i < groundPositions.length; i++) {
+        totalDistance += Cesium.Cartesian3.distance(
+          groundPositions[i - 1],
+          groundPositions[i]
+        );
+      }
+      measureDistance = totalDistance;
 
       // 标签已经在 updateDrawingEntity 中创建，这里不需要重复创建
     } else if (this.drawMode === "polygon") {
@@ -884,6 +899,9 @@ class DrawHelper {
       }
       // 添加面积标签（使用 billboard+canvas，与测距样式保持一致）
       const area = this.calculatePolygonArea(groundPositions);
+      measureType = "polygon";
+      measurePositions = groundPositions;
+      measureAreaKm2 = area;
       if (area > 0) {
         const center = this.calculatePolygonCenter(groundPositions);
 
@@ -958,6 +976,10 @@ class DrawHelper {
       }
       // 添加面积标签（使用 billboard+canvas，与测距样式保持一致）
       const area = this.calculateRectangleArea(rect);
+      measureType = "rectangle";
+      const rectPositions = Cesium.Rectangle.subsample(rect, this.scene.globe.ellipsoid);
+      measurePositions = rectPositions;
+      measureAreaKm2 = area;
       if (area > 0) {
         const rectCenter = Cesium.Rectangle.center(rect);
         const rectCenterGround = Cesium.Cartesian3.fromRadians(
@@ -1038,6 +1060,16 @@ class DrawHelper {
     if (this.originalDepthTestAgainstTerrain !== null) {
       this.scene.globe.depthTestAgainstTerrain = this.originalDepthTestAgainstTerrain;
       this.originalDepthTestAgainstTerrain = null;
+    }
+
+    // 触发测量完成回调
+    if (this.onMeasureCompleteCallback && measureType && measurePositions.length > 0) {
+      this.onMeasureCompleteCallback({
+        type: measureType,
+        positions: measurePositions,
+        distance: measureDistance,
+        areaKm2: measureAreaKm2,
+      });
     }
 
     // 触发结束绘制回调
@@ -1400,6 +1432,14 @@ class DrawHelper {
   }
 
   // --- 回调注册 ---
+  onMeasureComplete(callback: (result: {
+    type: "line" | "polygon" | "rectangle";
+    positions: Cesium.Cartesian3[];
+    distance?: number;
+    areaKm2?: number;
+  }) => void): void {
+    this.onMeasureCompleteCallback = callback;
+  }
 
   /**
    * 设置开始绘制时的回调函数

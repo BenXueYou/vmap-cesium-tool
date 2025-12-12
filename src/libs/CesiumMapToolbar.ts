@@ -1,6 +1,8 @@
 import * as Cesium from 'cesium';
 import type { Viewer, Cartesian3 } from 'cesium';
 import DrawHelper from './CesiumMapHelper';
+import { CesiumMapController } from './CesiumMapController';
+import { MeasurementService } from './MeasurementService';
 import type {
   ButtonConfig, MapType, SearchResult, ToolbarConfig,
   SearchCallback, MeasurementCallback, ZoomCallback, CustomButtonConfig
@@ -8,7 +10,6 @@ import type {
 
 import { TDTMapTypes } from './CesiumMapConfig'
 import { TD_Map_Search_URL, China_Map_Extent } from '../hooks/useMap';
-import { heightToZoomLevel, zoomLevelToHeight } from '../utils/common';
 import { loadAllAirportNoFlyZones, type AirportNoFlyZone } from '../utils/geojson';
 
 
@@ -45,12 +46,15 @@ export class CesiumMapToolbar {
   private currentGeoWTFS: any = null;
 
   // 当前测量模式：none（未测量）、distance（测距）、area（测面）
-  private currentMeasureMode: 'none' | 'distance' | 'area' = 'none';
+  private measurementService!: MeasurementService;
 
   // 对外暴露的测量相关 API
   public readonly measurement = {
-    getMeasureMode: (): 'none' | 'distance' | 'area' => this.currentMeasureMode,
+    getMeasureMode: (): 'none' | 'distance' | 'area' => this.measurementService?.getMeasureMode() ?? 'none',
   };
+
+  // 地图控制器：负责相机缩放、层级计算、2D/3D 切换和复位逻辑
+  private mapController: CesiumMapController;
 
   constructor(
     viewer: Viewer,
@@ -85,7 +89,25 @@ export class CesiumMapToolbar {
 
     // 初始化绘图助手
     this.drawHelper = new DrawHelper(viewer);
+
+    // 初始化测量服务并注册与 DrawHelper 的回调
+    this.measurementService = new MeasurementService(this.viewer, this.drawHelper, this.measurementCallback);
     this.setupDrawHelperCallbacks();
+
+    // 初始化地图控制器
+    this.mapController = new CesiumMapController(this.viewer, {
+      initialCenter: this.initialCenter,
+      getMapTypes: () => this.mapTypes,
+      getCurrentMapTypeId: () => this.currentMapType,
+      getToken: () => this.TD_Token,
+      zoomCallback: this.zoomCallback,
+      onSceneModeChanged: () => {
+        const anyHelper = this.drawHelper as any;
+        if (anyHelper && typeof anyHelper.handleSceneModeChanged === 'function') {
+          anyHelper.handleSceneModeChanged();
+        }
+      },
+    });
 
     // 创建工具栏
     this.createToolbar();
@@ -94,41 +116,13 @@ export class CesiumMapToolbar {
     this.autoLoadNoFlyZones();
 
     // 监听相机缩放，限制层级范围
-    this.setupCameraZoomLimitListener();
-
-  }
-  /**
- * 监听相机缩放，限制层级范围到 [1, 18]，并参考当前底图的 maximumLevel
- */
-  private setupCameraZoomLimitListener(): void {
-    const camera = this.viewer.camera;
-    camera.changed.addEventListener(() => {
-      // 当前由任何方式（包括鼠标滚轮）产生的层级
-      const currentLevel = this.getCurrentZoomLevel();
-      // 1. 先按全局范围 [1, 18] 限制
-      let clampedLevel = Math.max(1, Math.min(18, currentLevel));
-      // 2. 再按当前底图 provider 的 maximumLevel 收紧（参考 zoomIn 逻辑）
-      const curMapType = this.mapTypes.find(mt => mt.id === this.currentMapType);
-      let maximumLevel = 18
-      if (curMapType) {
-        const providers = curMapType.provider(this.TD_Token) || [];
-        maximumLevel = providers[0]?.maximumLevel || 18;
-        if (clampedLevel > maximumLevel) {
-          clampedLevel = maximumLevel;
-        }
-      }
-      // 如果层级已经在允许范围内，不做任何处理
-      if (clampedLevel === 1 || currentLevel >= maximumLevel ) {
-        // 3. 把相机层级“拉回”到允许范围（会同时修正滚轮缩放过头的情况）
-        this.setZoomLevel(clampedLevel);
-      }
-
-    });
+    this.mapController.setupCameraZoomLimitListener();
   }
 
   public setMapTypes(mapTypes: MapType[]): void {
     this.mapTypes = mapTypes;
   }
+
   public setTDToken(TD_Token: string): void {
     this.TD_Token = TD_Token;
   }
@@ -138,13 +132,15 @@ export class CesiumMapToolbar {
    */
   public setInitialCenter(center: { longitude: number; latitude: number; height: number }): void {
     this.initialCenter = center;
+    // 同步到地图控制器
+    this.mapController.setInitialCenter(center);
   }
 
   /**
    * 获取初始中心点
    */
   public getInitialCenter(): { longitude: number; latitude: number; height: number } | undefined {
-    return this.initialCenter;
+    return this.mapController.getInitialCenter();
   }
 
   /**
@@ -220,57 +216,8 @@ export class CesiumMapToolbar {
   /**
    * 获取按钮元素
    */
-  public getButtonElement(buttonId: string): HTMLElement | null {
-    return this.toolbarElement.querySelector(`[data-tool="${buttonId}"]`) as HTMLElement;
-  }
-
-  /**
-   * 设置绘图助手回调
-   */
   private setupDrawHelperCallbacks(): void {
-    this.drawHelper.onDrawStart(() => {
-      console.log('开始绘制');
-    });
-
-    this.drawHelper.onDrawEnd((entity) => {
-      if (entity) {
-        console.log('绘制完成', entity);
-        // 根据绘制类型触发相应回调
-        if (entity.polyline) {
-          // 测距完成
-          const positions = entity.polyline.positions?.getValue(Cesium.JulianDate.now()) as Cartesian3[];
-          if (positions) {
-            let totalDistance = 0;
-            for (let i = 1; i < positions.length; i++) {
-              totalDistance += Cesium.Cartesian3.distance(positions[i - 1], positions[i]);
-            }
-            // 触发回调，传递原始距离值（米）
-            if (this.measurementCallback?.onDistanceComplete) {
-              this.measurementCallback.onDistanceComplete(positions, totalDistance);
-            } else {
-              // 如果没有提供回调，显示默认的格式化信息
-              const formattedDistance = this.formatDistance(totalDistance);
-              console.log(`测距完成，总距离: ${formattedDistance}`);
-            }
-          }
-        } else if (entity.polygon) {
-          // 测面积完成
-          const positions = entity.polygon.hierarchy?.getValue(Cesium.JulianDate.now()) as Cesium.PolygonHierarchy;
-          if (positions && this.measurementCallback?.onAreaComplete) {
-            // 计算面积
-            const area = this.calculatePolygonArea(positions.positions);
-            this.measurementCallback.onAreaComplete(positions.positions, area);
-          }
-        }
-      }
-
-      // 无论线还是面，绘制完成后都认为退出测量交互
-      this.currentMeasureMode = 'none';
-    });
-
-    this.drawHelper.onEntityRemoved((entity) => {
-      console.log('实体被移除', entity);
-    });
+    this.measurementService.setupDrawHelperCallbacks();
   }
 
   /**
@@ -998,25 +945,13 @@ export class CesiumMapToolbar {
   private handleMeasurementAction(action: string): void {
     switch (action) {
       case 'measure-area':
-        this.currentMeasureMode = 'area';
-        // 延迟启动绘制，确保菜单点击事件完全处理完毕，避免第一次点击被消耗
-        setTimeout(() => {
-          this.drawHelper.startDrawingPolygon();
-        }, 50);
+        this.measurementService.startAreaMeasurement();
         break;
       case 'measure-distance':
-        this.currentMeasureMode = 'distance';
-        // 延迟启动绘制，确保菜单点击事件完全处理完毕，避免第一次点击被消耗
-        setTimeout(() => {
-          this.drawHelper.startDrawingLine();
-        }, 50);
+        this.measurementService.startDistanceMeasurement();
         break;
       case 'clear-measurement':
-        this.currentMeasureMode = 'none';
-        this.drawHelper.clearAll();
-        if (this.measurementCallback?.onClear) {
-          this.measurementCallback.onClear();
-        }
+        this.measurementService.clearMeasurements();
         break;
     }
   }
@@ -1025,73 +960,7 @@ export class CesiumMapToolbar {
    * 切换2D/3D视图
    */
   private toggle2D3D(buttonElement: HTMLElement): void {
-    const scene = this.viewer.scene;
-    const camera = scene.camera;
-    const currentMode = scene.mode;
-    const targetMode = currentMode === Cesium.SceneMode.SCENE3D
-      ? Cesium.SceneMode.SCENE2D
-      : Cesium.SceneMode.SCENE3D;
-    buttonElement.innerHTML = targetMode === Cesium.SceneMode.SCENE3D ? '3D' : '2D';
-
-    // 计算当前屏幕中心对应的地面经纬度，作为切换后的对齐目标（如果能成功拾取）
-    const canvas = scene.canvas;
-    const centerWindowPos = new Cesium.Cartesian2(
-      canvas.clientWidth / 2,
-      canvas.clientHeight / 2
-    );
-
-    let centerCartographic: Cesium.Cartographic | null = null;
-    const pickRay = camera.getPickRay(centerWindowPos);
-    if (pickRay) {
-      const pickPos = scene.globe.pick(pickRay, scene);
-      if (Cesium.defined(pickPos)) {
-        centerCartographic = Cesium.Cartographic.fromCartesian(pickPos as Cesium.Cartesian3);
-      }
-    }
-
-    const currentHeight = camera.positionCartographic.height;
-    const savedHeading = camera.heading;
-    const savedPitch = camera.pitch;
-    const savedRoll = camera.roll;
-
-    // 先直接切换场景模式（无动画），避免 Cesium 内部 morph 造成视角闪动
-    scene.mode = targetMode;
-
-    // 通知 DrawHelper：场景模式已变化，需要更新偏移和已完成实体
-    const anyHelper = this.drawHelper as any;
-    if (anyHelper && typeof anyHelper.handleSceneModeChanged === 'function') {
-      anyHelper.handleSceneModeChanged();
-    }
-
-    // 只有在成功拾取到屏幕中心地面点时，才在新模式下重设相机视角
-    if (centerCartographic) {
-      const lon = centerCartographic.longitude;
-      const lat = centerCartographic.latitude;
-
-      if (targetMode === Cesium.SceneMode.SCENE2D) {
-        // 2D：以俯视方式查看同一中心点
-        camera.setView({
-          destination: Cesium.Cartesian3.fromRadians(lon, lat, currentHeight),
-          orientation: {
-            heading: 0.0,
-            pitch: -Math.PI / 2,
-            roll: 0.0,
-          },
-        });
-      } else {
-        // 3D：保持类似高度，同时尽量保持原有朝向
-        camera.setView({
-          destination: Cesium.Cartesian3.fromRadians(lon, lat, currentHeight),
-          orientation: {
-            heading: savedHeading,
-            pitch: savedPitch,
-            roll: savedRoll,
-          },
-        });
-      }
-    }
-
-    // 更新按钮文本
+    this.mapController.toggle2D3D(buttonElement);
   }
 
   /**
@@ -1418,19 +1287,7 @@ export class CesiumMapToolbar {
    * 复位到初始位置
    */
   private resetLocation(): void {
-    if (!this.initialCenter) {
-      console.warn('未设置初始中心点，无法执行复位操作');
-      return;
-    }
-
-    this.viewer.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(
-        this.initialCenter.longitude,
-        this.initialCenter.latitude,
-        this.initialCenter.height
-      ),
-      duration: 1.0
-    });
+    this.mapController.resetLocation();
   }
 
   /**
@@ -1438,8 +1295,7 @@ export class CesiumMapToolbar {
    * @returns 当前层级（1-18）
    */
   private getCurrentZoomLevel(): number {
-    const height = this.viewer.camera.positionCartographic.height;
-    return heightToZoomLevel(height);
+    return this.mapController.getCurrentZoomLevel();
   }
 
   /**
@@ -1447,104 +1303,20 @@ export class CesiumMapToolbar {
    * @param zoomLevel 目标层级（1-18）
    */
   private setZoomLevel(zoomLevel: number): void {
-    try {
-      const clampedLevel = Math.max(1, Math.min(18, zoomLevel));
-      const targetHeight = zoomLevelToHeight(clampedLevel);
-
-      // 验证目标高度是否有效
-      if (!isFinite(targetHeight) || isNaN(targetHeight) || targetHeight <= 0) {
-        console.warn(`无效的目标高度: ${targetHeight}，使用默认层级 ${clampedLevel}`);
-        return;
-      }
-
-      // 获取当前相机位置，如果获取失败则使用默认值
-      let currentPosition: Cesium.Cartographic;
-      try {
-        currentPosition = this.viewer.camera.positionCartographic.clone();
-        // 验证当前位置是否有效
-        if (!isFinite(currentPosition.longitude) || !isFinite(currentPosition.latitude)) {
-          // 使用默认位置（中国中心）
-          currentPosition = Cesium.Cartographic.fromDegrees(120.2052342, 30.2489634);
-        }
-      } catch (error) {
-        // 如果获取当前位置失败，使用默认位置
-        console.warn('获取当前相机位置失败，使用默认位置', error);
-        currentPosition = Cesium.Cartographic.fromDegrees(120.2052342, 30.2489634);
-      }
-
-      // 设置新的相机高度，保持经纬度不变
-      this.viewer.camera.setView({
-        destination: Cesium.Cartesian3.fromRadians(
-          currentPosition.longitude,
-          currentPosition.latitude,
-          targetHeight
-        ),
-        orientation: {
-          heading: this.viewer.camera.heading,
-          pitch: this.viewer.camera.pitch,
-          roll: this.viewer.camera.roll
-        }
-      });
-    } catch (error) {
-      console.error('设置地图层级失败:', error);
-      // 如果设置失败，尝试恢复到安全的层级（10）
-      try {
-        const safeHeight = zoomLevelToHeight(10);
-        const safePosition = Cesium.Cartographic.fromDegrees(120.2052342, 30.2489634);
-        this.viewer.camera.setView({
-          destination: Cesium.Cartesian3.fromRadians(
-            safePosition.longitude,
-            safePosition.latitude,
-            safeHeight
-          )
-        });
-      } catch (recoveryError) {
-        console.error('恢复地图层级失败:', recoveryError);
-      }
-    }
+    this.mapController.setZoomLevel(zoomLevel);
   }
   /**
    * 放大
    */
   private zoomIn(): void {
-    const currentLevel = this.getCurrentZoomLevel();
-    const beforeHeight = this.viewer.camera.positionCartographic.height;
-    const curMapType = this.mapTypes.find((im) => im.id === this.currentMapType)
-    if (curMapType && curMapType.provider(this.TD_Token)) {
-      const providerList = curMapType.provider(this.TD_Token)
-      const maximumLevel = providerList[0].maximumLevel || 18
-      if (currentLevel >= maximumLevel) return
-    }
-    // 增加层级（放大，高度减小）
-    const targetLevel = currentLevel + 1;
-    this.setZoomLevel(targetLevel);
-    const afterHeight = this.viewer.camera.positionCartographic.height;
-
-    if (this.zoomCallback?.onZoomIn) {
-      this.zoomCallback.onZoomIn(beforeHeight, afterHeight, currentLevel);
-    }
+    this.mapController.zoomIn();
   }
 
   /**
    * 缩小
    */
   private zoomOut(): void {
-    const currentLevel = this.getCurrentZoomLevel();
-    const beforeHeight = this.viewer.camera.positionCartographic.height;
-    // 如果已经是最小层级（1），不执行操作
-    if (currentLevel <= 1) {
-      return;
-    }
-
-    // 减少层级（缩小，高度增大）
-    const targetLevel = currentLevel - 1;
-    this.setZoomLevel(targetLevel);
-
-    const afterHeight = this.viewer.camera.positionCartographic.height;
-
-    if (this.zoomCallback?.onZoomOut) {
-      this.zoomCallback.onZoomOut(beforeHeight, afterHeight, currentLevel);
-    }
+    this.mapController.zoomOut();
   }
 
   /**
@@ -1648,8 +1420,19 @@ export class CesiumMapToolbar {
         // 这样可以只显示顶面的轮廓，避免 polygon 在 top/bottom 同时绘制 outline 导致“重叠”外观。
         try {
           const is3DMode = this.viewer.scene.mode === Cesium.SceneMode.SCENE3D;
-          const extruded = polygonOptions.extrudedHeight;
-          const topHeight = typeof extruded === 'number' ? extruded : polygonOptions.height || 0;
+          const extrudedRaw = polygonOptions.extrudedHeight;
+          const heightRaw = polygonOptions.height;
+
+          const extrudedHeightValue = typeof extrudedRaw === 'number'
+            ? extrudedRaw
+            : (extrudedRaw as Cesium.Property | undefined)?.getValue(Cesium.JulianDate.now());
+
+          const baseHeightValue = typeof heightRaw === 'number'
+            ? heightRaw
+            : (heightRaw as Cesium.Property | undefined)?.getValue(Cesium.JulianDate.now());
+
+          const topHeight = (extrudedHeightValue ?? baseHeightValue) ?? 0;
+
           if (is3DMode && topHeight > 0) {
             const topPositions = positions.map((p) => {
               const carto = Cesium.Cartographic.fromCartesian(p);
