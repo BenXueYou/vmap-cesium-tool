@@ -97,7 +97,7 @@ class DrawHelper {
    */
   private updateOffsetHeight(): void {
     if (this.scene.mode === Cesium.SceneMode.SCENE3D) {
-      this.offsetHeight = 100; // 3D模式使用100米偏移，所有元素都浮动
+      this.offsetHeight = 0; // 3D模式使用100米偏移，所有元素都浮动
     } else {
       this.offsetHeight = 0; // 2D模式使用0米偏移，所有元素都贴近地面
     }

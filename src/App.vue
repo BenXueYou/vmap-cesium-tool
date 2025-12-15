@@ -35,8 +35,8 @@ onMounted(async () => {
       isFly: true,
       token: TDT_TK,
       mapType: 'tiandi',
-      baseLayerPicker: false,
-      terrainProvider: new Cesium.EllipsoidTerrainProvider(),
+      // baseLayerPicker: true,
+      // terrainProvider: new Cesium.EllipsoidTerrainProvider(),
     },
   );
   // 调试用：挂到全局
