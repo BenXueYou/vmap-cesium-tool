@@ -156,6 +156,12 @@ export const useToolBarConfig = (message: any) => {
     },
     // 测量回调
     measurement: {
+      onMeasurementStart: (positions?: any) => {
+        message.value = `开始测量`;
+        setTimeout(() => {
+          message.value = "";
+        }, 2000);
+      },
       onDistanceComplete: (positions: any, distance: any) => {
         message.value = `测距完成，总距离: ${distance.toFixed(2)} 米`;
         setTimeout(() => {

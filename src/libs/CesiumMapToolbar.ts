@@ -230,6 +230,9 @@ export class CesiumMapToolbar {
   private setupDrawHelperCallbacks(): void {
     this.drawHelper.onDrawStart(() => {
       console.log('开始绘制');
+      if (this.measurementCallback?.onMeasurementStart) {
+        this.measurementCallback?.onMeasurementStart()
+      }
     });
 
     this.drawHelper.onDrawEnd((entity) => {
