@@ -25,7 +25,7 @@ const message = ref("");
 let drawHelper: DrawHelper | null = null;
 let mapToolbar: CesiumMapToolbar | null = null;
 const TDT_TK = getViteTdToken();
-const { toolbarConfig, toolbarCallback } = useToolBarConfig(message);
+const { toolbarConfig, toolbarCallback } = useToolBarConfig(viewer, message);
 
 // 初始化地图
 onMounted(async () => {
@@ -35,8 +35,10 @@ onMounted(async () => {
       isFly: true,
       token: TDT_TK,
       mapType: 'tiandi',
-      // baseLayerPicker: true,
-      // terrainProvider: new Cesium.EllipsoidTerrainProvider(),
+      requestRenderMode: true, // 手动请求渲染
+      maximumRenderTimeChange: 0.01, // 动画平衡
+      baseLayerPicker: false,
+      terrainProvider: new Cesium.EllipsoidTerrainProvider(),
     },
   );
   // 调试用：挂到全局

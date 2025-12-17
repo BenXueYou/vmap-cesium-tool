@@ -97,7 +97,7 @@ class DrawHelper {
    */
   private updateOffsetHeight(): void {
     if (this.scene.mode === Cesium.SceneMode.SCENE3D) {
-      this.offsetHeight = 0; // 3D模式使用100米偏移，所有元素都浮动
+      this.offsetHeight = 1; // 3D模式使用100米偏移，所有元素都浮动
     } else {
       this.offsetHeight = 0; // 2D模式使用0米偏移，所有元素都贴近地面
     }
@@ -304,6 +304,7 @@ class DrawHelper {
         // 不再贴地抬高，统一使用 NONE，与线/面高度一致
         heightReference: Cesium.HeightReference.NONE,
         scaleByDistance: new Cesium.NearFarScalar(1.5e2, 1.0, 1.5e7, 0.5),
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
       },
     });
     this.tempEntities.push(pointEntity);

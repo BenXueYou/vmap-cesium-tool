@@ -217,7 +217,52 @@ export class CesiumMapToolbar {
    * 获取按钮元素
    */
   private setupDrawHelperCallbacks(): void {
-    this.measurementService.setupDrawHelperCallbacks();
+    this.drawHelper.onDrawStart(() => {
+      console.log('开始绘制');
+      if (this.measurementCallback?.onMeasurementStart) {
+        this.measurementCallback?.onMeasurementStart()
+      }
+    });
+
+    this.drawHelper.onDrawEnd((entity) => {
+      if (entity) {
+        console.log('绘制完成', entity);
+        // 根据绘制类型触发相应回调
+        if (entity.polyline) {
+          // 测距完成
+          const positions = entity.polyline.positions?.getValue(Cesium.JulianDate.now()) as Cartesian3[];
+          if (positions) {
+            let totalDistance = 0;
+            for (let i = 1; i < positions.length; i++) {
+              totalDistance += Cesium.Cartesian3.distance(positions[i - 1], positions[i]);
+            }
+            // 触发回调，传递原始距离值（米）
+            if (this.measurementCallback?.onDistanceComplete) {
+              this.measurementCallback.onDistanceComplete(positions, totalDistance);
+            } else {
+              // 如果没有提供回调，显示默认的格式化信息
+              const formattedDistance = this.formatDistance(totalDistance);
+              console.log(`测距完成，总距离: ${formattedDistance}`);
+            }
+          }
+        } else if (entity.polygon) {
+          // 测面积完成
+          const positions = entity.polygon.hierarchy?.getValue(Cesium.JulianDate.now()) as Cesium.PolygonHierarchy;
+          if (positions && this.measurementCallback?.onAreaComplete) {
+            // 计算面积
+            const area = this.calculatePolygonArea(positions.positions);
+            this.measurementCallback.onAreaComplete(positions.positions, area);
+          }
+        }
+      }
+
+      // 无论线还是面，绘制完成后都认为退出测量交互
+      this.currentMeasureMode = 'none';
+    });
+
+    this.drawHelper.onEntityRemoved((entity) => {
+      console.log('实体被移除', entity);
+    });
   }
 
   /**

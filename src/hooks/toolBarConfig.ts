@@ -11,7 +11,7 @@ import { TD_Map_Search_URL, China_Map_Extent } from "./useMap";
 import type { SearchResult } from "../libs/CesiumMapModel";
 
 
-export const useToolBarConfig = (message: any) => {
+export const useToolBarConfig = (viewer, message: any) => {
 
   const toolbarConfig = {
     position: "bottom-right",
@@ -156,20 +156,38 @@ export const useToolBarConfig = (message: any) => {
     },
     // 测量回调
     measurement: {
+      onMeasurementStart: (positions?: any) => {
+        if (viewer?.scene?.requestRenderMode) {
+          viewer.scene.requestRenderMode = false;
+        }
+        message.value = `开始测量`;
+        setTimeout(() => {
+          message.value = "";
+        }, 2000);
+      },
       onDistanceComplete: (positions: any, distance: any) => {
         message.value = `测距完成，总距离: ${distance.toFixed(2)} 米`;
+        if (viewer?.scene?.requestRenderMode) {
+          viewer.scene.requestRenderMode = true;
+          viewer.scene.requestRender();
+        }
         setTimeout(() => {
           message.value = "";
         }, 3000);
       },
       onAreaComplete: (positions: any, area: any) => {
         message.value = `测面积完成，面积: ${area.toFixed(2)} 平方公里`;
+        if (viewer?.scene?.requestRenderMode) {
+          viewer.scene.requestRenderMode = true;
+          viewer.scene.requestRender();
+        }
         setTimeout(() => {
           message.value = "";
         }, 3000);
       },
       onClear: () => {
         message.value = "已清除所有测量内容";
+        viewer?.scene?.requestRender()
         setTimeout(() => {
           message.value = "";
         }, 2000);

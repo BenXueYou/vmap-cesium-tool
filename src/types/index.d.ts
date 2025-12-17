@@ -43,6 +43,7 @@ export interface SearchResult {
 
 // 测量回调接口
 export interface MeasurementCallback {
+  onMeasurementStart?: (positions?: Cartesian3[]) => void;
   onDistanceComplete?: (positions: Cartesian3[], distance: number) => void;
   onAreaComplete?: (positions: Cartesian3[], area: number) => void;
   onClear?: () => void;
