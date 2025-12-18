@@ -1,7 +1,7 @@
 import * as Cesium from 'cesium';
 import type { Viewer } from 'cesium';
-import type { MapType, ZoomCallback } from './CesiumMapModel';
-import { heightToZoomLevel, zoomLevelToHeight } from '../utils/common';
+import type { MapType, ZoomCallback } from '../CesiumMapModel';
+import { heightToZoomLevel, zoomLevelToHeight } from '../../utils/common';
 
 interface MapInitialCenter {
   longitude: number;

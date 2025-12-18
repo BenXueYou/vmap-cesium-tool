@@ -1,7 +1,7 @@
 import * as Cesium from 'cesium';
 import type { Viewer } from 'cesium';
 import DrawHelper from './CesiumMapHelper';
-import type { MeasurementCallback } from './CesiumMapModel';
+import type { MeasurementCallback } from '../CesiumMapModel';
 
 export type MeasureMode = 'none' | 'distance' | 'area';
 
@@ -35,6 +35,9 @@ export class MeasurementService {
 
     this.drawHelper.onDrawStart(() => {
       console.log('开始绘制');
+      if (this.measurementCallback?.onMeasurementStart) {
+        this.measurementCallback.onMeasurementStart();
+      }
     });
 
     this.drawHelper.onDrawEnd((entity) => {

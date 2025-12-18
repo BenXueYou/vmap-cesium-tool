@@ -1,5 +1,14 @@
 import * as Cesium from "cesium";
 import type { Primitive } from "cesium";
+import {
+  isValidCartesian3,
+  formatDistance,
+  formatArea,
+  calculateRectangle,
+  calculateRectangleArea,
+  calculatePolygonArea,
+  calculatePolygonCenter
+} from '../../utils/calc';
 /**
  * Cesium 绘图辅助工具类
  * 支持绘制点、线、多边形、矩形，并提供编辑和删除功能
@@ -62,24 +71,11 @@ class DrawHelper {
     // 根据地图模式设置偏移高度
     this.updateOffsetHeight();
     
-    // 监听场景模式变化（保留，以兼容可能存在的 morphTo2D/3D 调用）
-    // this.scene.morphComplete.addEventListener(() => {
-    //   this.handleSceneModeChanged();
-    // });
-
     // 确保启用地形深度测试以获得正确的高度
     this.scene.globe.depthTestAgainstTerrain = true;
   }
 
-  /**
-   * 判断一个 Cartesian3 是否为有效坐标（x/y/z 都是有限数字）
-   */
-  private isValidCartesian3(pos: Cesium.Cartesian3 | null | undefined): pos is Cesium.Cartesian3 {
-    return !!pos &&
-      Number.isFinite(pos.x) &&
-      Number.isFinite(pos.y) &&
-      Number.isFinite(pos.z);
-  }
+  // isValidCartesian3 已移至 calc.ts，直接使用导入的函数
 
   /**
    * 外部调用：在场景模式（2D/3D）切换后，更新偏移高度并重算已完成实体
@@ -550,7 +546,7 @@ class DrawHelper {
           }
           
           const labelOffset = i % 2 === 0 ? -25 : 25;
-          const segmentText = this.formatDistance(distance);
+          const segmentText = formatDistance(distance);
           
           if (i < this.currentSegmentLabels.length && this.currentSegmentLabels[i].billboard) {
             // 更新现有 billboard
@@ -640,7 +636,7 @@ class DrawHelper {
             (lastCarto.height || 0) + this.offsetHeight
           );
         }
-        const formattedDistance = this.formatDistance(totalDistance);
+        const formattedDistance = formatDistance(totalDistance);
         const labelText = `总长: ${formattedDistance}`;
         const image = this.createTotalLengthBillboardImage(labelText);
 
@@ -689,10 +685,10 @@ class DrawHelper {
         return;
       }
       // 仅使用有效坐标构建多边形预览
-      const committedPositions = this.tempPositions.filter((p) => this.isValidCartesian3(p));
+      const committedPositions = this.tempPositions.filter((p) => isValidCartesian3(p));
       const sourceBase = committedPositions;
       const polygonSource =
-        previewPoint && this.isValidCartesian3(previewPoint) && sourceBase.length >= 2
+        previewPoint && isValidCartesian3(previewPoint) && sourceBase.length >= 2
           ? [...sourceBase, previewPoint]
           : sourceBase;
 
@@ -743,7 +739,7 @@ class DrawHelper {
         }
       }
     } else if (this.drawMode === "rectangle" && positions.length >= 2) {
-      const rect = this.calculateRectangle(positions[0], positions[1]);
+      const rect = calculateRectangle(positions[0], positions[1]);
       // 不再贴地，统一使用悬浮高度
       const rectHeightReference = Cesium.HeightReference.NONE;
 
@@ -790,7 +786,7 @@ class DrawHelper {
     let measureDistance: number | undefined;
     let measureAreaKm2: number | undefined;
     // 先过滤掉无效坐标，再保存原始地面位置（不包含offsetHeight）
-    const validTempPositions = this.tempPositions.filter((p) => this.isValidCartesian3(p));
+    const validTempPositions = this.tempPositions.filter((p) => isValidCartesian3(p));
     if (validTempPositions.length < (this.drawMode === "polygon" ? 3 : 2)) {
       // 过滤后点数不足，取消绘制
       this.endDrawingInternal(true);
@@ -899,12 +895,12 @@ class DrawHelper {
         (finalEntity as any)._groundPositions = groundPositions;
       }
       // 添加面积标签（使用 billboard+canvas，与测距样式保持一致）
-      const area = this.calculatePolygonArea(groundPositions);
+      const area = calculatePolygonArea(groundPositions, this.scene.globe.ellipsoid);
       measureType = "polygon";
       measurePositions = groundPositions;
       measureAreaKm2 = area;
       if (area > 0) {
-        const center = this.calculatePolygonCenter(groundPositions);
+        const center = calculatePolygonCenter(groundPositions);
 
         // groundCenter：未加偏移的地面中心位置
         const centerCarto = Cesium.Cartographic.fromCartesian(center);
@@ -924,7 +920,7 @@ class DrawHelper {
           );
         }
 
-        const areaText = `面积: ${this.formatArea(area)}`;
+        const areaText = `面积: ${formatArea(area)}`;
         const areaImage = this.createTotalLengthBillboardImage(areaText);
 
         const areaLabelEntity = this.entities.add({
@@ -948,7 +944,7 @@ class DrawHelper {
         this.finishedLabelEntities.push(areaLabelEntity);
       }
     } else if (this.drawMode === "rectangle" && groundPositions.length >= 2) {
-      const rect = this.calculateRectangle(groundPositions[0], groundPositions[1]);
+      const rect = calculateRectangle(groundPositions[0], groundPositions[1]);
       if (this.offsetHeight > 0) {
         // 3D模式：使用挤压高度
         finalEntity = this.entities.add({
@@ -976,7 +972,7 @@ class DrawHelper {
         (finalEntity as any)._groundRectangle = rect;
       }
       // 添加面积标签（使用 billboard+canvas，与测距样式保持一致）
-      const area = this.calculateRectangleArea(rect);
+      const area = calculateRectangleArea(rect);
       measureType = "rectangle";
       const rectPositions = Cesium.Rectangle.subsample(rect, this.scene.globe.ellipsoid);
       measurePositions = rectPositions;
@@ -999,7 +995,7 @@ class DrawHelper {
           );
         }
 
-        const areaText = `面积: ${this.formatArea(area)}`;
+        const areaText = `面积: ${formatArea(area)}`;
         const areaImage = this.createTotalLengthBillboardImage(areaText);
 
         const rectAreaLabelEntity = this.entities.add({
@@ -1258,127 +1254,6 @@ class DrawHelper {
    */
   getFinishedEntities(): Cesium.Entity[] {
     return [...this.finishedEntities];
-  }
-
-  // --- 辅助计算函数 ---
-  private calculateRectangle(
-    p1: Cesium.Cartesian3,
-    p2: Cesium.Cartesian3
-  ): Cesium.Rectangle {
-    const cartographic1 = Cesium.Cartographic.fromCartesian(p1);
-    const cartographic2 = Cesium.Cartographic.fromCartesian(p2);
-    const west = Math.min(cartographic1.longitude, cartographic2.longitude);
-    const east = Math.max(cartographic1.longitude, cartographic2.longitude);
-    const south = Math.min(cartographic1.latitude, cartographic2.latitude);
-    const north = Math.max(cartographic1.latitude, cartographic2.latitude);
-    return new Cesium.Rectangle(west, south, east, north);
-  }
-
-  private calculateRectangleArea(rect: Cesium.Rectangle): number {
-    const west = rect.west;
-    const south = rect.south;
-    const east = rect.east;
-    const north = rect.north;
-
-    const width = Cesium.Cartesian3.distance(
-      Cesium.Cartesian3.fromRadians(west, south),
-      Cesium.Cartesian3.fromRadians(east, south)
-    );
-    const height = Cesium.Cartesian3.distance(
-      Cesium.Cartesian3.fromRadians(west, south),
-      Cesium.Cartesian3.fromRadians(west, north)
-    );
-
-    return (width * height) / 1e6; // 转换为平方公里
-  }
-
-  private calculatePolygonArea(positions: Cesium.Cartesian3[]): number {
-    // 防御性检查：过滤掉无效坐标，避免 cartesianToCartographic 过程中产生 NaN
-    const validPositions = positions.filter((p) => this.isValidCartesian3(p));
-    if (validPositions.length < 3) return 0;
-
-    const ellipsoid = this.scene.globe.ellipsoid;
-    let area = 0;
-    const len = validPositions.length;
-    for (let i = 0; i < len; i++) {
-      const p1Cartesian = validPositions[i];
-      const p2Cartesian = validPositions[(i + 1) % len];
-
-      if (!this.isValidCartesian3(p1Cartesian) || !this.isValidCartesian3(p2Cartesian)) {
-        return 0;
-      }
-
-      const p1 = ellipsoid.cartesianToCartographic(p1Cartesian);
-      const p2 = ellipsoid.cartesianToCartographic(p2Cartesian);
-
-      if (!p1 || !p2 ||
-          !Number.isFinite(p1.longitude) || !Number.isFinite(p1.latitude) ||
-          !Number.isFinite(p2.longitude) || !Number.isFinite(p2.latitude)) {
-        return 0;
-      }
-
-      area +=
-        (p2.longitude - p1.longitude) *
-        (2 + Math.sin(p1.latitude) + Math.sin(p2.latitude));
-    }
-    area = Math.abs((area * 6378137.0 * 6378137.0) / 2.0); // WGS84半径
-    return area / 1e6; // 转换为平方公里
-  }
-
-  private calculatePolygonCenter(
-    positions: Cesium.Cartesian3[]
-  ): Cesium.Cartesian3 {
-    // 仅使用有效的 Cartesian3 参与中心点计算
-    const validPositions = positions.filter((p) => this.isValidCartesian3(p));
-    if (validPositions.length === 0) return Cesium.Cartesian3.ZERO;
-
-    let x = 0,
-      y = 0,
-      z = 0;
-    for (let i = 0; i < validPositions.length; i++) {
-      x += validPositions[i].x;
-      y += validPositions[i].y;
-      z += validPositions[i].z;
-    }
-    return new Cesium.Cartesian3(
-      x / validPositions.length,
-      y / validPositions.length,
-      z / validPositions.length
-    );
-  }
-
-  /**
-   * 格式化距离显示
-   * 超过1000m时转换为km，保留两位小数
-   * @param distance 距离（米）
-   * @returns 格式化后的距离字符串
-   */
-  private formatDistance(distance: number): string {
-    // 确保距离是有效数字
-    if (!isFinite(distance) || isNaN(distance)) {
-      return '0.00 m';
-    }
-    if (distance >= 1000) {
-      const km = distance / 1000;
-      return `${km.toFixed(2)} km`;
-    } else {
-      return `${distance.toFixed(2)} m`;
-    }
-  }
-
-  /**
-   * 格式化面积显示
-   * @param areaKm2 面积（平方公里）
-   */
-  private formatArea(areaKm2: number): string {
-    if (!isFinite(areaKm2) || isNaN(areaKm2)) {
-      return "0.00 m²";
-    }
-    if (areaKm2 >= 1) {
-      return `${areaKm2.toFixed(2)} km²`;
-    }
-    const areaM2 = areaKm2 * 1e6;
-    return `${areaM2.toFixed(2)} m²`;
   }
 
   /**

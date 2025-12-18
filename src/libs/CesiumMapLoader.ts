@@ -1,8 +1,8 @@
 import * as Cesium from 'cesium'
-import { Ion, Viewer, createWorldTerrainAsync, Terrain, Cartesian3, SampledPositionProperty, TerrainProvider } from 'cesium'
-import type { Entity, Viewer as CesiumViewer, EntityCollection } from 'cesium'
-import { TDTMapTypes } from './CesiumMapConfig'
 import { getViteTdToken } from '../utils/common'
+import type { Viewer as CesiumViewer } from 'cesium'
+import { TDTMapTypes } from './config/CesiumMapConfig'
+import { Ion, Viewer, createWorldTerrainAsync, Terrain, TerrainProvider } from 'cesium'
 interface InitOptions {
   terrain?: Terrain, // 地形
   terrainProvider?: TerrainProvider // 地形提供者
@@ -47,6 +47,7 @@ interface InitOptions {
   cesiumToken?: string // 访问令牌
   success?: () => void // flyTo动画完成回调
   cancel?: () => void // flyTo动画取消回调
+  mapCenter?: MapCenter // 地图中心点
 }
 
 interface MapCenter {
@@ -76,22 +77,63 @@ const defaultMapOptions: InitOptions = {
       preserveDrawingBuffer: !0,
     },
   },
-  navigationInstructionsInitiallyVisible: false, // 禁用导航指令初始可见
-}
-
-export async function initCesium(
-  containerId: string,
-  options: InitOptions,
-  mapCenter: MapCenter = {
+  mapCenter: {
     longitude: 120.2052342,
     latitude: 30.2489634,
     height: 1000,
     pitch: -45,
     heading: 0
   },
-  defaultAccessToken = (import.meta as any).env.VITE_CESIUM_TOKEN
+  navigationInstructionsInitiallyVisible: false, // 禁用导航指令初始可见
+}
+
+
+const setCameraView = (viewer: CesiumViewer, center: MapCenter) => {
+  viewer.camera.setView({
+    destination: Cesium.Cartesian3.fromDegrees(center.longitude, center.latitude, center.height), // 中国中心坐标
+    orientation: {
+      heading: Cesium.Math.toRadians(center.heading || 0), // 方向角度
+      pitch: Cesium.Math.toRadians(center.pitch || 0), // 俯
+    }
+  });
+}
+
+const setCameraFlyTo = (viewer: CesiumViewer, center: MapCenter, options: InitOptions) => {
+  // 设置初始视角为中国区域 (经度, 纬度, 高度)
+  viewer.camera.flyTo({
+    destination: Cesium.Cartesian3.fromDegrees(center.longitude, center.latitude, center.height), // 中国中心坐标
+    orientation: {
+      heading: Cesium.Math.toRadians(center.heading || 0), // 方向角度
+      pitch: Cesium.Math.toRadians(center.pitch || 0), // 俯
+    },
+    duration: options.flyDuration ? options.flyDuration : 3, // 动画时间
+    complete() {
+      // 飞行完成后的回调函数
+      options.success && options.success();
+    },
+    cancel() {
+      // 飞行取消后的回调函数
+      options.cancel && options.cancel();
+    }
+  });
+}
+
+export async function initCesium(
+  containerId: string,
+  options: InitOptions,
+  mapCenterOrCesiumToken?: MapCenter | string,
+  cesiumToken?: string
 ): Promise<{ viewer: CesiumViewer; initialCenter: MapCenter }> {
-  Ion.defaultAccessToken = options.cesiumToken || defaultAccessToken
+  const envToken = (import.meta as any).env?.VITE_CESIUM_TOKEN
+  const resolvedToken = options.cesiumToken
+    || (typeof mapCenterOrCesiumToken === 'string' ? mapCenterOrCesiumToken : undefined)
+    || cesiumToken || envToken
+  const resolvedCenter: MapCenter =
+    (mapCenterOrCesiumToken && typeof mapCenterOrCesiumToken === 'object'
+      ? mapCenterOrCesiumToken
+      : options.mapCenter) || (defaultMapOptions.mapCenter as MapCenter)
+
+  Ion.defaultAccessToken = resolvedToken
   const viewer = new Viewer(containerId, {
     ...defaultMapOptions,
     ...options
@@ -102,44 +144,30 @@ export async function initCesium(
   // 地形提供者
   if (!options.terrainProvider && !options.terrain) {
     viewer.terrainProvider = await createWorldTerrainAsync();
+  } else {
+    viewer.imageryLayers.remove(viewer.imageryLayers.get(0))
   }
-  viewer.imageryLayers.remove(viewer.imageryLayers.get(0))
   const token = options.token || getViteTdToken();
-  // 添加高德图影像图层
+  // 添加天地图影像图层
   if (options.mapType === 'tiandi') {
     viewer.imageryLayers.removeAll();
-    TDTMapTypes.find(type => type.id === 'imagery')?.provider(token).forEach(provider => {
+    TDTMapTypes.find((type: { id: string }) => type.id === 'imagery')?.provider(token).forEach((provider: Cesium.ImageryProvider) => {
       viewer.imageryLayers.addImageryProvider(provider);
     });
   }
-  if (mapCenter && !options.isFly) {
+  if (resolvedCenter && !options.isFly) {
     // 设置初始视角为中国区域 (经度, 纬度, 高度)
+    setCameraView(viewer, resolvedCenter);
     viewer.camera.setView({
-      destination: Cesium.Cartesian3.fromDegrees(mapCenter.longitude, mapCenter.latitude, mapCenter.height), // 中国中心坐标
+      destination: Cesium.Cartesian3.fromDegrees(resolvedCenter.longitude, resolvedCenter.latitude, resolvedCenter.height), // 中国中心坐标
       orientation: {
-        heading: Cesium.Math.toRadians(mapCenter.heading || 0), // 方向角度
-        pitch: Cesium.Math.toRadians(mapCenter.pitch || 0), // 俯
+        heading: Cesium.Math.toRadians(resolvedCenter.heading || 0), // 方向角度
+        pitch: Cesium.Math.toRadians(resolvedCenter.pitch || 0), // 俯
       }
     });
   }
-  if (mapCenter && options.isFly) {
-    // 设置初始视角为中国区域 (经度, 纬度, 高度)
-    viewer.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(mapCenter.longitude, mapCenter.latitude, mapCenter.height), // 中国中心坐标
-      orientation: {
-        heading: Cesium.Math.toRadians(mapCenter.heading || 0), // 方向角度
-        pitch: Cesium.Math.toRadians(mapCenter.pitch || 0), // 俯
-      },
-      duration: options.flyDuration ? options.flyDuration : 3, // 动画时间
-      complete () {
-        // 飞行完成后的回调函数
-        options.success && options.success();
-      },
-      cancel () {
-        // 飞行取消后的回调函数
-        options.cancel && options.cancel();
-      }
-    });
+  if (resolvedCenter && options.isFly) {
+    setCameraFlyTo(viewer, resolvedCenter, options);
   }
-  return { viewer, initialCenter: mapCenter }
+  return { viewer, initialCenter: resolvedCenter }
 }

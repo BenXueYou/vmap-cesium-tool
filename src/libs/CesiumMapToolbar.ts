@@ -1,16 +1,17 @@
 import * as Cesium from 'cesium';
 import type { Viewer, Cartesian3 } from 'cesium';
-import DrawHelper from './CesiumMapHelper';
-import { CesiumMapController } from './CesiumMapController';
-import { MeasurementService } from './MeasurementService';
+import DrawHelper from './toolBar/CesiumMapHelper';
+import { CesiumMapController } from './toolBar/CesiumMapController';
+import { MeasurementService } from './toolBar/MeasurementService';
 import type {
   ButtonConfig, MapType, SearchResult, ToolbarConfig,
   SearchCallback, MeasurementCallback, ZoomCallback, CustomButtonConfig
 } from './CesiumMapModel';
 
-import { TDTMapTypes } from './CesiumMapConfig'
+import { TDTMapTypes } from './config/CesiumMapConfig'
 import { TD_Map_Search_URL, China_Map_Extent } from '../hooks/useMap';
 import { loadAllAirportNoFlyZones, type AirportNoFlyZone } from '../utils/geojson';
+import { formatDistance, calculatePolygonArea } from '../utils/calc';
 
 
 /**
@@ -241,7 +242,7 @@ export class CesiumMapToolbar {
               this.measurementCallback.onDistanceComplete(positions, totalDistance);
             } else {
               // 如果没有提供回调，显示默认的格式化信息
-              const formattedDistance = this.formatDistance(totalDistance);
+              const formattedDistance = formatDistance(totalDistance);
               console.log(`测距完成，总距离: ${formattedDistance}`);
             }
           }
@@ -250,14 +251,11 @@ export class CesiumMapToolbar {
           const positions = entity.polygon.hierarchy?.getValue(Cesium.JulianDate.now()) as Cesium.PolygonHierarchy;
           if (positions && this.measurementCallback?.onAreaComplete) {
             // 计算面积
-            const area = this.calculatePolygonArea(positions.positions);
+            const area = calculatePolygonArea(positions.positions, this.viewer.scene.globe.ellipsoid);
             this.measurementCallback.onAreaComplete(positions.positions, area);
           }
         }
       }
-
-      // 无论线还是面，绘制完成后都认为退出测量交互
-      this.currentMeasureMode = 'none';
     });
 
     this.drawHelper.onEntityRemoved((entity) => {
@@ -265,40 +263,7 @@ export class CesiumMapToolbar {
     });
   }
 
-  /**
-   * 格式化距离显示
-   * 超过1000m时转换为km，保留两位小数
-   * @param distance 距离（米）
-   * @returns 格式化后的距离字符串
-   */
-  private formatDistance(distance: number): string {
-    if (distance >= 1000) {
-      const km = distance / 1000;
-      return `${km.toFixed(2)} km`;
-    } else {
-      return `${distance.toFixed(2)} m`;
-    }
-  }
-
-  /**
-   * 计算多边形面积
-   */
-  private calculatePolygonArea(positions: Cartesian3[]): number {
-    if (positions.length < 3) return 0;
-
-    const ellipsoid = this.viewer.scene.globe.ellipsoid;
-    let area = 0;
-    const len = positions.length;
-
-    for (let i = 0; i < len; i++) {
-      const p1 = ellipsoid.cartesianToCartographic(positions[i]);
-      const p2 = ellipsoid.cartesianToCartographic(positions[(i + 1) % len]);
-      area += (p2.longitude - p1.longitude) * (2 + Math.sin(p1.latitude) + Math.sin(p2.latitude));
-    }
-
-    area = Math.abs(area * 6378137.0 * 6378137.0 / 2.0);
-    return area / 1e6; // 转换为平方公里
-  }
+  // --- 计算相关方法已移至 calc.ts ---
 
   /**
    * 创建工具栏

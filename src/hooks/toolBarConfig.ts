@@ -101,15 +101,15 @@ export const useToolBarConfig = (viewer, message: any) => {
         borderColor: "#0775D1",
         backgroundColor: "rgba(0, 0, 0, 0.52)",
       },
-      {
-        size: 36,
-        id: "fullscreen",
-        icon: fullscreenIcon,
-        title: "全屏",
-        color: "#007BFF",
-        borderColor: "#0775D1",
-        backgroundColor: "rgba(0, 0, 0, 0.52)",
-      },
+      // {
+      //   size: 36,
+      //   id: "fullscreen",
+      //   icon: fullscreenIcon,
+      //   title: "全屏",
+      //   color: "#007BFF",
+      //   borderColor: "#0775D1",
+      //   backgroundColor: "rgba(0, 0, 0, 0.52)",
+      // },
     ],
   };
 

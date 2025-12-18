@@ -1,11 +1,11 @@
 import * as Cesium from 'cesium';
 import type { Viewer } from 'cesium';
-import DrawHelper from './CesiumMapHelper';
-import type { MapType, ToolbarConfig, SearchCallback, MeasurementCallback, ZoomCallback } from './CesiumMapModel';
-import VecImg from '../assets/images/vec_c.png'; // 矢量图标
-import TerImg from '../assets/images/ter_c.png'; // 地形
-import ImgImg from '../assets/images/img_c.png'; // 影像
-import EleImg from '../assets/images/ele_c.jpg'; // 三维
+import DrawHelper from '../toolBar/CesiumMapHelper';
+import type { MapType, ToolbarConfig, SearchCallback, MeasurementCallback, ZoomCallback } from '../CesiumMapModel';
+import VecImg from '../../assets/images/vec_c.png'; // 矢量图标
+import TerImg from '../../assets/images/ter_c.png'; // 地形
+import ImgImg from '../../assets/images/img_c.png'; // 影像
+import EleImg from '../../assets/images/ele_c.jpg'; // 三维
 
 
 export interface CesiumMapConfig {
