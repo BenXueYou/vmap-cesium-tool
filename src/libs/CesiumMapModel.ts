@@ -16,6 +16,7 @@ export interface ToolbarConfig {
 
 // 按钮配置接口
 export interface ButtonConfig {
+  sort?: number; // 排序号
   id: string;
   icon: string;
   title: string;
@@ -47,6 +48,7 @@ export interface CustomButtonConfig {
   hoverColor?: string;
   activeColor?: string;
   backgroundColor?: string;
+  sort?: number; // 排序号
   activeIcon?: string | HTMLElement | false;
   callback?: () => void;
   onClick?: (buttonId: string, buttonElement: HTMLElement) => void;

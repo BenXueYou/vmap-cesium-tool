@@ -42,20 +42,6 @@ onMounted(async () => {
       terrainProvider: new Cesium.EllipsoidTerrainProvider(),
       success: () => {
         console.log('初始化地图成功');
-        // STEP 3 CODE (first point)
-        // This is one of the first radar samples collected for our flight.
-        // const dataPoint = { longitude: -122.38985, latitude: 37.61864, height: -27.32 };
-        // // Mark this location with a red point.
-        // const pointEntity = cesiumViewer.entities.add({
-        //   description: `First data point at (${dataPoint.longitude}, ${dataPoint.latitude})`,
-        //   position: Cesium.Cartesian3.fromDegrees(dataPoint.longitude, dataPoint.latitude, dataPoint.height),
-        //   point: { pixelSize: 10, color: Cesium.Color.RED }
-        // });
-        // // Fly the camera to this point.
-        // cesiumViewer.flyTo(pointEntity);
-      },
-      cancel: () => {
-        console.log('初始化地图取消');
       }
     },
   );
@@ -85,8 +71,10 @@ onMounted(async () => {
     );
     mapToolbar.setTDToken(TDT_TK);
 
-    // 添加自定义按钮
-    // 1. 测试添加报警按钮
+    // 添加自定义按钮（使用 sort 参数控制位置）
+    // 默认按钮的 sort 值：search(0), measure(1), view2d3d(2), layers(3), location(4), zoom-in(5), zoom-out(6), fullscreen(7)
+    
+    // 1. 测试添加报警按钮 - 插入到搜索和测量之间（sort: 0.5）
     mapToolbar.addCustomButton({
       id: 'test-alert',
       icon: '🚨',
@@ -95,6 +83,7 @@ onMounted(async () => {
       color: '#FF4444',
       backgroundColor: 'rgba(0, 0, 0, 0.52)',
       borderColor: '#FF4444',
+      sort: 0.5, // 插入到搜索(0)和测量(1)之间
       onClick: (buttonId: string, buttonElement: HTMLElement) => {
         console.log('测试添加报警按钮被点击');
         message.value = '测试报警：这是一个测试报警信息';
@@ -105,7 +94,7 @@ onMounted(async () => {
       }
     });
 
-    // 2. 数据统计按钮
+    // 2. 数据统计按钮 - 插入到图层切换和定位之间（sort: 3.5）
     mapToolbar.addCustomButton({
       id: 'data-statistics',
       icon: '📊',
@@ -114,6 +103,7 @@ onMounted(async () => {
       color: '#007BFF',
       backgroundColor: 'rgba(0, 0, 0, 0.52)',
       borderColor: '#0775D1',
+      sort: 3.5, // 插入到图层切换(3)和定位(4)之间
       onClick: (buttonId: string, buttonElement: HTMLElement) => {
         console.log('数据统计按钮被点击');
         message.value = '数据统计功能：显示统计数据';
@@ -124,7 +114,7 @@ onMounted(async () => {
       }
     });
 
-    // 3. 可见配置项按钮
+    // 3. 可见配置项按钮 - 插入到定位和缩放之间（sort: 4.5）
     mapToolbar.addCustomButton({
       id: 'visibility-config',
       icon: '⚙️',
@@ -133,6 +123,7 @@ onMounted(async () => {
       color: '#28A745',
       backgroundColor: 'rgba(0, 0, 0, 0.52)',
       borderColor: '#28A745',
+      sort: 4.5, // 插入到定位(4)和缩放(5)之间
       onClick: (buttonId: string, buttonElement: HTMLElement) => {
         console.log('可见配置项按钮被点击');
         message.value = '可见配置项：配置图层可见性';

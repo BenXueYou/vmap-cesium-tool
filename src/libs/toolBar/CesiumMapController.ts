@@ -1,3 +1,8 @@
+/**
+ * CesiumMapController.ts
+ * 负责地图相机控制、缩放层级和 2D/3D 切换、全屏等逻辑的控制器
+ * 与 UI（工具栏）解耦，避免 Cesium 细节散落在各处。
+ */
 import * as Cesium from 'cesium';
 import type { Viewer } from 'cesium';
 import type { MapType, ZoomCallback } from '../CesiumMapModel';
@@ -274,5 +279,55 @@ export class CesiumMapController {
 
   public getInitialCenter(): MapInitialCenter | undefined {
     return this.initialCenter;
+  }
+
+  /**
+   * 切换全屏
+   */
+  public toggleFullscreen(): void {
+    if (this.isFullscreen()) {
+      this.exitFullscreen();
+    } else {
+      this.enterFullscreen();
+    }
+  }
+
+  /**
+   * 检查是否处于全屏状态
+   */
+  public isFullscreen(): boolean {
+    return !!(
+      document.fullscreenElement ||
+      (document as any).webkitFullscreenElement ||
+      (document as any).msFullscreenElement
+    );
+  }
+
+  /**
+   * 进入全屏
+   */
+  public enterFullscreen(): void {
+    const container = this.viewer.container;
+
+    if (container.requestFullscreen) {
+      container.requestFullscreen();
+    } else if ((container as any).webkitRequestFullscreen) {
+      (container as any).webkitRequestFullscreen();
+    } else if ((container as any).msRequestFullscreen) {
+      (container as any).msRequestFullscreen();
+    }
+  }
+
+  /**
+   * 退出全屏
+   */
+  public exitFullscreen(): void {
+    if (document.exitFullscreen) {
+      document.exitFullscreen();
+    } else if ((document as any).webkitExitFullscreen) {
+      (document as any).webkitExitFullscreen();
+    } else if ((document as any).msExitFullscreen) {
+      (document as any).msExitFullscreen();
+    }
   }
 }
