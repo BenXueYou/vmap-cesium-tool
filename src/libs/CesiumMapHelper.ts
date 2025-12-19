@@ -9,7 +9,7 @@ import {
   calculatePolygonArea,
   calculatePolygonCenter
 } from '../utils/calc';
-import { DrawLine, DrawPolygon, DrawRectangle, DrawCircle, type DrawCallbacks } from './drawHelper';
+import { DrawLine, DrawPolygon, DrawRectangle, DrawCircle, type DrawCallbacks, type DrawOptions } from './drawHelper';
 /**
  * Cesium 绘图辅助工具类
  * 支持绘制点、线、多边形、矩形，并提供编辑和删除功能
@@ -41,6 +41,9 @@ class DrawHelper {
   private currentDrawer: DrawLine | DrawPolygon | DrawRectangle | DrawCircle | null = null;
   // 事件处理器
   private screenSpaceEventHandler: Cesium.ScreenSpaceEventHandler | null = null;
+  // 实体点击处理器（用于触发绘制完成实体的点击回调与选中样式）
+  private entityClickHandler: Cesium.ScreenSpaceEventHandler | null = null;
+
   // 回调函数
   private onDrawStartCallback: (() => void) | null = null;
   private onDrawEndCallback: ((entity: Cesium.Entity | null) => void) | null = null;
@@ -102,9 +105,105 @@ class DrawHelper {
     this.drawPolygon = new DrawPolygon(viewer, callbacks);
     this.drawRectangle = new DrawRectangle(viewer, callbacks);
     this.drawCircle = new DrawCircle(viewer, callbacks);
-  }
 
-  // isValidCartesian3 已移至 calc.ts，直接使用导入的函数
+    // 实体点击处理（用于触发绘制完成实体的点击回调和选中样式）
+    try {
+      this.entityClickHandler = new Cesium.ScreenSpaceEventHandler(this.scene.canvas);
+      this.entityClickHandler.setInputAction((click: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
+        if (this.isDrawing) return; // 绘制时忽略实体点击
+        const picked = this.scene.pick(click.position as any);
+        const entity = picked && (picked as any).id as Cesium.Entity | undefined;
+        if (!entity) return;
+
+        // 用户回调
+        const cb = (entity as any)._onClick as ((entity: Cesium.Entity, type?: any, positions?: Cesium.Cartesian3[]) => void) | undefined;
+        try {
+          if (cb) {
+            const pos = (entity as any)._groundPositions || (entity as any)._groundPosition || undefined;
+            cb(entity, (entity as any)._drawType, pos);
+          }
+        } catch (e) {
+          console.warn('entity onClick handler error', e);
+        }
+
+        // 切换选中样式
+        const opts = (entity as any)._drawOptions as DrawOptions | undefined;
+        if (opts?.selected) {
+          try {
+            const sel = opts.selected;
+            if ((entity as any)._isSelected) {
+              const orig = (entity as any)._originalStyle;
+              if (orig) {
+                if (entity.polyline && orig.material) {
+                  entity.polyline.material = orig.material;
+                  entity.polyline.width = orig.width ?? entity.polyline.width;
+                }
+                if (entity.polygon && orig.material) {
+                  entity.polygon.material = orig.material;
+                  entity.polygon.outlineColor = orig.outlineColor ?? entity.polygon.outlineColor;
+                  entity.polygon.outlineWidth = orig.outlineWidth ?? entity.polygon.outlineWidth;
+                }
+                if (entity.rectangle && orig.material) {
+                  entity.rectangle.material = orig.material;
+                  entity.rectangle.outlineColor = orig.outlineColor ?? entity.rectangle.outlineColor;
+                  entity.rectangle.outlineWidth = orig.outlineWidth ?? entity.rectangle.outlineWidth;
+                }
+                if (entity.ellipse && orig.material) {
+                  entity.ellipse.material = orig.material;
+                  entity.ellipse.outlineColor = orig.outlineColor ?? entity.ellipse.outlineColor;
+                  entity.ellipse.outlineWidth = orig.outlineWidth ?? entity.ellipse.outlineWidth;
+                }
+              }
+              (entity as any)._isSelected = false;
+            } else {
+              (entity as any)._originalStyle = {};
+              if (entity.polyline) {
+                (entity as any)._originalStyle.material = entity.polyline.material;
+                (entity as any)._originalStyle.width = entity.polyline.width;
+                const color = sel?.color ? Cesium.Color.fromCssColorString(String(sel.color)) : Cesium.Color.YELLOW;
+                entity.polyline.material = new Cesium.ColorMaterialProperty(color);
+                entity.polyline.width = new Cesium.ConstantProperty(sel?.width ?? ((entity.polyline.width as any) || 5) + 2);
+              }
+              if (entity.polygon) {
+                (entity as any)._originalStyle.material = entity.polygon.material;
+                (entity as any)._originalStyle.outlineColor = entity.polygon.outlineColor;
+                (entity as any)._originalStyle.outlineWidth = entity.polygon.outlineWidth;
+                const color = sel?.color ? Cesium.Color.fromCssColorString(String(sel.color)) : Cesium.Color.YELLOW;
+                entity.polygon.material = new Cesium.ColorMaterialProperty(color.withAlpha(0.5));
+                entity.polygon.outlineColor = new Cesium.ConstantProperty(sel?.outlineColor ? Cesium.Color.fromCssColorString(String(sel.outlineColor)) : (entity.polygon.outlineColor as any));
+                entity.polygon.outlineWidth = new Cesium.ConstantProperty(sel?.outlineWidth ?? ((entity.polygon.outlineWidth as any) || 2));
+              }
+              if (entity.rectangle) {
+                (entity as any)._originalStyle.material = entity.rectangle.material;
+                (entity as any)._originalStyle.outlineColor = entity.rectangle.outlineColor;
+                (entity as any)._originalStyle.outlineWidth = entity.rectangle.outlineWidth;
+                const color = sel?.color ? Cesium.Color.fromCssColorString(String(sel.color)) : Cesium.Color.YELLOW;
+                entity.rectangle.material = new Cesium.ColorMaterialProperty(color.withAlpha(0.5));
+                entity.rectangle.outlineColor = new Cesium.ConstantProperty(sel?.outlineColor ? Cesium.Color.fromCssColorString(String(sel.outlineColor)) : (entity.rectangle.outlineColor as any));
+                entity.rectangle.outlineWidth = new Cesium.ConstantProperty(sel?.outlineWidth ?? ((entity.rectangle.outlineWidth as any) || 2));
+              }
+              if (entity.ellipse) {
+                (entity as any)._originalStyle.material = entity.ellipse.material;
+                (entity as any)._originalStyle.outlineColor = entity.ellipse.outlineColor;
+                (entity as any)._originalStyle.outlineWidth = entity.ellipse.outlineWidth;
+                const color = sel?.color ? Cesium.Color.fromCssColorString(String(sel.color)) : Cesium.Color.YELLOW;
+                entity.ellipse.material = new Cesium.ColorMaterialProperty(color.withAlpha(0.5));
+                entity.ellipse.outlineColor = new Cesium.ConstantProperty(sel?.outlineColor ? Cesium.Color.fromCssColorString(String(sel.outlineColor)) : (entity.ellipse.outlineColor as any));
+                entity.ellipse.outlineWidth = new Cesium.ConstantProperty(sel?.outlineWidth ?? ((entity.ellipse.outlineWidth as any) || 2));
+              }
+
+              (entity as any)._isSelected = true;
+            }
+          } catch (e) {
+            console.warn('toggle selected style failed', e);
+          }
+        }
+      }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+    } catch (e) {
+      // 安全忽略初始化错误
+      console.warn('entity click handler init failed', e);
+    }
+  }
 
   /**
    * 外部调用：在场景模式（2D/3D）切换后，更新偏移高度并重算已完成实体
@@ -131,36 +230,36 @@ class DrawHelper {
   /**
    * 开始绘制线条
    */
-  startDrawingLine(): void {
-    this.startDrawing("line");
+  startDrawingLine(options?: DrawOptions): void {
+    this.startDrawing("line", options);
   }
 
   /**
    * 开始绘制多边形（仅边线）
    */
-  startDrawingPolygon(): void {
-    this.startDrawing("polygon");
+  startDrawingPolygon(options?: DrawOptions): void {
+    this.startDrawing("polygon", options);
   }
 
   /**
    * 开始绘制矩形
    */
-  startDrawingRectangle(): void {
-    this.startDrawing("rectangle");
+  startDrawingRectangle(options?: DrawOptions): void {
+    this.startDrawing("rectangle", options);
   }
 
   /**
    * 开始绘制圆形
    */
-  startDrawingCircle(): void {
-    this.startDrawing("circle");
+  startDrawingCircle(options?: DrawOptions): void {
+    this.startDrawing("circle", options);
   }
 
   /**
    * 内部统一的开始绘制方法
    * @param mode 绘制模式
    */
-  private startDrawing(mode: "line" | "polygon" | "rectangle" | "circle"): void {
+  private startDrawing(mode: "line" | "polygon" | "rectangle" | "circle", options?: DrawOptions): void {
     this.endDrawingInternal(false); // 结束任何正在进行的绘制，但不清空已完成的实体
 
     this.drawMode = mode;
@@ -186,7 +285,7 @@ class DrawHelper {
     }
 
     if (this.currentDrawer) {
-      this.currentDrawer.startDrawing();
+      this.currentDrawer.startDrawing(options);
     }
 
     this.activateDrawingHandlers();
@@ -441,6 +540,15 @@ class DrawHelper {
     }
 
     const result = this.currentDrawer.finishDrawing();
+
+    // 确保绘制类在 finish 后恢复 requestRenderMode（如果它自己未恢复）
+    try {
+      if ((this.currentDrawer as any).restoreRequestRenderModeIfNeeded) {
+        (this.currentDrawer as any).restoreRequestRenderModeIfNeeded();
+      }
+    } catch (e) {
+      // 安全忽略
+    }
     
     if (result && result.entity) {
       this.finishedEntities.push(result.entity);
@@ -499,6 +607,15 @@ class DrawHelper {
       if (this.originalDepthTestAgainstTerrain !== null) {
         this.scene.globe.depthTestAgainstTerrain = this.originalDepthTestAgainstTerrain;
         this.originalDepthTestAgainstTerrain = null;
+      }
+
+      // 如果绘制类在 end 时仍然修改了 requestRenderMode，尝试恢复
+      try {
+        if (this.currentDrawer && (this.currentDrawer as any).restoreRequestRenderModeIfNeeded) {
+          (this.currentDrawer as any).restoreRequestRenderModeIfNeeded();
+        }
+      } catch (e) {
+        // 安全忽略
       }
     }
   }
@@ -920,6 +1037,12 @@ class DrawHelper {
    */
   destroy(): void {
     this.deactivateDrawingHandlers();
+    if (this.entityClickHandler) {
+      try {
+        this.entityClickHandler.destroy();
+      } catch { /* ignore */ }
+      this.entityClickHandler = null;
+    }
     // 可以选择不清除实体，由用户决定
     // this.clearAll();
   }

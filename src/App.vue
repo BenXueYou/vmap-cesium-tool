@@ -8,7 +8,6 @@
       <button @click="addLine">添加线条</button>
       <button @click="addArea">添加区域</button>
       <button @click="addCircle">添加圆形</button>
-      <button @click="addRing">添加圆环</button>
       <button @click="addPolygon">添加多边形</button>
     </div>
   </div>
@@ -162,7 +161,12 @@ const addLine = () => {
   
   currentDrawMode.value = 'line';
   isDrawing.value = true;
-  drawHelper.startDrawingLine();
+  drawHelper.startDrawingLine(
+    {
+      strokeWidth: 4,
+      strokeColor: Cesium.Color.BLUE,
+    }
+  );
   message.value = '开始绘制线条：左键添加点，双击完成，右键删除最后一点';
   
   // 监听绘制完成
@@ -189,7 +193,10 @@ const addArea = () => {
   
   currentDrawMode.value = 'rectangle';
   isDrawing.value = true;
-  drawHelper.startDrawingRectangle();
+  drawHelper.startDrawingRectangle({
+    strokeWidth: 4,
+    strokeColor: Cesium.Color.YELLOW,
+  });
   message.value = '开始绘制矩形区域：左键确定起点，再次左键确定终点，双击完成';
   
   drawHelper.onDrawEnd(() => {
@@ -229,151 +236,6 @@ const addCircle = () => {
 };
 
 /**
- * 添加圆环（使用两个同心圆实现）
- */
-const addRing = () => {
-  if (!drawHelper || !viewer.value) return;
-  
-  cancelMarkerMode();
-  if (isDrawing.value) {
-    drawHelper.endDrawing();
-  }
-  
-  currentDrawMode.value = 'ring';
-  isDrawing.value = true;
-  message.value = '开始绘制圆环：左键确定圆心，再次左键确定外圆半径，第三次左键确定内圆半径';
-  
-  let center: Cesium.Cartesian3 | null = null;
-  let outerRadius: number | null = null;
-  let ringHandler: Cesium.ScreenSpaceEventHandler | null = null;
-  let tempEntities: Cesium.Entity[] = [];
-  
-  ringHandler = new Cesium.ScreenSpaceEventHandler(viewer.value.scene.canvas);
-  let clickCount = 0;
-  
-  ringHandler.setInputAction((click: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
-    if (!viewer.value) return;
-    
-    const cartesian = pickGlobePosition(click.position);
-    if (!cartesian) return;
-    
-    clickCount++;
-    
-    if (clickCount === 1) {
-      // 第一次点击：确定圆心
-      center = cartesian;
-      message.value = '已确定圆心，请点击确定外圆半径';
-      
-      // 添加圆心标记
-      const centerEntity = viewer.value.entities.add({
-        position: center,
-        point: {
-          pixelSize: 10,
-          color: Cesium.Color.RED,
-          outlineColor: Cesium.Color.WHITE,
-          outlineWidth: 2,
-          heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-        }
-      });
-      tempEntities.push(centerEntity);
-      
-    } else if (clickCount === 2) {
-      // 第二次点击：确定外圆半径
-      if (!center) return;
-      outerRadius = Cesium.Cartesian3.distance(center, cartesian);
-      message.value = '已确定外圆半径，请点击确定内圆半径';
-      
-      // 创建外圆预览
-      const outerCircle = viewer.value.entities.add({
-        position: center,
-        ellipse: {
-          semiMinorAxis: outerRadius,
-          semiMajorAxis: outerRadius,
-          material: Cesium.Color.BLUE.withAlpha(0.3),
-          outline: true,
-          outlineColor: Cesium.Color.DARKBLUE,
-          outlineWidth: 2,
-          heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-        }
-      });
-      tempEntities.push(outerCircle);
-      
-    } else if (clickCount === 3) {
-      // 第三次点击：确定内圆半径，完成圆环
-      if (!center || outerRadius === null) return;
-      const innerRadius = Cesium.Cartesian3.distance(center, cartesian);
-      
-      if (innerRadius >= outerRadius) {
-        message.value = '内圆半径必须小于外圆半径，请重新点击';
-        clickCount = 2; // 回退到外圆半径确定状态
-        return;
-      }
-      
-      // 创建圆环（外圆和内圆）
-      const cartographic = Cesium.Cartographic.fromCartesian(center);
-      
-      // 外圆
-      const outerCircle = viewer.value.entities.add({
-        position: center,
-        ellipse: {
-          semiMinorAxis: outerRadius,
-          semiMajorAxis: outerRadius,
-          material: Cesium.Color.CYAN.withAlpha(0.3),
-          outline: true,
-          outlineColor: Cesium.Color.DARKCYAN,
-          outlineWidth: 2,
-          heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-        }
-      });
-      
-      // 内圆（用于创建孔洞效果，使用不同的颜色或透明度）
-      const innerCircle = viewer.value.entities.add({
-        position: center,
-        ellipse: {
-          semiMinorAxis: innerRadius,
-          semiMajorAxis: innerRadius,
-          material: Cesium.Color.WHITE.withAlpha(1.0), // 不透明，形成孔洞效果
-          outline: true,
-          outlineColor: Cesium.Color.DARKCYAN,
-          outlineWidth: 2,
-          heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-        }
-      });
-      
-      // 清理临时实体
-      tempEntities.forEach(entity => viewer.value!.entities.remove(entity));
-      tempEntities = [];
-      
-      // 清理事件处理器
-      if (ringHandler) {
-        ringHandler.destroy();
-        ringHandler = null;
-      }
-      
-      isDrawing.value = false;
-      currentDrawMode.value = null;
-      message.value = '圆环绘制完成';
-      setTimeout(() => {
-        message.value = '';
-      }, 2000);
-    }
-  }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
-  
-  // 右键取消
-  ringHandler.setInputAction(() => {
-    tempEntities.forEach(entity => viewer.value!.entities.remove(entity));
-    tempEntities = [];
-    if (ringHandler) {
-      ringHandler.destroy();
-      ringHandler = null;
-    }
-    isDrawing.value = false;
-    currentDrawMode.value = null;
-    message.value = '';
-  }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
-};
-
-/**
  * 添加多边形
  */
 const addPolygon = () => {
@@ -386,7 +248,11 @@ const addPolygon = () => {
   
   currentDrawMode.value = 'polygon';
   isDrawing.value = true;
-  drawHelper.startDrawingPolygon();
+  drawHelper.startDrawingPolygon({
+    strokeWidth: 4,
+    strokeColor: Cesium.Color.BLUE,
+    fillColor: Cesium.Color.YELLOW.withAlpha(0.5),
+  });
   message.value = '开始绘制多边形：左键添加点，双击完成，右键删除最后一点';
   
   drawHelper.onDrawEnd(() => {

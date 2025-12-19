@@ -1,6 +1,6 @@
 import * as Cesium from "cesium";
 import type { Entity, Cartesian3 } from "cesium";
-import { BaseDraw, type DrawResult } from './BaseDraw';
+import { BaseDraw, type DrawResult, type DrawOptions } from './BaseDraw';
 import { formatArea } from '../../utils/calc';
 
 /**
@@ -13,7 +13,11 @@ export class DrawCircle extends BaseDraw {
   /**
    * 开始绘制
    */
-  public startDrawing(): void {
+  public startDrawing(options?: DrawOptions): void {
+    this.drawOptions = options;
+    // 如果场景设置了 requestRenderMode（手动渲染），绘制期间临时关闭
+    this.enableContinuousRenderingIfNeeded();
+
     this.clearTempEntities();
     this.tempPositions = [];
     this.currentCircleEntity = null;
@@ -81,20 +85,27 @@ export class DrawCircle extends BaseDraw {
       centerCarto.latitude + radiusInRadians
     );
 
+    const fillColor = this.drawOptions?.fillColor ? this.resolveColor(this.drawOptions.fillColor) : Cesium.Color.BLUE;
+    const outlineColor = this.drawOptions?.outlineColor ? this.resolveColor(this.drawOptions.outlineColor) : Cesium.Color.BLUE;
+    const outlineWidth = this.drawOptions?.outlineWidth ?? 2;
+
     if (this.currentCircleEntity) {
       this.currentCircleEntity.ellipse!.semiMajorAxis = new Cesium.ConstantProperty(radius);
       this.currentCircleEntity.ellipse!.semiMinorAxis = new Cesium.ConstantProperty(radius);
       this.currentCircleEntity.position = new Cesium.ConstantPositionProperty(displayCenter);
+      this.currentCircleEntity.ellipse!.material = new Cesium.ColorMaterialProperty(fillColor.withAlpha(0.3));
+      this.currentCircleEntity.ellipse!.outlineColor = new Cesium.ConstantProperty(outlineColor);
+      this.currentCircleEntity.ellipse!.outlineWidth = new Cesium.ConstantProperty(outlineWidth);
     } else {
       this.currentCircleEntity = this.entities.add({
         position: displayCenter,
         ellipse: {
           semiMajorAxis: radius,
           semiMinorAxis: radius,
-          material: Cesium.Color.BLUE.withAlpha(0.3),
+          material: fillColor.withAlpha(0.3),
           outline: true,
-          outlineColor: Cesium.Color.BLUE,
-          outlineWidth: 2,
+          outlineColor: outlineColor,
+          outlineWidth: outlineWidth,
           heightReference: Cesium.HeightReference.NONE,
         },
       });
@@ -109,6 +120,7 @@ export class DrawCircle extends BaseDraw {
    */
   public finishDrawing(): DrawResult | null {
     if (this.tempPositions.length < 1) {
+      this.restoreRequestRenderModeIfNeeded();
       return null;
     }
 
@@ -133,6 +145,7 @@ export class DrawCircle extends BaseDraw {
     }
 
     if (radius < 1) {
+      this.restoreRequestRenderModeIfNeeded();
       return null;
     }
 
@@ -147,21 +160,33 @@ export class DrawCircle extends BaseDraw {
       );
     }
 
+    const fillColor = this.drawOptions?.fillColor ? this.resolveColor(this.drawOptions.fillColor) : Cesium.Color.BLUE;
+    const outlineColor = this.drawOptions?.outlineColor ? this.resolveColor(this.drawOptions.outlineColor) : Cesium.Color.BLUE;
+    const outlineWidth = this.drawOptions?.outlineWidth ?? 2;
+
     finalEntity = this.entities.add({
       name: "绘制的圆",
       position: displayCenter,
       ellipse: {
         semiMajorAxis: radius,
         semiMinorAxis: radius,
-        material: Cesium.Color.BLUE.withAlpha(0.3),
+        material: fillColor.withAlpha(0.3),
         outline: true,
-        outlineColor: Cesium.Color.BLUE,
-        outlineWidth: 2,
+        outlineColor: outlineColor,
+        outlineWidth: outlineWidth,
         heightReference: Cesium.HeightReference.NONE,
       },
     });
     (finalEntity as any)._groundPosition = centerGround;
     (finalEntity as any)._radius = radius;
+
+    if (finalEntity) {
+      (finalEntity as any)._drawOptions = this.drawOptions;
+      (finalEntity as any)._drawType = this.getDrawType();
+      if (this.drawOptions?.onClick) {
+        (finalEntity as any)._onClick = this.drawOptions.onClick;
+      }
+    }
 
     // 计算面积（π * r²）
     const areaKm2 = (Math.PI * radius * radius) / 1e6;
@@ -230,6 +255,9 @@ export class DrawCircle extends BaseDraw {
     if (this.callbacks.onMeasureComplete) {
       this.callbacks.onMeasureComplete(result);
     }
+
+    // 确保恢复 requestRenderMode（如果需要）
+    this.restoreRequestRenderModeIfNeeded();
 
     if (this.callbacks.onDrawEnd) {
       this.callbacks.onDrawEnd(finalEntity);

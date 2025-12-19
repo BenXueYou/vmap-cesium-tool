@@ -1,6 +1,6 @@
 import * as Cesium from "cesium";
 import type { Entity, Cartesian3 } from "cesium";
-import { BaseDraw, type DrawResult } from './BaseDraw';
+import { BaseDraw, type DrawResult, type DrawOptions } from './BaseDraw';
 import { calculateRectangle, calculateRectangleArea, formatArea, isValidCartesian3 } from '../../utils/calc';
 
 /**
@@ -13,6 +13,9 @@ export class DrawRectangle extends BaseDraw {
    * 开始绘制
    */
   public startDrawing(): void {
+    // 保证绘制期间场景处于连续渲染模式（如果原来为手动渲染）
+    this.enableContinuousRenderingIfNeeded();
+
     this.clearTempEntities();
     this.tempPositions = [];
     this.currentRectangleEntity = null;
@@ -51,6 +54,10 @@ export class DrawRectangle extends BaseDraw {
     const rect = calculateRectangle(positions[0], positions[1]);
     const rectHeightReference = Cesium.HeightReference.NONE;
 
+    const fillColor = this.drawOptions?.fillColor ? this.resolveColor(this.drawOptions.fillColor) : Cesium.Color.GREEN;
+    const outlineColor = this.drawOptions?.outlineColor ? this.resolveColor(this.drawOptions.outlineColor) : Cesium.Color.DARKGREEN;
+    const outlineWidth = this.drawOptions?.outlineWidth ?? 1;
+
     if (this.currentRectangleEntity) {
       this.currentRectangleEntity.rectangle!.coordinates =
         new Cesium.ConstantProperty(rect);
@@ -60,14 +67,20 @@ export class DrawRectangle extends BaseDraw {
         this.offsetHeight > 0
           ? new Cesium.ConstantProperty(this.offsetHeight)
           : undefined;
+      this.currentRectangleEntity.rectangle!.material = new Cesium.ColorMaterialProperty(fillColor.withAlpha(0.5));
+      this.currentRectangleEntity.rectangle!.outlineColor = new Cesium.ConstantProperty(outlineColor);
+      this.currentRectangleEntity.rectangle!.outlineWidth = new Cesium.ConstantProperty(outlineWidth);
     } else {
       this.currentRectangleEntity = this.entities.add({
         rectangle: {
           coordinates: rect,
-          material: Cesium.Color.GREEN.withAlpha(0.5),
+          material: fillColor.withAlpha(0.5),
           heightReference: rectHeightReference,
           extrudedHeight:
             this.offsetHeight > 0 ? this.offsetHeight : undefined,
+          outline: true,
+          outlineColor: outlineColor,
+          outlineWidth: outlineWidth,
         },
       });
       this.tempEntities.push(this.currentRectangleEntity);
@@ -79,11 +92,13 @@ export class DrawRectangle extends BaseDraw {
    */
   public finishDrawing(): DrawResult | null {
     if (this.tempPositions.length < 2) {
+      this.restoreRequestRenderModeIfNeeded();
       return null;
     }
 
     const validPositions = this.tempPositions.filter((p) => isValidCartesian3(p));
     if (validPositions.length < 2) {
+      this.restoreRequestRenderModeIfNeeded();
       return null;
     }
 
@@ -99,14 +114,21 @@ export class DrawRectangle extends BaseDraw {
     const rect = calculateRectangle(groundPositions[0], groundPositions[1]);
     let finalEntity: Entity | null = null;
 
+    const fillColor = this.drawOptions?.fillColor ? this.resolveColor(this.drawOptions.fillColor) : Cesium.Color.GREEN;
+    const outlineColor = this.drawOptions?.outlineColor ? this.resolveColor(this.drawOptions.outlineColor) : Cesium.Color.DARKGREEN;
+    const outlineWidth = this.drawOptions?.outlineWidth ?? 1;
+
     if (this.offsetHeight > 0) {
       finalEntity = this.entities.add({
         name: "绘制的矩形",
         rectangle: {
           coordinates: rect,
-          material: Cesium.Color.GREEN.withAlpha(0.5),
+          material: fillColor.withAlpha(0.5),
           heightReference: Cesium.HeightReference.NONE,
           extrudedHeight: this.offsetHeight,
+          outline: true,
+          outlineColor: outlineColor,
+          outlineWidth: outlineWidth,
         },
       });
       (finalEntity as any)._groundRectangle = rect;
@@ -115,11 +137,22 @@ export class DrawRectangle extends BaseDraw {
         name: "绘制的矩形",
         rectangle: {
           coordinates: rect,
-          material: Cesium.Color.GREEN.withAlpha(0.5),
+          material: fillColor.withAlpha(0.5),
           heightReference: Cesium.HeightReference.NONE,
+          outline: true,
+          outlineColor: outlineColor,
+          outlineWidth: outlineWidth,
         },
       });
       (finalEntity as any)._groundRectangle = rect;
+    }
+
+    if (finalEntity) {
+      (finalEntity as any)._drawOptions = this.drawOptions;
+      (finalEntity as any)._drawType = this.getDrawType();
+      if (this.drawOptions?.onClick) {
+        (finalEntity as any)._onClick = this.drawOptions.onClick;
+      }
     }
 
     // 添加面积标签
@@ -193,6 +226,9 @@ export class DrawRectangle extends BaseDraw {
     if (this.callbacks.onMeasureComplete) {
       this.callbacks.onMeasureComplete(result);
     }
+
+    // 恢复渲染模式（如果之前修改过）
+    this.restoreRequestRenderModeIfNeeded();
 
     if (this.callbacks.onDrawEnd) {
       this.callbacks.onDrawEnd(finalEntity);

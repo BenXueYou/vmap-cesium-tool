@@ -1,6 +1,6 @@
 import * as Cesium from "cesium";
 import type { Entity, Cartesian3 } from "cesium";
-import { BaseDraw, type DrawResult } from './BaseDraw';
+import { BaseDraw, type DrawResult, type DrawOptions } from './BaseDraw';
 import { isValidCartesian3, calculatePolygonArea, calculatePolygonCenter, formatArea } from '../../utils/calc';
 
 /**
@@ -12,7 +12,11 @@ export class DrawPolygon extends BaseDraw {
   /**
    * 开始绘制
    */
-  public startDrawing(): void {
+  public startDrawing(options?: DrawOptions): void {
+    this.drawOptions = options;
+    // 如果启用了手动渲染模式，绘制期间临时关闭以保证连贯的预览
+    this.enableContinuousRenderingIfNeeded();
+
     this.clearTempEntities();
     this.tempPositions = [];
     this.currentPolygonEntity = null;
@@ -56,6 +60,10 @@ export class DrawPolygon extends BaseDraw {
       });
       const heightReference = Cesium.HeightReference.NONE;
 
+      const fillColor = this.drawOptions?.fillColor ? this.resolveColor(this.drawOptions.fillColor) : Cesium.Color.LIGHTGREEN;
+      const outlineColor = this.drawOptions?.outlineColor ? this.resolveColor(this.drawOptions.outlineColor) : Cesium.Color.DARKGREEN;
+      const outlineWidth = this.drawOptions?.outlineWidth ?? 2;
+
       if (this.currentPolygonEntity) {
         this.currentPolygonEntity.polygon!.hierarchy =
           new Cesium.ConstantProperty(
@@ -63,16 +71,19 @@ export class DrawPolygon extends BaseDraw {
           );
         this.currentPolygonEntity.polygon!.heightReference =
           new Cesium.ConstantProperty(heightReference);
+        this.currentPolygonEntity.polygon!.material = new Cesium.ColorMaterialProperty(fillColor.withAlpha(0.3));
+        this.currentPolygonEntity.polygon!.outlineColor = new Cesium.ConstantProperty(outlineColor);
+        this.currentPolygonEntity.polygon!.outlineWidth = new Cesium.ConstantProperty(outlineWidth);
       } else {
         this.currentPolygonEntity = this.entities.add({
           polygon: {
             hierarchy: new Cesium.ConstantProperty(
               new Cesium.PolygonHierarchy(polygonPositions)
             ),
-            material: Cesium.Color.LIGHTGREEN.withAlpha(0.3),
+            material: fillColor.withAlpha(0.3),
             outline: true,
-            outlineColor: Cesium.Color.DARKGREEN,
-            outlineWidth: 2,
+            outlineColor: outlineColor,
+            outlineWidth: outlineWidth,
             heightReference,
           },
         });
@@ -96,6 +107,7 @@ export class DrawPolygon extends BaseDraw {
   public finishDrawing(): DrawResult | null {
     const validPositions = this.tempPositions.filter((p) => isValidCartesian3(p));
     if (validPositions.length < 3) {
+      this.restoreRequestRenderModeIfNeeded();
       return null;
     }
 
@@ -132,6 +144,14 @@ export class DrawPolygon extends BaseDraw {
         },
       });
       (finalEntity as any)._groundPositions = groundPositions;
+
+      if (finalEntity) {
+        (finalEntity as any)._drawOptions = this.drawOptions;
+        (finalEntity as any)._drawType = this.getDrawType();
+        if (this.drawOptions?.onClick) {
+          (finalEntity as any)._onClick = this.drawOptions.onClick;
+        }
+      }
     } else {
       finalEntity = this.entities.add({
         name: "绘制的多边形区域",
@@ -145,6 +165,14 @@ export class DrawPolygon extends BaseDraw {
         },
       });
       (finalEntity as any)._groundPositions = groundPositions;
+
+      if (finalEntity) {
+        (finalEntity as any)._drawOptions = this.drawOptions;
+        (finalEntity as any)._drawType = this.getDrawType();
+        if (this.drawOptions?.onClick) {
+          (finalEntity as any)._onClick = this.drawOptions.onClick;
+        }
+      }
     }
 
     // 添加面积标签
@@ -218,6 +246,9 @@ export class DrawPolygon extends BaseDraw {
     if (this.callbacks.onMeasureComplete) {
       this.callbacks.onMeasureComplete(result);
     }
+
+    // 恢复 requestRenderMode（如果需要）
+    this.restoreRequestRenderModeIfNeeded();
 
     if (this.callbacks.onDrawEnd) {
       this.callbacks.onDrawEnd(finalEntity);

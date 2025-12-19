@@ -1,6 +1,6 @@
 import * as Cesium from "cesium";
 import type { Entity, Cartesian3 } from "cesium";
-import { BaseDraw, type DrawResult } from './BaseDraw';
+import { BaseDraw, type DrawResult, type DrawOptions } from './BaseDraw';
 import { formatDistance, isValidCartesian3 } from '../../utils/calc';
 
 /**
@@ -16,7 +16,11 @@ export class DrawLine extends BaseDraw {
   /**
    * 开始绘制
    */
-  public startDrawing(): void {
+  public startDrawing(options?: DrawOptions): void {
+    this.drawOptions = options;
+    // 如果场景是手动渲染模式（requestRenderMode），绘制期间需要关闭以保证连续渲染
+    this.enableContinuousRenderingIfNeeded();
+
     this.warmupTotalLengthLabel();
     this.clearTempEntities();
     this.tempPositions = [];
@@ -61,6 +65,9 @@ export class DrawLine extends BaseDraw {
       : positions;
 
     // 更新或创建线条实体
+    const strokeColor = this.drawOptions?.strokeColor ? this.resolveColor(this.drawOptions.strokeColor) : Cesium.Color.YELLOW;
+    const strokeWidth = this.drawOptions?.strokeWidth ?? 5;
+
     if (this.currentLineEntity) {
       const positionsProperty = this.currentLineEntity.polyline!.positions;
       if (positionsProperty instanceof Cesium.CallbackProperty) {
@@ -73,6 +80,9 @@ export class DrawLine extends BaseDraw {
           false
         );
       }
+      // 更新样式
+      this.currentLineEntity.polyline!.material = new Cesium.ColorMaterialProperty(strokeColor);
+      this.currentLineEntity.polyline!.width = new Cesium.ConstantProperty(strokeWidth);
     } else {
       this.currentLinePositions = [...elevatedPositions];
       this.currentLineEntity = this.entities.add({
@@ -81,8 +91,8 @@ export class DrawLine extends BaseDraw {
             () => this.currentLinePositions,
             false
           ),
-          width: 5,
-          material: Cesium.Color.YELLOW,
+          width: strokeWidth,
+          material: strokeColor,
           clampToGround: this.offsetHeight === 0,
         },
       });
@@ -100,12 +110,15 @@ export class DrawLine extends BaseDraw {
    * 完成绘制
    */
   public finishDrawing(): DrawResult | null {
+    // 在返回之前确保恢复渲染模式（若有变动）
     if (this.tempPositions.length < 2) {
+      this.restoreRequestRenderModeIfNeeded();
       return null;
     }
 
     const validPositions = this.tempPositions.filter((p) => isValidCartesian3(p));
     if (validPositions.length < 2) {
+      this.restoreRequestRenderModeIfNeeded();
       return null;
     }
 
@@ -121,6 +134,9 @@ export class DrawLine extends BaseDraw {
     let finalEntity: Entity | null = null;
     let totalDistance = 0;
 
+    const strokeColor = this.drawOptions?.strokeColor ? this.resolveColor(this.drawOptions.strokeColor) : Cesium.Color.YELLOW;
+    const strokeWidth = this.drawOptions?.strokeWidth ?? 5;
+
     if (this.offsetHeight > 0) {
       const elevatedPositions = groundPositions.map(pos => {
         const carto = Cesium.Cartographic.fromCartesian(pos);
@@ -135,8 +151,8 @@ export class DrawLine extends BaseDraw {
         name: "绘制的线",
         polyline: {
           positions: elevatedPositions,
-          width: 5,
-          material: Cesium.Color.YELLOW,
+          width: strokeWidth,
+          material: strokeColor,
           clampToGround: false,
         },
       });
@@ -146,12 +162,21 @@ export class DrawLine extends BaseDraw {
         name: "绘制的线",
         polyline: {
           positions: groundPositions,
-          width: 5,
-          material: Cesium.Color.YELLOW,
+          width: strokeWidth,
+          material: strokeColor,
           clampToGround: true,
         },
       });
       (finalEntity as any)._groundPositions = groundPositions;
+    }
+
+    // 记录绘制选项与类型和回调
+    if (finalEntity) {
+      (finalEntity as any)._drawOptions = this.drawOptions;
+      (finalEntity as any)._drawType = this.getDrawType();
+      if (this.drawOptions?.onClick) {
+        (finalEntity as any)._onClick = this.drawOptions.onClick;
+      }
     }
 
     for (let i = 1; i < groundPositions.length; i++) {
@@ -196,6 +221,9 @@ export class DrawLine extends BaseDraw {
     if (this.callbacks.onMeasureComplete) {
       this.callbacks.onMeasureComplete(result);
     }
+
+    // 恢复 requestRenderMode 到原始状态（如果之前被修改）
+    this.restoreRequestRenderModeIfNeeded();
 
     if (this.callbacks.onDrawEnd) {
       this.callbacks.onDrawEnd(finalEntity);
