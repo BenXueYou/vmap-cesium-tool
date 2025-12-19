@@ -9,9 +9,11 @@ import zoomOutIcon from "../assets/images/toolbar/zoom-out@3x.png";
 import fullscreenIcon from "../assets/images/toolbar/fullscreen@3x.png";
 import { TD_Map_Search_URL, China_Map_Extent } from "./useMap";
 import type { SearchResult } from "../libs/CesiumMapModel";
+import type { Viewer } from "cesium";
+import type { Ref } from "vue";
 
 
-export const useToolBarConfig = (viewer, message: any) => {
+export const useToolBarConfig = (viewer: Viewer | undefined, message: Ref<string>) => {
 
   const toolbarConfig = {
     position: "bottom-right",
@@ -101,15 +103,15 @@ export const useToolBarConfig = (viewer, message: any) => {
         borderColor: "#0775D1",
         backgroundColor: "rgba(0, 0, 0, 0.52)",
       },
-      // {
-      //   size: 36,
-      //   id: "fullscreen",
-      //   icon: fullscreenIcon,
-      //   title: "全屏",
-      //   color: "#007BFF",
-      //   borderColor: "#0775D1",
-      //   backgroundColor: "rgba(0, 0, 0, 0.52)",
-      // },
+      {
+        size: 36,
+        id: "fullscreen",
+        icon: fullscreenIcon,
+        title: "全屏",
+        color: "#007BFF",
+        borderColor: "#0775D1",
+        backgroundColor: "rgba(0, 0, 0, 0.52)",
+      },
     ],
   };
 

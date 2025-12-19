@@ -1,19 +1,20 @@
 import * as Cesium from 'cesium';
 import type { Viewer, Cartesian3 } from 'cesium';
-import DrawHelper from './toolBar/CesiumMapHelper';
+import DrawHelper from './CesiumMapHelper';
 import { CesiumMapController } from './toolBar/CesiumMapController';
 import { MeasurementService } from './toolBar/MeasurementService';
 import { SearchService } from './toolBar/MapSearchService';
 import { MapLayersService } from './toolBar/MapLayersService';
 import { NotFlyZonesService } from './toolBar/NotFlyZonesService';
 import type {
-  ButtonConfig, MapType, SearchResult, ToolbarConfig,
+  ButtonConfig, MapType, ToolbarConfig,
   SearchCallback, MeasurementCallback, ZoomCallback, CustomButtonConfig
 } from './CesiumMapModel';
 
 import { TDTMapTypes } from './config/CesiumMapConfig'
 import { formatDistance, calculatePolygonArea } from '../utils/calc';
 
+import { defaultButtonSorts, defaultButtons } from './toolBar/MapToolBarConfig'
 
 /**
  * Cesium地图工具栏类
@@ -150,8 +151,6 @@ export class CesiumMapToolbar {
       },
     });
 
-    // 工具栏已在构造函数中创建
-
     // 自动加载禁飞区（如果默认勾选）
     if (this.isNoFlyZoneChecked) {
       setTimeout(() => {
@@ -236,7 +235,7 @@ export class CesiumMapToolbar {
     if (!this.config.buttons) {
       this.config.buttons = [];
     }
-    
+
     // 检查是否已存在相同 ID 的按钮
     const existingIndex = this.config.buttons.findIndex(btn => btn.id === config.id);
     if (existingIndex !== -1) {
@@ -254,7 +253,7 @@ export class CesiumMapToolbar {
 
     // 获取所有按钮（包括默认按钮和自定义按钮）
     const allButtons = this.getAllButtonsWithSort();
-    
+
     // 根据 sort 值排序（sort 值越小越靠前，未设置 sort 的按钮排在最后）
     allButtons.sort((a, b) => {
       const sortA = a.sort ?? 9999;
@@ -269,31 +268,7 @@ export class CesiumMapToolbar {
   /**
    * 获取所有按钮配置（包括默认按钮和自定义按钮），并添加 sort 值
    */
-  private getAllButtonsWithSort(): ButtonConfig[] {
-    // 默认按钮的 sort 值（按顺序递增）
-    const defaultButtonSorts: Record<string, number> = {
-      'search': 0,
-      'measure': 1,
-      'view2d3d': 2,
-      'layers': 3,
-      'location': 4,
-      'zoom-in': 5,
-      'zoom-out': 6,
-      'fullscreen': 7
-    };
-
-    // 获取默认按钮配置
-    const defaultButtons: ButtonConfig[] = [
-      { id: 'search', icon: '🔍', title: '搜索', sort: defaultButtonSorts['search'] },
-      { id: 'measure', icon: '📏', title: '测量', sort: defaultButtonSorts['measure'] },
-      { id: 'view2d3d', icon: '3D', title: '2D或3D', sort: defaultButtonSorts['view2d3d'] },
-      { id: 'layers', icon: '📚', title: '图层切换', sort: defaultButtonSorts['layers'] },
-      { id: 'location', icon: '🎯', title: '定位', sort: defaultButtonSorts['location'] },
-      { id: 'zoom-in', icon: '🔍-', title: '缩小', sort: defaultButtonSorts['zoom-in'] },
-      { id: 'zoom-out', icon: '🔍+', title: '放大', sort: defaultButtonSorts['zoom-out'] },
-      { id: 'fullscreen', icon: '⛶', title: '全屏', sort: defaultButtonSorts['fullscreen'] }
-    ];
-
+  private getAllButtonsWithSort(): ButtonConfig[] {    
     // 获取自定义按钮配置
     const customButtons: ButtonConfig[] = [];
     if (this.config.buttons && this.config.buttons.length > 0) {
@@ -302,13 +277,12 @@ export class CesiumMapToolbar {
         // 处理图标：支持 string、HTMLElement 或 false
         let iconValue = '';
         if (customButton.icon !== false) {
-          iconValue = typeof customButton.icon === 'string' 
-            ? customButton.icon 
+          iconValue = typeof customButton.icon === 'string'
+            ? customButton.icon
             : (defaultButton?.icon || '');
         } else if (defaultButton?.icon) {
           iconValue = defaultButton.icon;
         }
-        
         customButtons.push({
           id: customButton.id || defaultButton?.id || '',
           icon: iconValue,
@@ -470,7 +444,7 @@ export class CesiumMapToolbar {
    */
   private getButtonConfigs(): ButtonConfig[] {
     const allButtons = this.getAllButtonsWithSort();
-    
+
     // 根据 sort 值排序（sort 值越小越靠前，未设置 sort 的按钮排在最后）
     allButtons.sort((a, b) => {
       const sortA = a.sort ?? 9999;
@@ -837,15 +811,6 @@ export class CesiumMapToolbar {
    */
   private toggle2D3D(buttonElement: HTMLElement): void {
     this.mapController.toggle2D3D(buttonElement);
-  }
-
-  /**
-   * 切换地图类型
-   * @deprecated 使用 MapLayersService.switchMapType 代替
-   */
-  private switchMapType(mapTypeId: string): void {
-    this.mapLayersService.switchMapType(mapTypeId);
-    this.currentMapType = mapTypeId;
   }
 
   /**
