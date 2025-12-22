@@ -4,11 +4,23 @@
     <!-- 消息提示 -->
     <div v-if="message" class="message">{{ message }}</div>
     <div class="test-button-group">
+      <button @click="addDrawLine">绘制线条</button>
+      <button @click="addDrawArea">绘制区域</button>
+      <button @click="addDrawCircle">绘制圆形</button>
+      <button @click="addDrawPolygon">绘制多边形</button>
+      <br />
       <button @click="addMarker">添加点位</button>
       <button @click="addLine">添加线条</button>
       <button @click="addArea">添加区域</button>
       <button @click="addCircle">添加圆形</button>
       <button @click="addPolygon">添加多边形</button>
+      <button @click="addPolyline">添加折线</button>
+      <button @click="addIcon">添加图标</button>
+      <button @click="addSvg">添加SVG</button>
+      <button @click="addMarkerWithLabel">添加点位带标签</button>
+      <button @click="addLabel">添加标签</button>
+      <button @click="addRectangle">添加矩形</button>
+      <button @click="addInfoWindow">添加窗口</button>
     </div>
   </div>
 </template>
@@ -18,164 +30,51 @@ import { onMounted, ref, onBeforeUnmount } from "vue";
 import { initCesium } from "./libs/CesiumMapLoader";
 import { CesiumMapToolbar } from "./libs/CesiumMapToolbar";
 import type { ToolbarConfig } from "./libs/CesiumMapModel";
-import DrawHelper from "./libs/CesiumMapDraw";
 import { useToolBarConfig } from "./hooks/toolBarConfig";
+import { useDrawHelper } from "./hooks/useDrawHelper";
+import { useOverlayHelper } from "./hooks/useOverlayHelper";
 import { getViteTdToken, getViteCesiumToken } from "./utils/common";
 import * as Cesium from "cesium";
 
 let viewer = ref<Cesium.Viewer>();
 const message = ref("");
-let drawHelper: DrawHelper | null = null;
 let mapToolbar: CesiumMapToolbar | null = null;
 const TDT_TK = getViteTdToken();
 const { toolbarConfig, toolbarCallback } = useToolBarConfig(viewer.value, message);
 
-// 绘制状态
-const isDrawing = ref(false);
-const currentDrawMode = ref<string | null>(null);
-let markerHandler: Cesium.ScreenSpaceEventHandler | null = null;
-let markerEntities: Cesium.Entity[] = [];
+// 绘制 & 覆盖物 Hooks
+const {
+  drawHelper,
+  isDrawing,
+  currentDrawMode,
+  initDrawHelper,
+  endDrawing,
+  addDrawLine,
+  addDrawArea,
+  addDrawCircle,
+  addDrawPolygon,
+  destroyDrawHelper,
+} = useDrawHelper(viewer, message);
 
-/**
- * 添加点位 - 点击地图添加标记点
- */
-const addMarker = () => {
-  
-};
+const {
+  overlayService,
+  initOverlayService,
+  addMarker,
+  addMarkerWithLabel,
+  addLine,
+  addArea,
+  addCircle,
+  addPolygon,
+  addPolyline,
+  addIcon,
+  addSvg,
+  addLabel,
+  addRectangle,
+  addInfoWindow,
+  cancelMarkerMode,
+  destroyOverlayService,
+} = useOverlayHelper(viewer, message);
 
-/**
- * 取消点位添加模式
- */
-const cancelMarkerMode = () => {
-  if (markerHandler) {
-    markerHandler.destroy();
-    markerHandler = null;
-  }
-  currentDrawMode.value = null;
-  message.value = '';
-};
-
-/**
- * 添加线条
- */
-const addLine = () => {
-  if (!drawHelper) return;
-  
-  // 取消其他绘制模式
-  cancelMarkerMode();
-  if (isDrawing.value && currentDrawMode.value !== 'line') {
-    drawHelper.endDrawing();
-  }
-  
-  currentDrawMode.value = 'line';
-  isDrawing.value = true;
-  drawHelper.startDrawingLine(
-    {
-      strokeWidth: 4,
-      strokeColor: Cesium.Color.BLUE,
-    }
-  );
-  message.value = '开始绘制线条：左键添加点，双击完成，右键删除最后一点';
-  
-  // 监听绘制完成
-  drawHelper.onDrawEnd(() => {
-    isDrawing.value = false;
-    currentDrawMode.value = null;
-    message.value = '线条绘制完成';
-    setTimeout(() => {
-      message.value = '';
-    }, 2000);
-  });
-};
-
-/**
- * 添加区域（矩形）
- */
-const addArea = () => {
-  if (!drawHelper) return;
-  
-  cancelMarkerMode();
-  if (isDrawing.value && currentDrawMode.value !== 'rectangle') {
-    drawHelper.endDrawing();
-  }
-  
-  currentDrawMode.value = 'rectangle';
-  isDrawing.value = true;
-  drawHelper.startDrawingRectangle({
-    fillColor: Cesium.Color.YELLOW.withAlpha(0.5),
-    outlineColor: Cesium.Color.YELLOW,
-    outlineWidth: 2,
-    onClick: (entity: Cesium.Entity) => {
-      console.log('矩形区域点击:', entity);
-    }
-  });
-  message.value = '开始绘制矩形区域：左键确定起点，再次左键确定终点，双击完成';
-  
-  drawHelper.onDrawEnd(() => {
-    isDrawing.value = false;
-    currentDrawMode.value = null;
-    message.value = '矩形区域绘制完成';
-    setTimeout(() => {
-      message.value = '';
-    }, 2000);
-  });
-};
-
-/**
- * 添加圆形
- */
-const addCircle = () => {
-  if (!drawHelper) return;
-  
-  cancelMarkerMode();
-  if (isDrawing.value && currentDrawMode.value !== 'circle') {
-    drawHelper.endDrawing();
-  }
-  
-  currentDrawMode.value = 'circle';
-  isDrawing.value = true;
-  drawHelper.startDrawingCircle();
-  message.value = '开始绘制圆形：左键确定圆心，再次左键确定半径，双击完成';
-  
-  drawHelper.onDrawEnd(() => {
-    isDrawing.value = false;
-    currentDrawMode.value = null;
-    message.value = '圆形绘制完成';
-    setTimeout(() => {
-      message.value = '';
-    }, 2000);
-  });
-};
-
-/**
- * 添加多边形
- */
-const addPolygon = () => {
-  if (!drawHelper) return;
-  
-  cancelMarkerMode();
-  if (isDrawing.value && currentDrawMode.value !== 'polygon') {
-    drawHelper.endDrawing();
-  }
-  
-  currentDrawMode.value = 'polygon';
-  isDrawing.value = true;
-  drawHelper.startDrawingPolygon({
-    strokeWidth: 4,
-    strokeColor: Cesium.Color.BLUE,
-    fillColor: Cesium.Color.YELLOW.withAlpha(0.5),
-  });
-  message.value = '开始绘制多边形：左键添加点，双击完成，右键删除最后一点';
-  
-  drawHelper.onDrawEnd(() => {
-    isDrawing.value = false;
-    currentDrawMode.value = null;
-    message.value = '多边形绘制完成';
-    setTimeout(() => {
-      message.value = '';
-    }, 2000);
-  });
-};
 // 初始化地图
 onMounted(async () => {
   Cesium.Ion.defaultAccessToken = getViteCesiumToken();
@@ -185,8 +84,6 @@ onMounted(async () => {
       isFly: true,
       token: TDT_TK,
       mapType: 'tiandi',
-      requestRenderMode: true, // 手动请求渲染
-      maximumRenderTimeChange: 0.01, // 动画平衡
       baseLayerPicker: false,
       terrainProvider: new Cesium.EllipsoidTerrainProvider(),
       success: () => {
@@ -200,8 +97,12 @@ onMounted(async () => {
   viewer.value.scene.globe.depthTestAgainstTerrain = true; // 启用地形深度测
   (viewer.value.cesiumWidget.creditContainer as HTMLElement).style.display = "none"; // 去掉左下角的Cesium商标
 
+  // 初始化覆盖物服务
+  initOverlayService();
+
   // 初始化绘图助手
-  drawHelper = new DrawHelper(viewer.value);
+  initDrawHelper();
+  
   // 初始化工具栏
   const container = document.getElementById("cesiumContainer");
   if (container) {
@@ -285,30 +186,14 @@ const customToolBarBtn = (mapToolbar:CesiumMapToolbar) => {
 
 // 清理资源
 onBeforeUnmount(() => {
-  // 清理点位添加模式
-  if (markerHandler) {
-    markerHandler.destroy();
-    markerHandler = null;
-  }
-  
-  // 清理点位实体
-  if (viewer.value) {
-    markerEntities.forEach(entity => {
-      viewer.value!.entities.remove(entity);
-    });
-    markerEntities = [];
-  }
-  
+  // 清理覆盖物服务
+  destroyOverlayService();
+
   // 结束绘制
-  if (drawHelper && isDrawing.value) {
-    drawHelper.endDrawing();
-  }
-  
+  destroyDrawHelper();
+
   if (mapToolbar) {
     mapToolbar.destroy();
-  }
-  if (drawHelper) {
-    drawHelper.destroy();
   }
 });
 </script>

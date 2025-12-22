@@ -57,7 +57,14 @@ export class CesiumOverlayService {
     const container = this.viewer.container;
     this.infoWindowContainer = document.createElement('div');
     this.infoWindowContainer.id = 'cesium-info-window-container';
+    // Make the info window container cover the entire map container so child coordinates
+    // can be expressed in container-local pixels. Keep pointerEvents none so clicks pass
+    // through, but individual info windows can opt-in with pointerEvents = 'auto'.
     this.infoWindowContainer.style.position = 'absolute';
+    this.infoWindowContainer.style.left = '0';
+    this.infoWindowContainer.style.top = '0';
+    this.infoWindowContainer.style.width = '100%';
+    this.infoWindowContainer.style.height = '100%';
     this.infoWindowContainer.style.pointerEvents = 'none';
     this.infoWindowContainer.style.zIndex = '1000';
     container.appendChild(this.infoWindowContainer);
