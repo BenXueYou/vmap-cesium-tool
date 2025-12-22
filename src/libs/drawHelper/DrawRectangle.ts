@@ -12,7 +12,8 @@ export class DrawRectangle extends BaseDraw {
   /**
    * 开始绘制
    */
-  public startDrawing(): void {
+  public startDrawing(options?: DrawOptions): void {
+    this.drawOptions = options;
     // 保证绘制期间场景处于连续渲染模式（如果原来为手动渲染）
     this.enableContinuousRenderingIfNeeded();
 
@@ -54,9 +55,13 @@ export class DrawRectangle extends BaseDraw {
     const rect = calculateRectangle(positions[0], positions[1]);
     const rectHeightReference = Cesium.HeightReference.NONE;
 
+    // 支持 strokeColor/strokeWidth 作为 outlineColor/outlineWidth 的别名
+    // 如果提供了 strokeColor，优先使用它作为 outlineColor；否则使用 fillColor 或默认值
     const fillColor = this.drawOptions?.fillColor ? this.resolveColor(this.drawOptions.fillColor) : Cesium.Color.GREEN;
-    const outlineColor = this.drawOptions?.outlineColor ? this.resolveColor(this.drawOptions.outlineColor) : Cesium.Color.DARKGREEN;
-    const outlineWidth = this.drawOptions?.outlineWidth ?? 1;
+    const outlineColor = this.drawOptions?.strokeColor 
+      ? this.resolveColor(this.drawOptions.strokeColor)
+      : (this.drawOptions?.outlineColor ? this.resolveColor(this.drawOptions.outlineColor) : Cesium.Color.DARKGREEN);
+    const outlineWidth = this.drawOptions?.strokeWidth ?? (this.drawOptions?.outlineWidth ?? 1);
 
     if (this.currentRectangleEntity) {
       this.currentRectangleEntity.rectangle!.coordinates =
@@ -114,9 +119,13 @@ export class DrawRectangle extends BaseDraw {
     const rect = calculateRectangle(groundPositions[0], groundPositions[1]);
     let finalEntity: Entity | null = null;
 
+    // 支持 strokeColor/strokeWidth 作为 outlineColor/outlineWidth 的别名
+    // 如果提供了 strokeColor，优先使用它作为 outlineColor；否则使用 fillColor 或默认值
     const fillColor = this.drawOptions?.fillColor ? this.resolveColor(this.drawOptions.fillColor) : Cesium.Color.GREEN;
-    const outlineColor = this.drawOptions?.outlineColor ? this.resolveColor(this.drawOptions.outlineColor) : Cesium.Color.DARKGREEN;
-    const outlineWidth = this.drawOptions?.outlineWidth ?? 1;
+    const outlineColor = this.drawOptions?.strokeColor 
+      ? this.resolveColor(this.drawOptions.strokeColor)
+      : (this.drawOptions?.outlineColor ? this.resolveColor(this.drawOptions.outlineColor) : Cesium.Color.DARKGREEN);
+    const outlineWidth = this.drawOptions?.strokeWidth ?? (this.drawOptions?.outlineWidth ?? 1);
 
     if (this.offsetHeight > 0) {
       finalEntity = this.entities.add({

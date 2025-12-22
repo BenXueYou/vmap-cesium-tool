@@ -122,6 +122,13 @@ export class DrawPolygon extends BaseDraw {
 
     let finalEntity: Entity | null = null;
 
+    // 使用 drawOptions 中的颜色和边框设置
+    const fillColor = this.drawOptions?.fillColor ? this.resolveColor(this.drawOptions.fillColor) : Cesium.Color.LIGHTGREEN;
+    const outlineColor = this.drawOptions?.strokeColor 
+      ? this.resolveColor(this.drawOptions.strokeColor)
+      : (this.drawOptions?.outlineColor ? this.resolveColor(this.drawOptions.outlineColor) : Cesium.Color.DARKGREEN);
+    const outlineWidth = this.drawOptions?.strokeWidth ?? (this.drawOptions?.outlineWidth ?? 2);
+
     if (this.offsetHeight > 0) {
       const elevatedPositions = groundPositions.map(pos => {
         const carto = Cesium.Cartographic.fromCartesian(pos);
@@ -136,10 +143,10 @@ export class DrawPolygon extends BaseDraw {
         name: "绘制的多边形区域",
         polygon: {
           hierarchy: new Cesium.PolygonHierarchy(elevatedPositions),
-          material: Cesium.Color.LIGHTGREEN.withAlpha(0.3),
+          material: fillColor.withAlpha(0.3),
           outline: true,
-          outlineColor: Cesium.Color.DARKGREEN,
-          outlineWidth: 2,
+          outlineColor: outlineColor,
+          outlineWidth: outlineWidth,
           heightReference: Cesium.HeightReference.NONE,
         },
       });
@@ -157,10 +164,10 @@ export class DrawPolygon extends BaseDraw {
         name: "绘制的多边形区域",
         polygon: {
           hierarchy: new Cesium.PolygonHierarchy(groundPositions),
-          material: Cesium.Color.LIGHTGREEN.withAlpha(0.3),
+          material: fillColor.withAlpha(0.3),
           outline: true,
-          outlineColor: Cesium.Color.DARKGREEN,
-          outlineWidth: 2,
+          outlineColor: outlineColor,
+          outlineWidth: outlineWidth,
           heightReference: Cesium.HeightReference.NONE,
         },
       });

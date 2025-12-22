@@ -40,72 +40,7 @@ let markerEntities: Cesium.Entity[] = [];
  * 添加点位 - 点击地图添加标记点
  */
 const addMarker = () => {
-  if (!viewer.value || !drawHelper) return;
   
-  // 如果已经在绘制，先结束
-  if (isDrawing.value) {
-    drawHelper.endDrawing();
-    isDrawing.value = false;
-    currentDrawMode.value = null;
-  }
-  
-  // 清理之前的点位点击处理器
-  if (markerHandler) {
-    markerHandler.destroy();
-    markerHandler = null;
-  }
-  
-  currentDrawMode.value = 'marker';
-  message.value = '点击地图添加点位标记（右键取消）';
-  
-  // 创建点击事件处理器
-  markerHandler = new Cesium.ScreenSpaceEventHandler(viewer.value.scene.canvas);
-  
-  markerHandler.setInputAction((click: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
-    if (!viewer.value) return;
-    
-    const cartesian = pickGlobePosition(click.position);
-    if (cartesian) {
-      const cartographic = Cesium.Cartographic.fromCartesian(cartesian);
-      
-      // 添加点位实体
-      const markerEntity = viewer.value!.entities.add({
-        position: cartesian,
-        point: {
-          pixelSize: 12,
-          color: Cesium.Color.YELLOW,
-          outlineColor: Cesium.Color.BLACK,
-          outlineWidth: 2,
-          heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-          scaleByDistance: new Cesium.NearFarScalar(1.5e2, 1.0, 1.5e7, 0.5),
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        },
-        label: {
-          text: `点位 ${markerEntities.length + 1}`,
-          font: '14px sans-serif',
-          fillColor: Cesium.Color.WHITE,
-          outlineColor: Cesium.Color.BLACK,
-          outlineWidth: 2,
-          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-          pixelOffset: new Cesium.Cartesian2(0, -40),
-          heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        }
-      });
-      
-      markerEntities.push(markerEntity);
-      message.value = `已添加点位 ${markerEntities.length}（右键取消添加模式）`;
-      
-      setTimeout(() => {
-        message.value = '';
-      }, 2000);
-    }
-  }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
-  
-  // 右键取消添加点位模式
-  markerHandler.setInputAction(() => {
-    cancelMarkerMode();
-  }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
 };
 
 /**
@@ -118,33 +53,6 @@ const cancelMarkerMode = () => {
   }
   currentDrawMode.value = null;
   message.value = '';
-};
-
-/**
- * 拾取地形或椭球体上的位置
- */
-const pickGlobePosition = (windowPosition: Cesium.Cartesian2): Cesium.Cartesian3 | null => {
-  if (!viewer.value) return null;
-  
-  const ray = viewer.value.camera.getPickRay(windowPosition);
-  if (ray && viewer.value.scene.mode === Cesium.SceneMode.SCENE3D && viewer.value.scene.globe.tilesLoaded) {
-    const position = viewer.value.scene.globe.pick(ray, viewer.value.scene) as Cesium.Cartesian3 | undefined;
-    if (Cesium.defined(position) && 
-        Number.isFinite(position.x) && 
-        Number.isFinite(position.y) && 
-        Number.isFinite(position.z)) {
-      return position;
-    }
-  }
-  
-  const ellipsoidPosition = viewer.value.camera.pickEllipsoid(windowPosition, viewer.value.scene.globe.ellipsoid) as Cesium.Cartesian3 | undefined;
-  if (ellipsoidPosition && 
-      Number.isFinite(ellipsoidPosition.x) && 
-      Number.isFinite(ellipsoidPosition.y) && 
-      Number.isFinite(ellipsoidPosition.z)) {
-    return ellipsoidPosition;
-  }
-  return null;
 };
 
 /**
@@ -194,8 +102,12 @@ const addArea = () => {
   currentDrawMode.value = 'rectangle';
   isDrawing.value = true;
   drawHelper.startDrawingRectangle({
-    strokeWidth: 4,
-    strokeColor: Cesium.Color.YELLOW,
+    fillColor: Cesium.Color.YELLOW.withAlpha(0.5),
+    outlineColor: Cesium.Color.YELLOW,
+    outlineWidth: 2,
+    onClick: (entity: Cesium.Entity) => {
+      console.log('矩形区域点击:', entity);
+    }
   });
   message.value = '开始绘制矩形区域：左键确定起点，再次左键确定终点，双击完成';
   

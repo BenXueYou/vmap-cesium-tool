@@ -216,12 +216,17 @@ export class DrawCircle extends BaseDraw {
       this.tempLabelEntities.push(areaLabelEntity);
     }
 
-    // 将临时点实体转移到已完成点实体数组
-    this.tempEntities.forEach((entity) => {
-      if (entity && entity.point) {
-        this.finishedPointEntities.push(entity);
-      } else {
-        this.entities.remove(entity);
+    // 保留圆心位置的红色球体，删除半径上的点（第二个点）
+    this.tempEntities.forEach((entity, index) => {
+      if (entity) {
+        // 保留第一个点（圆心），删除其他点（半径上的点）
+        if (index === 0 && entity.point) {
+          // 保留圆心点实体
+          this.finishedPointEntities.push(entity);
+        } else {
+          // 删除半径上的点实体和其他临时实体
+          this.entities.remove(entity);
+        }
       }
     });
 
