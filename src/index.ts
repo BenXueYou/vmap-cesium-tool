@@ -1,6 +1,6 @@
 // 核心类
 export { CesiumMapToolbar } from './libs/CesiumMapToolbar';
-export { default as DrawHelper } from './libs/CesiumMapHelper';
+export { default as DrawHelper } from './libs/CesiumMapDraw';
 export { initCesium } from './libs/CesiumMapLoader';
 
 // 类型定义
@@ -21,7 +21,7 @@ export type {
 
 // 导入用于默认导出
 import { CesiumMapToolbar } from './libs/CesiumMapToolbar';
-import DrawHelper from './libs/CesiumMapHelper';
+import DrawHelper from './libs/CesiumMapDraw';
 import { initCesium } from './libs/CesiumMapLoader';
 
 // 默认导出

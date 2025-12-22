@@ -1,6 +1,6 @@
 import * as Cesium from 'cesium';
 import type { Viewer } from 'cesium';
-import DrawHelper from '../CesiumMapHelper';
+import DrawHelper from '../CesiumMapDraw';
 import type { MeasurementCallback } from '../CesiumMapModel';
 
 export type MeasureMode = 'none' | 'distance' | 'area';

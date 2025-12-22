@@ -1,6 +1,6 @@
 import * as Cesium from 'cesium';
 import type { Viewer, Cartesian3 } from 'cesium';
-import DrawHelper from './CesiumMapHelper';
+import DrawHelper from './CesiumMapDraw';
 import { CesiumMapController } from './toolBar/CesiumMapController';
 import { MeasurementService } from './toolBar/MeasurementService';
 import { SearchService } from './toolBar/MapSearchService';

@@ -18,7 +18,7 @@ import { onMounted, ref, onBeforeUnmount } from "vue";
 import { initCesium } from "./libs/CesiumMapLoader";
 import { CesiumMapToolbar } from "./libs/CesiumMapToolbar";
 import type { ToolbarConfig } from "./libs/CesiumMapModel";
-import DrawHelper from "./libs/CesiumMapHelper";
+import DrawHelper from "./libs/CesiumMapDraw";
 import { useToolBarConfig } from "./hooks/toolBarConfig";
 import { getViteTdToken, getViteCesiumToken } from "./utils/common";
 import * as Cesium from "cesium";

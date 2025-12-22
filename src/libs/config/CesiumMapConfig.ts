@@ -1,6 +1,6 @@
 import * as Cesium from 'cesium';
 import type { Viewer } from 'cesium';
-import DrawHelper from '../CesiumMapHelper';
+import DrawHelper from '../CesiumMapDraw';
 import type { MapType, ToolbarConfig, SearchCallback, MeasurementCallback, ZoomCallback } from '../CesiumMapModel';
 import VecImg from '../../assets/images/vec_c.png'; // 矢量图标
 import TerImg from '../../assets/images/ter_c.png'; // 地形
