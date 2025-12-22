@@ -132,5 +132,15 @@ export class MapIcon {
       }
     }
   }
-}
+
+  /**
+   * 移除 Icon（通过实体或实体 id）
+   */
+  public remove(entityOrId: Entity | string): boolean {
+    const entity = typeof entityOrId === 'string' ? this.entities.getById(entityOrId) : entityOrId;
+    if (!entity) return false;
+    delete (entity as any)._onClick;
+    return this.entities.remove(entity);
+  }
+} 
 

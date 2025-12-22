@@ -17,6 +17,10 @@ export interface InfoWindowOptions {
   color?: string;
   font?: string;
   hideWhenOutOfView?: boolean; // 新增：是否在视锥外自动隐藏（默认 true）
+  // anchorHeight（米）用于计算屏幕上的 marker 高度以便将 infoWindow 锚定在 marker 顶部
+  anchorHeight?: number;
+  // tailGap（像素）弹窗底部与 marker 顶部之间的间隙（默认 8px）
+  tailGap?: number;
 }
 
 interface InternalEntityData {
@@ -53,7 +57,6 @@ export class MapInfoWindow {
     if (position instanceof Cesium.Cartesian3) return position;
     if (Array.isArray(position)) {
       const [lon, lat, height = 0] = position;
-      debugger;
       return Cesium.Cartesian3.fromDegrees(lon, lat, height);
     }
     throw new Error('Invalid position: expected [lon, lat] or [lon, lat, height] or Cartesian3');
@@ -96,7 +99,6 @@ export class MapInfoWindow {
 
     const { domElement, options } = data;
     const worldPos = entity.position?.getValue(this.viewer.clock.currentTime) as Cartesian3 | undefined;
-    debugger;
     if (!worldPos) {
       domElement.style.display = 'none';
       return;
@@ -120,6 +122,35 @@ export class MapInfoWindow {
 
     let { x, y } = pixelPos;
 
+    // 计算 anchor 点在世界坐标系中的位置：基于 Cartographic 高度加上 anchorHeight
+    const anchorMeters = options.anchorHeight ?? 10; // 默认 10 米（较小默认值避免远距时视觉偏移过大）
+    const tailGap = options.tailGap ?? 8; // 弹窗底部与 marker 顶部的间隙（px）
+
+    let markerPixelHeight = 0; // fallback
+    try {
+      // 使用 Cartographic（经纬度 + 高度）增加高度，避免法线乘积带来的非线性误差
+      const carto = Cesium.Cartographic.fromCartesian(worldPos);
+      const lonDeg = Cesium.Math.toDegrees(carto.longitude);
+      const latDeg = Cesium.Math.toDegrees(carto.latitude);
+      const anchorWorld = Cesium.Cartesian3.fromDegrees(lonDeg, latDeg, carto.height + anchorMeters);
+
+      const anchorPixel = this.getContainerPixelPosition(anchorWorld);
+      const basePixel = this.getContainerPixelPosition(worldPos);
+
+      if (anchorPixel && basePixel) {
+        // anchorPixel 为顶部参考点（在 marker 上方 anchorMeters 米处）
+        markerPixelHeight = Math.max(basePixel.y - anchorPixel.y, 0);
+        x = anchorPixel.x; // 锚点使用 anchorWorld 的屏幕位置
+        y = anchorPixel.y;
+      } else if (basePixel) {
+        // 回退到 basePixel
+        x = basePixel.x;
+        y = basePixel.y;
+      }
+    } catch (e) {
+      void e;
+    }
+
     // 应用原始 pixelOffset（CSS 像素）
     if (options.pixelOffset) {
       x += options.pixelOffset.x;
@@ -140,8 +171,11 @@ export class MapInfoWindow {
     domElement.style.visibility = '';
     domElement.style.display = 'none'; // 暂不显示，等定位完成
 
-    // 默认锚点：底部居中
+    // 默认锚点：底部居中（此时 y 为 marker 底部）
     let transform = 'translate(-50%, -100%)';
+
+    // 将弹窗底部挪到 anchor 点上方（使用 anchor 的屏幕位置，间隔 tailGap）
+    y = y - tailGap;
 
     // 边界检测与避让逻辑
     const margin = 10; // 安全边距
@@ -157,10 +191,11 @@ export class MapInfoWindow {
       transform = 'translate(-100%, -100%)';
     }
 
-    // 上下避让（主要防止顶部被裁剪）
+    // 上下避让（如果被顶出顶部，则显示在 marker 下方）
     if (y - height < margin) {
-      // 太靠上 → 改为显示在下方
-      y = margin + height;
+      // 显示在 marker 下方（尽量用 basePixel.y 以保证与 marker 对齐）
+      const baseY = pixelPos ? pixelPos.y : y;
+      y = baseY + tailGap; // 将弹窗顶端放在 marker 底部下方
       transform = transform.replace('-100%', '0%'); // 从 bottom 改为 top
     }
 
@@ -194,18 +229,19 @@ export class MapInfoWindow {
     if (options.width) el.style.width = `${options.width}px`;
     if (options.height) el.style.height = `${options.height}px`;
 
-    // 内容
+    // 内容区（单独管理，便于 updateContent 保留按钮）
+    const contentWrap = document.createElement('div');
+    contentWrap.className = 'cesium-info-window-content';
     if (typeof options.content === 'string') {
-      el.innerHTML = options.content;
+      contentWrap.innerHTML = options.content;
     } else {
-      el.appendChild(options.content);
+      contentWrap.appendChild(options.content);
     }
+    el.appendChild(contentWrap);
 
-    // 点击提升层级
+    // 点击提升层级（不对关闭按钮触发）
     el.addEventListener('click', (e) => {
-      if ((e.target as HTMLElement).closest('.cesium-info-window-close')) {
-        return; // 关闭按钮不触发提升
-      }
+      if ((e.target as HTMLElement).closest('.cesium-info-window-close')) return;
       this.bringToFront(entity); // 注意：entity 在闭包中
       options.onClick?.(entity);
     });
@@ -305,14 +341,14 @@ export class MapInfoWindow {
   public updateContent(entity: Entity, content: string | HTMLElement): void {
     const data = (entity as any)[INFO_WINDOW_DATA_KEY] as InternalEntityData | undefined;
     if (!data) return;
-    const el = data.domElement;
-    el.innerHTML = '';
+    const contentWrap = data.domElement.querySelector('.cesium-info-window-content') as HTMLElement | null;
+    if (!contentWrap) return;
+    contentWrap.innerHTML = '';
     if (typeof content === 'string') {
-      el.innerHTML = content;
+      contentWrap.innerHTML = content;
     } else {
-      el.appendChild(content);
+      contentWrap.appendChild(content);
     }
-    // 保留关闭按钮等结构？这里简单覆盖。如需保留，应单独管理 content 区域。
   }
 
   /**

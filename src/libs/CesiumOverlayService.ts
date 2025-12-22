@@ -203,7 +203,7 @@ export class CesiumOverlayService {
       // 如果是信息窗口，移除DOM元素
       const infoWindow = (entity as any)._infoWindow as HTMLElement | undefined;
       if (infoWindow) {
-        this.infoWindow.removeDomElement(entity);
+        this.infoWindow.remove(entity);
       }
       
       this.entities.remove(entity);

@@ -132,7 +132,8 @@ export class MapCircle {
   public updateStyle(entity: Entity, options: Partial<Pick<CircleOptions, 'material' | 'outline' | 'outlineColor' | 'outlineWidth'>>): void {
     if (entity.ellipse) {
       if (options.material !== undefined) {
-        entity.ellipse.material = this.resolveMaterial(options.material);
+        const mat = this.resolveMaterial(options.material);
+        entity.ellipse.material = mat instanceof Cesium.Color ? new Cesium.ColorMaterialProperty(mat) : (mat as Cesium.MaterialProperty);
       }
       if (options.outline !== undefined) {
         entity.ellipse.outline = new Cesium.ConstantProperty(options.outline);
@@ -145,5 +146,15 @@ export class MapCircle {
       }
     }
   }
-}
+
+  /**
+   * 移除 Circle（通过实体或实体 id）
+   */
+  public remove(entityOrId: Entity | string): boolean {
+    const entity = typeof entityOrId === 'string' ? this.entities.getById(entityOrId) : entityOrId;
+    if (!entity) return false;
+    delete (entity as any)._onClick;
+    return this.entities.remove(entity);
+  }
+} 
 

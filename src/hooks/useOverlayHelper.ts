@@ -259,8 +259,23 @@ export function useOverlayHelper(
     const lon = Cesium.Math.toDegrees(center.longitude);
     const lat = Cesium.Math.toDegrees(center.latitude);
 
+    const marker = overlayService.value.addMarker({
+      position: [lon, lat],
+      pixelSize: 15,
+      color: Cesium.Color.RED,
+      outlineColor: Cesium.Color.WHITE,
+      outlineWidth: 2,
+      onClick: (entity) => {
+        console.log("标记点被点击:", entity);
+        message.value = `标记点位置: ${lon.toFixed(6)}, ${lat.toFixed(6)}`;
+        setTimeout(() => {
+          message.value = "点击地图添加标记点，右键取消";
+        }, 2000);
+      },
+    });
+
     const info = overlayService.value.addInfoWindow({
-      position: [lon + 0.015, lat - 0.015],
+      position: [lon, lat],
       content: `
         <div style="padding: 10px;">
           <h3 style="margin: 0 0 8px 0; font-size: 16px;">示例信息窗口</h3>
@@ -271,7 +286,11 @@ export function useOverlayHelper(
         </div>
       `,
       width: 250,
+      pixelOffset: new Cesium.Cartesian2(0, -30),
+      anchorHeight: 150,
+      tailGap: 100,
       show: true,
+      closable: true,
       onClick: () => {
         console.log('示例信息窗口被点击');
         message.value = '示例信息窗口被点击';
