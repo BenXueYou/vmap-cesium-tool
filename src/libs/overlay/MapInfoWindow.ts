@@ -21,6 +21,8 @@ export interface InfoWindowOptions {
   anchorHeight?: number;
   // tailGap（像素）弹窗底部与 marker 顶部之间的间隙（默认 8px）
   tailGap?: number;
+  // updateInterval（毫秒）用于节流更新位置（默认 0，每帧更新），可提高大量 infoWindow 时的性能
+  updateInterval?: number;
 }
 
 interface InternalEntityData {
@@ -29,6 +31,7 @@ interface InternalEntityData {
   cameraListener: () => void;
   postRenderListener: Cesium.Event.RemoveCallback;
   zIndex: number; // 新增：用于层级管理
+  lastUpdate: number; // ms timestamp from performance.now(), 用于节流
 }
 
 // 全局 zIndex 基准（可配置）
@@ -44,6 +47,7 @@ export class MapInfoWindow {
   private container: HTMLElement;
   private entityMap = new Map<string, InternalEntityData>();
   private currentTopZIndex = BASE_Z_INDEX;
+  private defaultUpdateInterval = 0; // ms, 默认 0 = 每帧更新
 
   constructor(viewer: Viewer, container: HTMLElement) {
     if (!container || !(container instanceof HTMLElement)) {
@@ -51,6 +55,14 @@ export class MapInfoWindow {
     }
     this.viewer = viewer;
     this.container = container;
+  }
+
+  /**
+   * Set default update interval (ms) for position updates when an InfoWindow doesn't specify `updateInterval`.
+   * 0 means update every frame.
+   */
+  public setDefaultUpdateInterval(ms: number): void {
+    this.defaultUpdateInterval = Math.max(0, ms);
   }
 
   private convertPosition(position: OverlayPosition): Cartesian3 {
@@ -100,6 +112,11 @@ export class MapInfoWindow {
     const { domElement, options } = data;
     const worldPos = entity.position?.getValue(this.viewer.clock.currentTime) as Cartesian3 | undefined;
     if (!worldPos) {
+      domElement.style.display = 'none';
+      return;
+    }
+    
+    if (entity.show === false || options.show === false) {
       domElement.style.display = 'none';
       return;
     }
@@ -249,6 +266,7 @@ export class MapInfoWindow {
     // 关闭按钮
     if (options.closable) {
       const btn = document.createElement('button');
+      btn.className = 'cesium-info-window-close';
       btn.textContent = '×';
       btn.style.cssText = `
         position: absolute; top: 4px; right: 4px;
@@ -263,10 +281,7 @@ export class MapInfoWindow {
       el.appendChild(btn);
     }
 
-    // 点击事件代理到实体
-    if (options.onClick) {
-      el.addEventListener('click', () => options.onClick?.(entity));
-    }
+    // NOTE: click handling for onClick is handled above (bringToFront + options.onClick).
 
     return el;
   }
@@ -293,16 +308,23 @@ export class MapInfoWindow {
     // 创建 Cesium 实体（仅用于定位，无图形）
     const entity = this.viewer.entities.add({
       id,
+      show: options.show !== false, // 默认显示
       position: new Cesium.ConstantPositionProperty(position),
-      show: options.show !== false,
     });
 
     // 创建 DOM
     const domElement = this.createDomElement(options, entity);
     this.container.appendChild(domElement);
 
-    // 绑定更新监听
-    const cameraListener = () => this.updateDomPosition(entity);
+    // 绑定更新监听（支持节流）
+    const interval = options.updateInterval ?? this.defaultUpdateInterval ?? 0; // ms
+    let last = 0;
+    const cameraListener = () => {
+      const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      if (interval > 0 && now - last < interval) return;
+      last = now;
+      this.updateDomPosition(entity);
+    };
     const postRenderListener = this.viewer.scene.postRender.addEventListener(cameraListener);
 
     const data: InternalEntityData = {
@@ -311,6 +333,7 @@ export class MapInfoWindow {
       cameraListener,
       postRenderListener,
       zIndex: ++this.currentTopZIndex, // 自动分配更高 zIndex
+      lastUpdate: last,
     };
 
     domElement.style.zIndex = String(data.zIndex);
