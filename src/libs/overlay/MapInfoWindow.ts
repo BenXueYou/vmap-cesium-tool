@@ -19,6 +19,8 @@ export interface InfoWindowOptions {
   hideWhenOutOfView?: boolean; // 新增：是否在视锥外自动隐藏（默认 true）
   // anchorHeight（米）用于计算屏幕上的 marker 高度以便将 infoWindow 锚定在 marker 顶部
   anchorHeight?: number;
+  // anchorPixel（像素）优先：以像素为单位指定 marker 顶部距离，用于将 infoWindow 锚定在 marker 顶部
+  anchorPixel?: number;
   // tailGap（像素）弹窗底部与 marker 顶部之间的间隙（默认 8px）
   tailGap?: number;
   // updateInterval（毫秒）用于节流更新位置（默认 0，每帧更新），可提高大量 infoWindow 时的性能
@@ -48,6 +50,9 @@ export class MapInfoWindow {
   private entityMap = new Map<string, InternalEntityData>();
   private currentTopZIndex = BASE_Z_INDEX;
   private defaultUpdateInterval = 0; // ms, 默认 0 = 每帧更新
+  private isCameraMoving = false;
+  private cameraMoveStartListener?: Cesium.Event.RemoveCallback;
+  private cameraMoveEndListener?: Cesium.Event.RemoveCallback;
 
   constructor(viewer: Viewer, container: HTMLElement) {
     if (!container || !(container instanceof HTMLElement)) {
@@ -55,6 +60,16 @@ export class MapInfoWindow {
     }
     this.viewer = viewer;
     this.container = container;
+
+    // 监听相机开始/结束移动，用以在移动期间绕过节流并在移动结束时强制同步位置
+    this.cameraMoveStartListener = this.viewer.camera.moveStart.addEventListener(() => {
+      this.isCameraMoving = true;
+    });
+    this.cameraMoveEndListener = this.viewer.camera.moveEnd.addEventListener(() => {
+      this.isCameraMoving = false;
+      // 相机停止后强制更新所有信息窗以确保位置与标记严格同步
+      this.forceUpdateAll();
+    });
   }
 
   /**
@@ -63,6 +78,18 @@ export class MapInfoWindow {
    */
   public setDefaultUpdateInterval(ms: number): void {
     this.defaultUpdateInterval = Math.max(0, ms);
+  }
+
+  /**
+   * Force immediate update (recompute positions) of all managed info windows.
+   */
+  public forceUpdateAll(): void {
+    const entities = this.viewer.entities.values.slice();
+    for (const entity of entities) {
+      if ((entity as any)[INFO_WINDOW_DATA_KEY]) {
+        this.updateDomPosition(entity);
+      }
+    }
   }
 
   private convertPosition(position: OverlayPosition): Cartesian3 {
@@ -91,13 +118,9 @@ export class MapInfoWindow {
     const canvasRect = canvas.getBoundingClientRect();
     const containerRect = this.container.getBoundingClientRect();
 
-    // 3. 计算 CSS 像素（考虑设备像素比）
-    const cssX = screenPos.x / (scene.drawingBufferWidth / canvasRect.width || window.devicePixelRatio || 1);
-    const cssYFromTop = canvasRect.height - (screenPos.y / (scene.drawingBufferHeight / canvasRect.height || window.devicePixelRatio || 1));
-
-    // 4. 转换为相对于 container 的坐标
-    const x = cssX + (canvasRect.left - containerRect.left);
-    const y = cssYFromTop + (canvasRect.top - containerRect.top);
+    // 3. 直接使用 Cesium 返回的窗口坐标（已是 CSS 像素，原点左上），再转换为 container 内坐标
+    const x = screenPos.x - containerRect.left;
+    const y = screenPos.y - containerRect.top;
 
     return { x, y };
   }
@@ -121,8 +144,8 @@ export class MapInfoWindow {
       return;
     }
 
-    // 相机背面检测（可选）
-    if (options.hideWhenOutOfView !== false) {
+    // 相机背面检测（可选）。为避免相机拖动/旋转时出现闪烁，移动期间会跳过该检测。
+    if (options.hideWhenOutOfView !== false && !this.isCameraMoving) {
       const cam = this.viewer.camera;
       const toPoint = Cesium.Cartesian3.subtract(worldPos, cam.positionWC, new Cesium.Cartesian3());
       if (Cesium.Cartesian3.dot(toPoint, cam.directionWC) <= 0) {
@@ -142,27 +165,31 @@ export class MapInfoWindow {
     // 计算 anchor 点在世界坐标系中的位置：基于 Cartographic 高度加上 anchorHeight
     const anchorMeters = options.anchorHeight ?? 10; // 默认 10 米（较小默认值避免远距时视觉偏移过大）
     const tailGap = options.tailGap ?? 8; // 弹窗底部与 marker 顶部的间隙（px）
-
-    let markerPixelHeight = 0; // fallback
     try {
-      // 使用 Cartographic（经纬度 + 高度）增加高度，避免法线乘积带来的非线性误差
-      const carto = Cesium.Cartographic.fromCartesian(worldPos);
-      const lonDeg = Cesium.Math.toDegrees(carto.longitude);
-      const latDeg = Cesium.Math.toDegrees(carto.latitude);
-      const anchorWorld = Cesium.Cartesian3.fromDegrees(lonDeg, latDeg, carto.height + anchorMeters);
-
-      const anchorPixel = this.getContainerPixelPosition(anchorWorld);
+      // 优先使用像素锚点（更契合视觉预期）
       const basePixel = this.getContainerPixelPosition(worldPos);
-
-      if (anchorPixel && basePixel) {
-        // anchorPixel 为顶部参考点（在 marker 上方 anchorMeters 米处）
-        markerPixelHeight = Math.max(basePixel.y - anchorPixel.y, 0);
-        x = anchorPixel.x; // 锚点使用 anchorWorld 的屏幕位置
-        y = anchorPixel.y;
-      } else if (basePixel) {
-        // 回退到 basePixel
+      if (typeof options.anchorPixel === 'number' && basePixel) {
         x = basePixel.x;
-        y = basePixel.y;
+        y = basePixel.y - options.anchorPixel;
+      } else {
+        // 使用 Cartographic（经纬度 + 高度）增加高度，避免法线乘积带来的非线性误差
+        const carto = Cesium.Cartographic.fromCartesian(worldPos);
+        const lonDeg = Cesium.Math.toDegrees(carto.longitude);
+        const latDeg = Cesium.Math.toDegrees(carto.latitude);
+        const anchorWorld = Cesium.Cartesian3.fromDegrees(lonDeg, latDeg, carto.height + anchorMeters);
+
+        const anchorPixel = this.getContainerPixelPosition(anchorWorld);
+        const basePixelFallback = this.getContainerPixelPosition(worldPos);
+
+        if (anchorPixel && basePixelFallback) {
+          // anchorPixel 为顶部参考点（在 marker 上方 anchorMeters 米处）
+          x = anchorPixel.x; // 锚点使用 anchorWorld 的屏幕位置
+          y = anchorPixel.y;
+        } else if (basePixelFallback) {
+          // 回退到 basePixel
+          x = basePixelFallback.x;
+          y = basePixelFallback.y;
+        }
       }
     } catch (e) {
       void e;
@@ -208,12 +235,45 @@ export class MapInfoWindow {
       transform = 'translate(-100%, -100%)';
     }
 
-    // 上下避让（如果被顶出顶部，则显示在 marker 下方）
-    if (y - height < margin) {
-      // 显示在 marker 下方（尽量用 basePixel.y 以保证与 marker 对齐）
-      const baseY = pixelPos ? pixelPos.y : y;
-      y = baseY + tailGap; // 将弹窗顶端放在 marker 底部下方
-      transform = transform.replace('-100%', '0%'); // 从 bottom 改为 top
+    // 仅在相机静止时执行翻转/夹紧逻辑，移动期间始终跟随 marker 运动方向
+    if (!this.isCameraMoving) {
+      // 上下避让（如果被顶出顶部，则显示在 marker 下方）
+      if (y - height < margin) {
+        // 显示在 marker 下方（尽量用 basePixel.y 以保证与 marker 对齐）
+        const baseY = pixelPos ? pixelPos.y : y;
+        y = baseY + tailGap; // 将弹窗顶端放在 marker 底部下方
+        // 保留水平对齐方式，只改垂直为 top
+        const horizMatch = transform.match(/translate\(([^,]+),/);
+        const horiz = horizMatch ? horizMatch[1] : '-50%';
+        transform = `translate(${horiz}, 0%)`; // 从 bottom 改为 top
+      }
+
+      // 底部越界检测：若弹窗被放置到屏幕下方，尝试把它移到 marker 上方；若仍不可行则收紧到可见区域
+      {
+        const horizMatch = transform.match(/translate\(([^,]+),/);
+        const horiz = horizMatch ? horizMatch[1] : '-50%';
+        const isBottomAligned = transform.includes('-100%');
+        const elemTop = isBottomAligned ? (y - height) : y;
+
+        if (elemTop + height > containerHeight - margin) {
+          // 尝试放到 marker 上方
+          const baseY = pixelPos ? pixelPos.y : y;
+          const candidateY = baseY - tailGap;
+          const candidateTop = candidateY - height;
+          if (candidateTop >= margin) {
+            y = candidateY;
+            transform = `translate(${horiz}, -100%)`;
+          } else {
+            // 仍然越界 -> 将弹窗上沿收紧到可视范围底部
+            const clampedTop = containerHeight - margin - height;
+            if (isBottomAligned) {
+              y = clampedTop + height; // 使 bottom 对齐
+            } else {
+              y = clampedTop; // top 对齐
+            }
+          }
+        }
+      }
     }
 
     // 设置最终位置
@@ -316,13 +376,18 @@ export class MapInfoWindow {
     const domElement = this.createDomElement(options, entity);
     this.container.appendChild(domElement);
 
-    // 绑定更新监听（支持节流）
+    // 绑定更新监听（支持节流，且在相机移动期间绕过节流以保证实时性）
     const interval = options.updateInterval ?? this.defaultUpdateInterval ?? 0; // ms
     let last = 0;
     const cameraListener = () => {
       const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
-      if (interval > 0 && now - last < interval) return;
-      last = now;
+      if (!this.isCameraMoving) {
+        if (interval > 0 && now - last < interval) return;
+        last = now;
+      } else {
+        // 相机移动期间强制实时更新
+        last = now;
+      }
       this.updateDomPosition(entity);
     };
     const postRenderListener = this.viewer.scene.postRender.addEventListener(cameraListener);
@@ -424,6 +489,16 @@ export class MapInfoWindow {
    * 销毁整个管理器（清理所有 infoWindow）
    */
   public destroy(): void {
+    // 移除 camera move 监听
+    if (this.cameraMoveStartListener) {
+      this.cameraMoveStartListener();
+      this.cameraMoveStartListener = undefined;
+    }
+    if (this.cameraMoveEndListener) {
+      this.cameraMoveEndListener();
+      this.cameraMoveEndListener = undefined;
+    }
+
     const entities = this.viewer.entities.values.slice(); // use the array property and iterate over a copy
     for (const entity of entities) {
       if ((entity as any)[INFO_WINDOW_DATA_KEY]) {

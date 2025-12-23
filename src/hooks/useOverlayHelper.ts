@@ -258,52 +258,49 @@ export function useOverlayHelper(
     const center = viewer.value.camera.positionCartographic;
     const lon = Cesium.Math.toDegrees(center.longitude);
     const lat = Cesium.Math.toDegrees(center.latitude);
-
-    let info: Entity;
-
-    const marker = overlayService.value.addMarker({
+    let infoA: Entity;
+    // Example A: 使用 anchorPixel（优先） + updateInterval 测试节流与相机移动期间绕过节流
+    const markerA = overlayService.value.addMarker({
       position: [lon, lat],
-      pixelSize: 15,
-      color: Cesium.Color.RED,
+      pixelSize: 16,
+      color: Cesium.Color.ORANGE,
       outlineColor: Cesium.Color.WHITE,
       outlineWidth: 2,
       onClick: (entity) => {
-        console.log("标记点被点击:", entity, info);
-        info.show = true;        
+        infoA.show = !infoA.show;
+        console.log('Marker A 被点击');
       },
     });
 
-    info = overlayService.value.addInfoWindow({
+    infoA = overlayService.value.addInfoWindow({
       position: [lon, lat],
       content: `
         <div style="padding: 10px;">
-          <h3 style="margin: 0 0 8px 0; font-size: 16px;">示例信息窗口</h3>
+          <h3 style="margin: 0 0 8px 0; font-size: 16px;">示例信息窗口 (anchorPixel)</h3>
           <p style="margin: 0; font-size: 14px; color: #666;">
-            这是一个信息窗口示例<br/>
-            可以显示任意HTML内容
+            使用 <strong>anchorPixel</strong>（像素锚点）并设置 <code>updateInterval: 200</code>。
+            拖动/缩放地图时应实时跟随（节流在移动时会被绕过）。
           </p>
         </div>
       `,
-      width: 250,
-      pixelOffset: new Cesium.Cartesian2(0, -30),
-      anchorHeight: 10,
-      tailGap: 60,
+      width: 260,
+      pixelOffset: new Cesium.Cartesian2(0, -10),
+      anchorPixel: 18,
+      tailGap: 8,
+      updateInterval: 200, // ms
+      hideWhenOutOfView: true,
       show: true,
       closable: true,
       onClick: () => {
-        console.log('示例信息窗口被点击');
-        info.show = true;
-        message.value = '示例信息窗口被点击';
+        console.log('Info A clicked');
+        message.value = 'Info A clicked';
         setTimeout(() => (message.value = ''), 2000);
       },
     });
 
-    markerEntities.push(info);
-    message.value = '已添加信息窗口';
-    setTimeout(() => {
-      message.value = '';
-      console.log('信息窗口添加完成=>', info);
-    }, 2000);
+    markerEntities.push(markerA, infoA);
+    message.value = '已添加两个信息窗口（anchorPixel / anchorHeight）以供测试';
+    setTimeout(() => (message.value = ''), 3000);
   };
   /**
    * 添加折线（示例 / 辅助方法）
