@@ -16,6 +16,27 @@ export interface InfoWindowOptions {
   backgroundColor?: string;
   color?: string;
   font?: string;
+  // 自定义样式与类名（通过对象合并实现覆盖默认样式）
+  className?: string;
+  style?: Partial<CSSStyleDeclaration>;
+  // 是否显示箭头（根据位置在底部/顶部/左右显示）
+  showArrow?: boolean;
+  // 箭头大小（px）
+  arrowSize?: number;
+  // 信息窗相对 marker 的方位（默认 top）
+  positionOffset?:
+    | 'top'
+    | 'bottom'
+    | 'left'
+    | 'right'
+    | 'top-left'
+    | 'top-right'
+    | 'bottom-left'
+    | 'bottom-right'
+    | 'left-top'
+    | 'left-bottom'
+    | 'right-top'
+    | 'right-bottom';
   hideWhenOutOfView?: boolean; // 新增：是否在视锥外自动隐藏（默认 true）
   // anchorHeight（米）用于计算屏幕上的 marker 高度以便将 infoWindow 锚定在 marker 顶部
   anchorHeight?: number;
@@ -34,6 +55,7 @@ interface InternalEntityData {
   postRenderListener: Cesium.Event.RemoveCallback;
   zIndex: number; // 新增：用于层级管理
   lastUpdate: number; // ms timestamp from performance.now(), 用于节流
+  arrowEl?: HTMLElement | null;
 }
 
 // 全局 zIndex 基准（可配置）
@@ -53,6 +75,27 @@ export class MapInfoWindow {
   private isCameraMoving = false;
   private cameraMoveStartListener?: Cesium.Event.RemoveCallback;
   private cameraMoveEndListener?: Cesium.Event.RemoveCallback;
+
+  /**
+   * 合并用户传入的 InfoWindowOptions 与默认值，提升入参灵活性。
+   * 注意：必填项 position / content 由调用方提供，不在默认值内。
+   */
+  private mergeOptions(options: InfoWindowOptions): InfoWindowOptions {
+    const defaults: Partial<InfoWindowOptions> = {
+      show: true,
+      hideWhenOutOfView: true,
+      anchorHeight: 10,
+      tailGap: 8,
+      updateInterval: 0,
+      className: 'cesium-info-window',
+      showArrow: false,
+      arrowSize: 8,
+      positionOffset: 'top',
+    };
+    // style 需要做浅合并，保持引用独立
+    const style = options.style ? { ...options.style } : undefined;
+    return { ...defaults, ...options, style } as InfoWindowOptions;
+  }
 
   constructor(viewer: Viewer, container: HTMLElement) {
     if (!container || !(container instanceof HTMLElement)) {
@@ -215,65 +258,175 @@ export class MapInfoWindow {
     domElement.style.visibility = '';
     domElement.style.display = 'none'; // 暂不显示，等定位完成
 
-    // 默认锚点：底部居中（此时 y 为 marker 底部）
+    // 根据 positionOffset 决定默认锚点与方向
+    const side = options.positionOffset ?? 'top';
     let transform = 'translate(-50%, -100%)';
 
-    // 将弹窗底部挪到 anchor 点上方（使用 anchor 的屏幕位置，间隔 tailGap）
-    y = y - tailGap;
-
-    // 边界检测与避让逻辑
-    const margin = 10; // 安全边距
-
-    // 左右避让
-    if (x - width / 2 < margin) {
-      // 太靠左 → 改为左对齐
-      x = margin + width / 2;
-      transform = 'translate(0%, -100%)';
-    } else if (x + width / 2 > containerWidth - margin) {
-      // 太靠右 → 改为右对齐
-      x = containerWidth - margin - width / 2;
+    if (side === 'top') {
+      y = y - tailGap;
+      transform = 'translate(-50%, -100%)';
+    } else if (side === 'bottom') {
+      const baseY = pixelPos.y;
+      y = baseY + tailGap;
+      x = pixelPos.x;
+      transform = 'translate(-50%, 0%)';
+    } else if (side === 'left') {
+      x = pixelPos.x - tailGap;
+      y = pixelPos.y;
+      transform = 'translate(-100%, -50%)';
+    } else if (side === 'right') {
+      x = pixelPos.x + tailGap;
+      y = pixelPos.y;
+      transform = 'translate(0%, -50%)';
+    } else if (side === 'top-left') {
+      x = pixelPos.x - tailGap;
+      y = pixelPos.y - tailGap;
       transform = 'translate(-100%, -100%)';
+    } else if (side === 'top-right') {
+      x = pixelPos.x + tailGap;
+      y = pixelPos.y - tailGap;
+      transform = 'translate(0%, -100%)';
+    } else if (side === 'bottom-left') {
+      x = pixelPos.x - tailGap;
+      y = pixelPos.y + tailGap;
+      transform = 'translate(-100%, 0%)';
+    } else if (side === 'bottom-right') {
+      x = pixelPos.x + tailGap;
+      y = pixelPos.y + tailGap;
+      transform = 'translate(0%, 0%)';
+    } else if (side === 'left-top') {
+      x = pixelPos.x - tailGap;
+      y = pixelPos.y - tailGap;
+      transform = 'translate(-100%, 0%)';
+    } else if (side === 'left-bottom') {
+      x = pixelPos.x - tailGap;
+      y = pixelPos.y + tailGap;
+      transform = 'translate(-100%, -100%)';
+    } else if (side === 'right-top') {
+      x = pixelPos.x + tailGap;
+      y = pixelPos.y - tailGap;
+      transform = 'translate(0%, 0%)';
+    } else if (side === 'right-bottom') {
+      x = pixelPos.x + tailGap;
+      y = pixelPos.y + tailGap;
+      transform = 'translate(0%, -100%)';
     }
 
-    // 仅在相机静止时执行翻转/夹紧逻辑，移动期间始终跟随 marker 运动方向
+    // 边界检测与夹紧（不自动翻转）
+    const margin = 10; // 安全边距
     if (!this.isCameraMoving) {
-      // 上下避让（如果被顶出顶部，则显示在 marker 下方）
-      if (y - height < margin) {
-        // 显示在 marker 下方（尽量用 basePixel.y 以保证与 marker 对齐）
-        const baseY = pixelPos ? pixelPos.y : y;
-        y = baseY + tailGap; // 将弹窗顶端放在 marker 底部下方
-        // 保留水平对齐方式，只改垂直为 top
-        const horizMatch = transform.match(/translate\(([^,]+),/);
-        const horiz = horizMatch ? horizMatch[1] : '-50%';
-        transform = `translate(${horiz}, 0%)`; // 从 bottom 改为 top
-      }
-
-      // 底部越界检测：若弹窗被放置到屏幕下方，尝试把它移到 marker 上方；若仍不可行则收紧到可见区域
-      {
-        const horizMatch = transform.match(/translate\(([^,]+),/);
-        const horiz = horizMatch ? horizMatch[1] : '-50%';
-        const isBottomAligned = transform.includes('-100%');
-        const elemTop = isBottomAligned ? (y - height) : y;
-
-        if (elemTop + height > containerHeight - margin) {
-          // 尝试放到 marker 上方
-          const baseY = pixelPos ? pixelPos.y : y;
-          const candidateY = baseY - tailGap;
-          const candidateTop = candidateY - height;
-          if (candidateTop >= margin) {
-            y = candidateY;
-            transform = `translate(${horiz}, -100%)`;
-          } else {
-            // 仍然越界 -> 将弹窗上沿收紧到可视范围底部
-            const clampedTop = containerHeight - margin - height;
-            if (isBottomAligned) {
-              y = clampedTop + height; // 使 bottom 对齐
-            } else {
-              y = clampedTop; // top 对齐
-            }
-          }
+      const clamp = (bounds: { left: number; right: number; top: number; bottom: number }) => {
+        if (bounds.left < margin) {
+          x += margin - bounds.left;
         }
-      }
+        if (bounds.right > containerWidth - margin) {
+          x -= bounds.right - (containerWidth - margin);
+        }
+        if (bounds.top < margin) {
+          y += margin - bounds.top;
+        }
+        if (bounds.bottom > containerHeight - margin) {
+          y -= bounds.bottom - (containerHeight - margin);
+        }
+      };
+
+      const computeBounds = () => {
+        switch (side) {
+          case 'top':
+            return {
+              left: x - width / 2,
+              right: x + width / 2,
+              top: y - height,
+              bottom: y,
+            };
+          case 'bottom':
+            return {
+              left: x - width / 2,
+              right: x + width / 2,
+              top: y,
+              bottom: y + height,
+            };
+          case 'left':
+            return {
+              left: x - width,
+              right: x,
+              top: y - height / 2,
+              bottom: y + height / 2,
+            };
+          case 'right':
+            return {
+              left: x,
+              right: x + width,
+              top: y - height / 2,
+              bottom: y + height / 2,
+            };
+          case 'top-left':
+            return {
+              left: x - width,
+              right: x,
+              top: y - height,
+              bottom: y,
+            };
+          case 'top-right':
+            return {
+              left: x,
+              right: x + width,
+              top: y - height,
+              bottom: y,
+            };
+          case 'bottom-left':
+            return {
+              left: x - width,
+              right: x,
+              top: y,
+              bottom: y + height,
+            };
+          case 'bottom-right':
+            return {
+              left: x,
+              right: x + width,
+              top: y,
+              bottom: y + height,
+            };
+          case 'left-top':
+            return {
+              left: x - width,
+              right: x,
+              top: y,
+              bottom: y + height,
+            };
+          case 'left-bottom':
+            return {
+              left: x - width,
+              right: x,
+              top: y - height,
+              bottom: y,
+            };
+          case 'right-top':
+            return {
+              left: x,
+              right: x + width,
+              top: y,
+              bottom: y + height,
+            };
+          case 'right-bottom':
+            return {
+              left: x,
+              right: x + width,
+              top: y - height,
+              bottom: y,
+            };
+          default:
+            return {
+              left: x - width / 2,
+              right: x + width / 2,
+              top: y - height,
+              bottom: y,
+            };
+        }
+      };
+
+      clamp(computeBounds());
     }
 
     // 设置最终位置
@@ -281,6 +434,70 @@ export class MapInfoWindow {
     domElement.style.top = `${y}px`;
     domElement.style.transform = transform;
     domElement.style.display = 'block';
+
+    // 更新箭头位置与朝向
+    if (data.arrowEl && options.showArrow) {
+      const arrow = data.arrowEl;
+      const size = (options.arrowSize ?? 8) + 'px';
+      const color = domElement.style.background || options.backgroundColor || '#ffffff';
+      // reset
+      arrow.style.borderLeft = '0';
+      arrow.style.borderRight = '0';
+      arrow.style.borderTop = '0';
+      arrow.style.borderBottom = '0';
+      arrow.style.left = '';
+      arrow.style.right = '';
+      arrow.style.top = '';
+      arrow.style.bottom = '';
+      arrow.style.transform = '';
+
+      const orientFromSide = (s: string): 'top' | 'bottom' | 'left' | 'right' => {
+        if (s.startsWith('top')) return 'top';
+        if (s.startsWith('bottom')) return 'bottom';
+        if (s.startsWith('left')) return 'left';
+        if (s.startsWith('right')) return 'right';
+        return 'top';
+      };
+
+      const alignment = (s: string): number => {
+        if (s.includes('left')) return 25;
+        if (s.includes('right')) return 75;
+        return 50;
+      };
+
+      const orient = orientFromSide(side);
+      const alignPercent = alignment(side);
+
+      if (orient === 'top') {
+        arrow.style.left = `${alignPercent}%`;
+        arrow.style.bottom = `-${size}`;
+        arrow.style.transform = 'translateX(-50%)';
+        arrow.style.borderLeft = `${size} solid transparent`;
+        arrow.style.borderRight = `${size} solid transparent`;
+        arrow.style.borderTop = `${size} solid ${color}`;
+      } else if (orient === 'bottom') {
+        arrow.style.left = `${alignPercent}%`;
+        arrow.style.top = `-${size}`;
+        arrow.style.transform = 'translateX(-50%)';
+        arrow.style.borderLeft = `${size} solid transparent`;
+        arrow.style.borderRight = `${size} solid transparent`;
+        arrow.style.borderBottom = `${size} solid ${color}`;
+      } else if (orient === 'left') {
+        arrow.style.right = `-${size}`;
+        arrow.style.top = `${alignPercent}%`;
+        arrow.style.transform = 'translateY(-50%)';
+        arrow.style.borderTop = `${size} solid transparent`;
+        arrow.style.borderBottom = `${size} solid transparent`;
+        arrow.style.borderLeft = `${size} solid ${color}`;
+      } else {
+        arrow.style.left = `-${size}`;
+        arrow.style.top = `${alignPercent}%`;
+        arrow.style.transform = 'translateY(-50%)';
+        arrow.style.borderTop = `${size} solid transparent`;
+        arrow.style.borderBottom = `${size} solid transparent`;
+        arrow.style.borderRight = `${size} solid ${color}`;
+      }
+    }
   }
 
   /**
@@ -288,23 +505,41 @@ export class MapInfoWindow {
    */
   private createDomElement(options: InfoWindowOptions, entity: Entity): HTMLElement {
     const el = document.createElement('div');
-    el.className = 'cesium-info-window';
-    el.style.position = 'absolute';
-    el.style.background = options.backgroundColor ?? '#ffffff';
-    el.style.color = options.color ?? '';
-    el.style.font = options.font ?? '';
-    el.style.border = '1px solid #ccc';
-    el.style.borderRadius = '6px';
-    el.style.padding = '8px 12px';
-    el.style.boxShadow = '0 2px 6px rgba(0,0,0,0.25)';
-    el.style.pointerEvents = 'auto';
-    el.style.transform = 'translate(-50%, -100%)';
-    el.style.zIndex = '1000';
-    el.style.maxWidth = '300px';
-    el.style.wordBreak = 'break-word';
+    el.className = options.className ?? 'cesium-info-window';
+    const baseStyle: Partial<CSSStyleDeclaration> = {
+      position: 'absolute',
+      background: options.backgroundColor ?? '#ffffff',
+      color: options.color ?? '',
+      font: options.font ?? '',
+      border: '1px solid #ccc',
+      borderRadius: '6px',
+      padding: '8px 12px',
+      boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
+      pointerEvents: 'auto',
+      transform: 'translate(-50%, -100%)',
+      zIndex: '1000',
+      maxWidth: '300px',
+      wordBreak: 'break-word',
+    };
+    Object.assign(el.style, baseStyle);
 
     if (options.width) el.style.width = `${options.width}px`;
     if (options.height) el.style.height = `${options.height}px`;
+
+    // 允许通过 options.style 覆盖默认样式
+    if (options.style) {
+      Object.assign(el.style, options.style);
+    }
+
+    // 箭头元素（按需创建）
+    if (options.showArrow) {
+      const arrow = document.createElement('div');
+      arrow.className = 'cesium-info-window-arrow';
+      arrow.style.position = 'absolute';
+      arrow.style.width = '0';
+      arrow.style.height = '0';
+      el.appendChild(arrow);
+    }
 
     // 内容区（单独管理，便于 updateContent 保留按钮）
     const contentWrap = document.createElement('div');
@@ -362,22 +597,23 @@ export class MapInfoWindow {
    * 添加信息窗口
    */
   public add(options: InfoWindowOptions): Entity {
-    const id = options.id ?? `infowindow_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-    const position = this.convertPosition(options.position);
+    const merged = this.mergeOptions(options);
+    const id = merged.id ?? `infowindow_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    const position = this.convertPosition(merged.position);
 
     // 创建 Cesium 实体（仅用于定位，无图形）
     const entity = this.viewer.entities.add({
       id,
-      show: options.show !== false, // 默认显示
+      show: merged.show !== false, // 默认显示
       position: new Cesium.ConstantPositionProperty(position),
     });
 
     // 创建 DOM
-    const domElement = this.createDomElement(options, entity);
+    const domElement = this.createDomElement(merged, entity);
     this.container.appendChild(domElement);
 
     // 绑定更新监听（支持节流，且在相机移动期间绕过节流以保证实时性）
-    const interval = options.updateInterval ?? this.defaultUpdateInterval ?? 0; // ms
+    const interval = merged.updateInterval ?? this.defaultUpdateInterval ?? 0; // ms
     let last = 0;
     const cameraListener = () => {
       const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
@@ -394,11 +630,12 @@ export class MapInfoWindow {
 
     const data: InternalEntityData = {
       domElement,
-      options: { ...options },
+      options: { ...merged },
       cameraListener,
       postRenderListener,
       zIndex: ++this.currentTopZIndex, // 自动分配更高 zIndex
       lastUpdate: last,
+      arrowEl: domElement.querySelector('.cesium-info-window-arrow'),
     };
 
     domElement.style.zIndex = String(data.zIndex);

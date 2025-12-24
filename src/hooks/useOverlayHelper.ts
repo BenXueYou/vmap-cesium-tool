@@ -284,9 +284,12 @@ export function useOverlayHelper(
         </div>
       `,
       width: 260,
-      pixelOffset: new Cesium.Cartesian2(0, -10),
+      // pixelOffset: new Cesium.Cartesian2(0, 10),
       anchorPixel: 18,
-      tailGap: 8,
+      tailGap: 24,
+      showArrow: true,
+      arrowSize: 10,
+      positionOffset: 'top',
       updateInterval: 200, // ms
       hideWhenOutOfView: true,
       show: true,
