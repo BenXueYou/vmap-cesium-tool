@@ -24,10 +24,27 @@ import { CesiumMapToolbar } from './libs/CesiumMapToolbar';
 import DrawHelper from './libs/CesiumMapDraw';
 import { initCesium } from './libs/CesiumMapLoader';
 
+export * from './libs/overlay/index';
+export * from './libs/drawHelper/index';
+import { CesiumOverlayService } from './libs/CesiumOverlayService';
+export { CesiumOverlayService } from './libs/CesiumOverlayService';
+
+export * from './libs/toolBar/CesiumMapController';
+export type * from './libs/toolBar/CesiumMapController';
+export * from './libs/toolBar/MapLayersService';
+export type * from './libs/toolBar/MapLayersService';
+export * from './libs/toolBar/MapSearchService';
+export type * from './libs/toolBar/MapSearchService';
+export * from './libs/toolBar/MapToolBarConfig';
+export type * from './libs/toolBar/MapToolBarConfig';
+export * from './libs/toolBar/NotFlyZonesService';
+export type * from './libs/toolBar/NotFlyZonesService';
+
 // 默认导出
 export default {
   CesiumMapToolbar,
   DrawHelper,
+  CesiumOverlayService,
   initCesium,
   initCesiumMap: initCesium
 };
