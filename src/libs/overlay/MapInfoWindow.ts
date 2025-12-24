@@ -635,7 +635,7 @@ export class MapInfoWindow {
       postRenderListener,
       zIndex: ++this.currentTopZIndex, // 自动分配更高 zIndex
       lastUpdate: last,
-      arrowEl: domElement.querySelector('.cesium-info-window-arrow'),
+      arrowEl: domElement.querySelector('.cesium-info-window-arrow') as HTMLElement | null,
     };
 
     domElement.style.zIndex = String(data.zIndex);
