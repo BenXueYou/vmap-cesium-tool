@@ -75,6 +75,8 @@ const {
   destroyOverlayService,
 } = useOverlayHelper(viewer, message);
 
+
+
 // 初始化地图
 onMounted(async () => {
   Cesium.Ion.defaultAccessToken = getViteCesiumToken();

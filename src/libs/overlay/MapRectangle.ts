@@ -45,17 +45,48 @@ export class MapRectangle {
   /**
    * 解析材质
    */
-  private resolveMaterial(material?: Cesium.MaterialProperty | Color | string): Cesium.MaterialProperty | Color {
+  private resolveMaterial(material?: Cesium.MaterialProperty | Color | string): Cesium.MaterialProperty {
     if (!material) {
-      return Cesium.Color.BLUE.withAlpha(0.5);
+      return new Cesium.ColorMaterialProperty(Cesium.Color.BLUE.withAlpha(0.5));
     }
     if (typeof material === 'string') {
-      return this.resolveColor(material);
+      return new Cesium.ColorMaterialProperty(this.resolveColor(material));
     }
     if (material instanceof Cesium.Color) {
-      return material;
+      return new Cesium.ColorMaterialProperty(material);
     }
-    return material;
+    return material as Cesium.MaterialProperty;
+  }
+
+  /**
+   * 将 Rectangle 转为四点多边形顶点（按西南→东南→东北→西北顺序）
+   */
+  private rectangleToPositions(rect: Cesium.Rectangle, heightMeters: number): Cesium.Cartesian3[] {
+    const w = rect.west;
+    const s = rect.south;
+    const e = rect.east;
+    const n = rect.north;
+    return [
+      Cesium.Cartesian3.fromRadians(w, s, heightMeters),
+      Cesium.Cartesian3.fromRadians(e, s, heightMeters),
+      Cesium.Cartesian3.fromRadians(e, n, heightMeters),
+      Cesium.Cartesian3.fromRadians(w, n, heightMeters),
+    ];
+  }
+
+  /**
+   * 按米单位向内收缩矩形边界，返回新的 Rectangle
+   */
+  private shrinkRectangle(rect: Cesium.Rectangle, thicknessMeters: number): Cesium.Rectangle {
+    const R = 6378137.0;
+    const centerLat = (rect.north + rect.south) / 2;
+    const deltaLat = thicknessMeters / R; // radians
+    const deltaLon = thicknessMeters / (R * Math.cos(centerLat));
+    const maxDeltaLon = (rect.east - rect.west) / 2 * 0.999;
+    const maxDeltaLat = (rect.north - rect.south) / 2 * 0.999;
+    const dLon = Math.min(deltaLon, maxDeltaLon);
+    const dLat = Math.min(deltaLat, maxDeltaLat);
+    return new Cesium.Rectangle(rect.west + dLon, rect.south + dLat, rect.east - dLon, rect.north - dLat);
   }
 
   /**
@@ -63,8 +94,47 @@ export class MapRectangle {
    */
   public add(options: RectangleOptions): Entity {
     const id = options.id || `rectangle_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
     const material = this.resolveMaterial(options.material);
+
+    const ringThickness = (options.outlineWidth && options.outlineWidth > 1) ? options.outlineWidth : 0;
+    if (ringThickness && ringThickness > 0) {
+      const baseHeight = 0;
+      const heightEpsilon = 0.1;
+      const outerPositions = this.rectangleToPositions(options.coordinates, baseHeight + heightEpsilon);
+      const innerRect = this.shrinkRectangle(options.coordinates, ringThickness);
+      const innerPositions = this.rectangleToPositions(innerRect, baseHeight);
+
+      const outer = this.entities.add({
+        polygon: {
+          hierarchy: new Cesium.PolygonHierarchy(outerPositions, [new Cesium.PolygonHierarchy(innerPositions)]),
+          material: new Cesium.ColorMaterialProperty(options.outlineColor ? this.resolveColor(options.outlineColor) : Cesium.Color.BLACK),
+          outline: false,
+          heightReference: options.heightReference ?? Cesium.HeightReference.NONE,
+        },
+      });
+
+      const inner = this.entities.add({
+        rectangle: {
+          coordinates: innerRect,
+          material,
+          outline: false,
+          heightReference: options.heightReference ?? Cesium.HeightReference.NONE,
+          extrudedHeight: options.extrudedHeight,
+        },
+      });
+
+      if (options.onClick) {
+        (outer as any)._onClick = options.onClick;
+        (inner as any)._onClick = options.onClick;
+      }
+
+      (outer as any)._innerEntity = inner;
+      (outer as any)._isRing = true;
+      (outer as any)._ringThickness = ringThickness;
+      (outer as any)._outerRectangle = options.coordinates;
+
+      return outer;
+    }
 
     const entity = this.entities.add({
       id,
@@ -90,7 +160,20 @@ export class MapRectangle {
    * 更新 Rectangle 坐标
    */
   public updateCoordinates(entity: Entity, coordinates: Cesium.Rectangle): void {
-    if (entity.rectangle) {
+    const inner = (entity as any)._innerEntity as Entity | undefined;
+    const thickness = (entity as any)._ringThickness as number | undefined;
+    if (entity.polygon && inner && thickness) {
+      const baseHeight = 0;
+      const heightEpsilon = 0.1;
+      const outerPositions = this.rectangleToPositions(coordinates, baseHeight + heightEpsilon);
+      const innerRect = this.shrinkRectangle(coordinates, thickness);
+      const innerPositions = this.rectangleToPositions(innerRect, baseHeight);
+      entity.polygon.hierarchy = new Cesium.ConstantProperty(
+        new Cesium.PolygonHierarchy(outerPositions, [new Cesium.PolygonHierarchy(innerPositions)])
+      );
+      inner.rectangle!.coordinates = new Cesium.ConstantProperty(innerRect);
+      (entity as any)._outerRectangle = coordinates;
+    } else if (entity.rectangle) {
       entity.rectangle.coordinates = new Cesium.ConstantProperty(coordinates);
     }
   }
@@ -99,9 +182,34 @@ export class MapRectangle {
    * 更新 Rectangle 样式
    */
   public updateStyle(entity: Entity, options: Partial<Pick<RectangleOptions, 'material' | 'outline' | 'outlineColor' | 'outlineWidth'>>): void {
-    if (entity.rectangle) {
+    const inner = (entity as any)._innerEntity as Entity | undefined;
+    const isRing = (entity as any)._isRing as boolean | undefined;
+    if (isRing && entity.polygon && inner) {
+      if (options.outlineColor !== undefined) {
+        entity.polygon.material = new Cesium.ColorMaterialProperty(this.resolveColor(options.outlineColor));
+      }
       if (options.material !== undefined) {
-        entity.rectangle.material = new Cesium.ColorMaterialProperty(this.resolveMaterial(options.material));
+        inner.rectangle!.material = this.resolveMaterial(options.material);
+      }
+      if (options.outlineWidth !== undefined) {
+        const thickness = Math.max(0, options.outlineWidth);
+        (entity as any)._ringThickness = thickness;
+        const outerRect = ((entity as any)._outerRectangle as Cesium.Rectangle) ?? undefined;
+        if (outerRect) {
+          const baseHeight = 0;
+          const heightEpsilon = 0.1;
+          const outerPositions = this.rectangleToPositions(outerRect, baseHeight + heightEpsilon);
+          const innerRect = this.shrinkRectangle(outerRect, thickness);
+          const innerPositions = this.rectangleToPositions(innerRect, baseHeight);
+          entity.polygon.hierarchy = new Cesium.ConstantProperty(
+            new Cesium.PolygonHierarchy(outerPositions, [new Cesium.PolygonHierarchy(innerPositions)])
+          );
+          inner.rectangle!.coordinates = new Cesium.ConstantProperty(innerRect);
+        }
+      }
+    } else if (entity.rectangle) {
+      if (options.material !== undefined) {
+        entity.rectangle.material = this.resolveMaterial(options.material);
       }
       if (options.outline !== undefined) {
         entity.rectangle.outline = new Cesium.ConstantProperty(options.outline);
@@ -122,6 +230,11 @@ export class MapRectangle {
     const entity = typeof entityOrId === 'string' ? this.entities.getById(entityOrId) : entityOrId;
     if (!entity) return false;
     delete (entity as any)._onClick;
+    const inner = (entity as any)._innerEntity as Entity | undefined;
+    if (inner) {
+      delete (inner as any)._onClick;
+      this.entities.remove(inner);
+    }
     return this.entities.remove(entity);
   }
 } 

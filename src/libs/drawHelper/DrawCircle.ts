@@ -8,6 +8,8 @@ import { formatArea } from '../../utils/calc';
  */
 export class DrawCircle extends BaseDraw {
   private currentCircleEntity: Entity | null = null;
+  private currentRingEntity: Entity | null = null; // 外圈（带洞）多边形，用作粗边框
+  private currentFillEntity: Entity | null = null; // 内圈填充
   private centerPosition: Cartesian3 | null = null;
 
   /**
@@ -21,6 +23,8 @@ export class DrawCircle extends BaseDraw {
     this.clearTempEntities();
     this.tempPositions = [];
     this.currentCircleEntity = null;
+    this.currentRingEntity = null;
+    this.currentFillEntity = null;
     this.centerPosition = null;
 
     if (this.originalDepthTestAgainstTerrain === null) {
@@ -89,27 +93,99 @@ export class DrawCircle extends BaseDraw {
     const outlineColor = this.drawOptions?.outlineColor ? this.resolveColor(this.drawOptions.outlineColor) : Cesium.Color.BLUE;
     const outlineWidth = this.drawOptions?.outlineWidth ?? 2;
 
-    if (this.currentCircleEntity) {
-      this.currentCircleEntity.ellipse!.semiMajorAxis = new Cesium.ConstantProperty(radius);
-      this.currentCircleEntity.ellipse!.semiMinorAxis = new Cesium.ConstantProperty(radius);
-      this.currentCircleEntity.position = new Cesium.ConstantPositionProperty(displayCenter);
-      this.currentCircleEntity.ellipse!.material = new Cesium.ColorMaterialProperty(fillColor.withAlpha(0.3));
-      this.currentCircleEntity.ellipse!.outlineColor = new Cesium.ConstantProperty(outlineColor);
-      this.currentCircleEntity.ellipse!.outlineWidth = new Cesium.ConstantProperty(outlineWidth);
+    // 粗边框（outlineWidth > 1）时，使用环带多边形 + 内圈填充
+    if (outlineWidth > 1) {
+      // 清理旧的单椭圆预览
+      if (this.currentCircleEntity) {
+        this.entities.remove(this.currentCircleEntity);
+        const idx = this.tempEntities.indexOf(this.currentCircleEntity);
+        if (idx > -1) this.tempEntities.splice(idx, 1);
+        this.currentCircleEntity = null;
+      }
+
+      const centerCarto2 = Cesium.Cartographic.fromCartesian(displayCenter);
+      const baseHeight = centerCarto2.height || 0;
+      const heightEpsilon = 0.1;
+      const outerRadius = radius;
+      const innerRadius = Math.max(0, radius - outlineWidth);
+
+      const outerPositions = this.generateCirclePositions(centerCarto2, outerRadius, baseHeight + heightEpsilon);
+      const innerPositions = this.generateCirclePositions(centerCarto2, innerRadius, baseHeight);
+
+      if (this.currentRingEntity && this.currentRingEntity.polygon) {
+        this.currentRingEntity.polygon.hierarchy = new Cesium.ConstantProperty(
+          new Cesium.PolygonHierarchy(outerPositions, [new Cesium.PolygonHierarchy(innerPositions)])
+        );
+        this.currentRingEntity.polygon.material = new Cesium.ColorMaterialProperty(outlineColor);
+      } else {
+        this.currentRingEntity = this.entities.add({
+          polygon: {
+            hierarchy: new Cesium.PolygonHierarchy(outerPositions, [new Cesium.PolygonHierarchy(innerPositions)]),
+            material: outlineColor,
+            outline: false,
+            heightReference: Cesium.HeightReference.NONE,
+          },
+        });
+        this.tempEntities.push(this.currentRingEntity);
+      }
+
+      if (this.currentFillEntity && this.currentFillEntity.ellipse) {
+        this.currentFillEntity.position = new Cesium.ConstantPositionProperty(displayCenter);
+        this.currentFillEntity.ellipse.semiMajorAxis = new Cesium.ConstantProperty(innerRadius);
+        this.currentFillEntity.ellipse.semiMinorAxis = new Cesium.ConstantProperty(innerRadius);
+        this.currentFillEntity.ellipse.material = new Cesium.ColorMaterialProperty(fillColor.withAlpha(0.3));
+        this.currentFillEntity.ellipse.outline = new Cesium.ConstantProperty(false);
+      } else {
+        this.currentFillEntity = this.entities.add({
+          position: displayCenter,
+          ellipse: {
+            semiMajorAxis: innerRadius,
+            semiMinorAxis: innerRadius,
+            material: fillColor.withAlpha(0.3),
+            outline: false,
+            heightReference: Cesium.HeightReference.NONE,
+          },
+        });
+        this.tempEntities.push(this.currentFillEntity);
+      }
     } else {
-      this.currentCircleEntity = this.entities.add({
-        position: displayCenter,
-        ellipse: {
-          semiMajorAxis: radius,
-          semiMinorAxis: radius,
-          material: fillColor.withAlpha(0.3),
-          outline: true,
-          outlineColor: outlineColor,
-          outlineWidth: outlineWidth,
-          heightReference: Cesium.HeightReference.NONE,
-        },
-      });
-      this.tempEntities.push(this.currentCircleEntity);
+      // 细边框：单椭圆预览
+      // 清理环预览
+      if (this.currentRingEntity) {
+        this.entities.remove(this.currentRingEntity);
+        const idx = this.tempEntities.indexOf(this.currentRingEntity);
+        if (idx > -1) this.tempEntities.splice(idx, 1);
+        this.currentRingEntity = null;
+      }
+      if (this.currentFillEntity) {
+        this.entities.remove(this.currentFillEntity);
+        const idx2 = this.tempEntities.indexOf(this.currentFillEntity);
+        if (idx2 > -1) this.tempEntities.splice(idx2, 1);
+        this.currentFillEntity = null;
+      }
+
+      if (this.currentCircleEntity) {
+        this.currentCircleEntity.ellipse!.semiMajorAxis = new Cesium.ConstantProperty(radius);
+        this.currentCircleEntity.ellipse!.semiMinorAxis = new Cesium.ConstantProperty(radius);
+        this.currentCircleEntity.position = new Cesium.ConstantPositionProperty(displayCenter);
+        this.currentCircleEntity.ellipse!.material = new Cesium.ColorMaterialProperty(fillColor.withAlpha(0.3));
+        this.currentCircleEntity.ellipse!.outlineColor = new Cesium.ConstantProperty(outlineColor);
+        this.currentCircleEntity.ellipse!.outlineWidth = new Cesium.ConstantProperty(outlineWidth);
+      } else {
+        this.currentCircleEntity = this.entities.add({
+          position: displayCenter,
+          ellipse: {
+            semiMajorAxis: radius,
+            semiMinorAxis: radius,
+            material: fillColor.withAlpha(0.3),
+            outline: true,
+            outlineColor: outlineColor,
+            outlineWidth: outlineWidth,
+            heightReference: Cesium.HeightReference.NONE,
+          },
+        });
+        this.tempEntities.push(this.currentCircleEntity);
+      }
     }
 
     this.centerPosition = centerGround;
@@ -164,19 +240,58 @@ export class DrawCircle extends BaseDraw {
     const outlineColor = this.drawOptions?.outlineColor ? this.resolveColor(this.drawOptions.outlineColor) : Cesium.Color.BLUE;
     const outlineWidth = this.drawOptions?.outlineWidth ?? 2;
 
-    finalEntity = this.entities.add({
-      name: "绘制的圆",
-      position: displayCenter,
-      ellipse: {
-        semiMajorAxis: radius,
-        semiMinorAxis: radius,
-        material: fillColor.withAlpha(0.3),
-        outline: true,
-        outlineColor: outlineColor,
-        outlineWidth: outlineWidth,
-        heightReference: Cesium.HeightReference.NONE,
-      },
-    });
+    if (outlineWidth > 1) {
+      // 使用环带 + 内圈填充
+      const centerCarto2 = Cesium.Cartographic.fromCartesian(displayCenter);
+      const baseHeight = centerCarto2.height || 0;
+      const heightEpsilon = 0.1;
+      const outerRadius = radius;
+      const innerRadius = Math.max(0, radius - outlineWidth);
+      const outerPositions = this.generateCirclePositions(centerCarto2, outerRadius, baseHeight + heightEpsilon);
+      const innerPositions = this.generateCirclePositions(centerCarto2, innerRadius, baseHeight);
+
+      const outer = this.entities.add({
+        name: "绘制的圆-环",
+        polygon: {
+          hierarchy: new Cesium.PolygonHierarchy(outerPositions, [new Cesium.PolygonHierarchy(innerPositions)]),
+          material: outlineColor,
+          outline: false,
+          heightReference: Cesium.HeightReference.NONE,
+        },
+      });
+      const inner = this.entities.add({
+        name: "绘制的圆-填充",
+        position: displayCenter,
+        ellipse: {
+          semiMajorAxis: innerRadius,
+          semiMinorAxis: innerRadius,
+          material: fillColor.withAlpha(0.3),
+          outline: false,
+          heightReference: Cesium.HeightReference.NONE,
+        },
+      });
+      if (this.drawOptions?.onClick) {
+        (inner as any)._onClick = this.drawOptions.onClick;
+      }
+      (outer as any)._innerEntity = inner;
+      (outer as any)._isRing = true;
+      (outer as any)._ringThickness = outlineWidth;
+      finalEntity = outer;
+    } else {
+      finalEntity = this.entities.add({
+        name: "绘制的圆",
+        position: displayCenter,
+        ellipse: {
+          semiMajorAxis: radius,
+          semiMinorAxis: radius,
+          material: fillColor.withAlpha(0.3),
+          outline: true,
+          outlineColor: outlineColor,
+          outlineWidth: outlineWidth,
+          heightReference: Cesium.HeightReference.NONE,
+        },
+      });
+    }
     (finalEntity as any)._groundPosition = centerGround;
     (finalEntity as any)._radius = radius;
 
@@ -233,6 +348,8 @@ export class DrawCircle extends BaseDraw {
     this.tempEntities = [];
     this.tempPositions = [];
     this.currentCircleEntity = null;
+    this.currentRingEntity = null;
+    this.currentFillEntity = null;
     this.centerPosition = null;
 
     if (this.originalDepthTestAgainstTerrain !== null) {
@@ -276,6 +393,30 @@ export class DrawCircle extends BaseDraw {
    */
   public getDrawType(): "line" | "polygon" | "rectangle" | "circle" {
     return "circle";
+  }
+
+  /**
+   * 生成近似圆（多边形）顶点
+   */
+  private generateCirclePositions(center: Cesium.Cartographic, radiusMeters: number, heightMeters: number, segments: number = 128): Cesium.Cartesian3[] {
+    const R = 6378137.0;
+    const lat1 = center.latitude;
+    const lon1 = center.longitude;
+    const d = radiusMeters / R;
+    const positions: Cesium.Cartesian3[] = [];
+    for (let i = 0; i < segments; i++) {
+      const bearing = (i / segments) * Cesium.Math.TWO_PI;
+      const sinLat1 = Math.sin(lat1);
+      const cosLat1 = Math.cos(lat1);
+      const sinD = Math.sin(d);
+      const cosD = Math.cos(d);
+      const sinBearing = Math.sin(bearing);
+      const cosBearing = Math.cos(bearing);
+      const lat2 = Math.asin(sinLat1 * cosD + cosLat1 * sinD * cosBearing);
+      const lon2 = lon1 + Math.atan2(sinBearing * sinD * cosLat1, cosD - sinLat1 * Math.sin(lat2));
+      positions.push(Cesium.Cartesian3.fromRadians(lon2, lat2, heightMeters));
+    }
+    return positions;
   }
 }
 

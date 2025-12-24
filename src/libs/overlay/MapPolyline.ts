@@ -60,17 +60,17 @@ export class MapPolyline {
   /**
    * 解析材质
    */
-  private resolveMaterial(material?: Cesium.MaterialProperty | Color | string): Cesium.MaterialProperty | Color {
+  private resolveMaterial(material?: Cesium.MaterialProperty | Color | string): Cesium.MaterialProperty {
     if (!material) {
-      return Cesium.Color.YELLOW;
+      return new Cesium.ColorMaterialProperty(Cesium.Color.YELLOW);
     }
     if (typeof material === 'string') {
-      return this.resolveColor(material);
+      return new Cesium.ColorMaterialProperty(this.resolveColor(material));
     }
     if (material instanceof Cesium.Color) {
-      return material;
+      return new Cesium.ColorMaterialProperty(material);
     }
-    return material;
+    return material as Cesium.MaterialProperty;
   }
 
   /**

@@ -14,6 +14,7 @@ export interface CircleOptions {
   outlineWidth?: number;
   heightReference?: HeightReference;
   extrudedHeight?: number;
+  heightEpsilon?: number; // 高度容差，用于环形方案
   onClick?: (entity: Entity) => void;
   id?: string;
 }
@@ -86,26 +87,106 @@ export class MapCircle {
     
     const material = this.resolveMaterial(options.material);
 
-    const entity = this.entities.add({
-      id,
-      position,
-      ellipse: {
-        semiMajorAxis: options.radius,
-        semiMinorAxis: options.radius,
-        material,
-        outline: options.outline ?? true,
-        outlineColor: options.outlineColor ? this.resolveColor(options.outlineColor) : Cesium.Color.BLACK,
-        outlineWidth: options.outlineWidth ?? 1,
-        heightReference: options.heightReference ?? Cesium.HeightReference.NONE,
-        extrudedHeight: options.extrudedHeight,
-      },
-    });
+    // 判断是否启用双层椭圆环方案：当 outlineWidth>1 时，将其视为米单位厚度，使用双层椭圆实现粗边框
+    const ringThickness = (options.outlineWidth && options.outlineWidth > 1) ? options.outlineWidth : 0;
 
-    if (options.onClick) {
-      (entity as any)._onClick = options.onClick;
+    if (ringThickness > 0) {
+      const baseCarto = Cesium.Cartographic.fromCartesian(position);
+      const baseHeight = (baseCarto?.height ?? 0) as number;
+      const heightEpsilon = 0.01; // 米：避免共面导致视觉问题
+
+      const outerRadius = options.radius;
+      const innerRadius = Math.max(0, options.radius - ringThickness);
+
+      const outerPositions = this.generateCirclePositions(baseCarto, outerRadius, baseHeight + heightEpsilon);
+      const innerPositions = this.generateCirclePositions(baseCarto, innerRadius, baseHeight);
+
+      const outer = this.entities.add({
+        // 使用带洞的多边形，只渲染环带区域，不填充中心
+        polygon: {
+          hierarchy: new Cesium.PolygonHierarchy(outerPositions, [new Cesium.PolygonHierarchy(innerPositions)]),
+          material: new Cesium.ColorMaterialProperty(options.outlineColor ? this.resolveColor(options.outlineColor) : Cesium.Color.BLACK),
+          outline: false,
+          heightReference: options.heightReference ?? Cesium.HeightReference.NONE,
+        },
+      });
+
+      const inner = this.entities.add({
+        position,
+        ellipse: {
+          semiMajorAxis: innerRadius,
+          semiMinorAxis: innerRadius,
+          material: material instanceof Cesium.Color ? new Cesium.ColorMaterialProperty(material) : (material as Cesium.MaterialProperty),
+          outline: false,
+          height: baseHeight,
+          heightReference: options.heightReference ?? Cesium.HeightReference.NONE,
+          extrudedHeight: options.extrudedHeight,
+        },
+      });
+
+      if (options.onClick) {
+        (outer as any)._onClick = options.onClick;
+        (inner as any)._onClick = options.onClick;
+      }
+
+      // 记录元数据，便于更新/移除
+      (outer as any)._innerEntity = inner;
+      (outer as any)._isRing = true;
+      (outer as any)._ringThickness = ringThickness;
+      (outer as any)._fillMaterial = material;
+      (outer as any)._ringHeightEpsilon = heightEpsilon;
+      (outer as any)._centerCartographic = baseCarto;
+      (outer as any)._outerRadius = outerRadius;
+      (outer as any)._innerRadius = innerRadius;
+
+      return outer;
+    } else {
+      const entity = this.entities.add({
+        id,
+        position,
+        ellipse: {
+          semiMajorAxis: options.radius,
+          semiMinorAxis: options.radius,
+          material,
+          outline: options.outline ?? true,
+          outlineColor: options.outlineColor ? this.resolveColor(options.outlineColor) : Cesium.Color.BLACK,
+          outlineWidth: options.outlineWidth ?? 1,
+          heightReference: options.heightReference ?? Cesium.HeightReference.NONE,
+          extrudedHeight: options.extrudedHeight,
+        },
+      });
+
+      if (options.onClick) {
+        (entity as any)._onClick = options.onClick;
+      }
+
+      return entity;
     }
+  }
 
-    return entity;
+  /**
+   * 生成近似圆（多边形）顶点，返回 Cartesian3 数组。
+   * 使用大圆航线公式，segments 越大越平滑。
+   */
+  private generateCirclePositions(center: Cesium.Cartographic, radiusMeters: number, heightMeters: number, segments: number = 128): Cesium.Cartesian3[] {
+    const R = 6378137.0; // WGS84 半径近似
+    const lat1 = center.latitude;
+    const lon1 = center.longitude;
+    const d = radiusMeters / R;
+    const positions: Cesium.Cartesian3[] = [];
+    for (let i = 0; i < segments; i++) {
+      const bearing = (i / segments) * Cesium.Math.TWO_PI;
+      const sinLat1 = Math.sin(lat1);
+      const cosLat1 = Math.cos(lat1);
+      const sinD = Math.sin(d);
+      const cosD = Math.cos(d);
+      const sinBearing = Math.sin(bearing);
+      const cosBearing = Math.cos(bearing);
+      const lat2 = Math.asin(sinLat1 * cosD + cosLat1 * sinD * cosBearing);
+      const lon2 = lon1 + Math.atan2(sinBearing * sinD * cosLat1, cosD - sinLat1 * Math.sin(lat2));
+      positions.push(Cesium.Cartesian3.fromRadians(lon2, lat2, heightMeters));
+    }
+    return positions;
   }
 
   /**
@@ -114,6 +195,10 @@ export class MapCircle {
   public updatePosition(entity: Entity, position: OverlayPosition): void {
     const newPosition = this.convertPosition(position);
     entity.position = new Cesium.ConstantPositionProperty(newPosition);
+    const inner = (entity as any)._innerEntity as Entity | undefined;
+    if (inner) {
+      inner.position = new Cesium.ConstantPositionProperty(newPosition);
+    }
   }
 
   /**
@@ -124,6 +209,15 @@ export class MapCircle {
       entity.ellipse.semiMajorAxis = new Cesium.ConstantProperty(radius);
       entity.ellipse.semiMinorAxis = new Cesium.ConstantProperty(radius);
     }
+    const inner = (entity as any)._innerEntity as Entity | undefined;
+    const thickness = (entity as any)._ringThickness as number | undefined;
+    if (inner && thickness !== undefined) {
+      const innerRadius = Math.max(0, radius - thickness);
+      if (inner.ellipse) {
+        inner.ellipse.semiMajorAxis = new Cesium.ConstantProperty(innerRadius);
+        inner.ellipse.semiMinorAxis = new Cesium.ConstantProperty(innerRadius);
+      }
+    }
   }
 
   /**
@@ -133,16 +227,43 @@ export class MapCircle {
     if (entity.ellipse) {
       if (options.material !== undefined) {
         const mat = this.resolveMaterial(options.material);
-        entity.ellipse.material = mat instanceof Cesium.Color ? new Cesium.ColorMaterialProperty(mat) : (mat as Cesium.MaterialProperty);
+        // 若为环形方案，material 作为填充色应用到内层；否则应用到当前实体
+        const inner = (entity as any)._innerEntity as Entity | undefined;
+        if (inner && inner.ellipse) {
+          inner.ellipse.material = mat instanceof Cesium.Color ? new Cesium.ColorMaterialProperty(mat) : (mat as Cesium.MaterialProperty);
+        } else {
+          entity.ellipse.material = mat instanceof Cesium.Color ? new Cesium.ColorMaterialProperty(mat) : (mat as Cesium.MaterialProperty);
+        }
       }
-      if (options.outline !== undefined) {
-        entity.ellipse.outline = new Cesium.ConstantProperty(options.outline);
-      }
-      if (options.outlineColor !== undefined) {
-        entity.ellipse.outlineColor = new Cesium.ConstantProperty(this.resolveColor(options.outlineColor));
-      }
-      if (options.outlineWidth !== undefined) {
-        entity.ellipse.outlineWidth = new Cesium.ConstantProperty(options.outlineWidth);
+      const inner = (entity as any)._innerEntity as Entity | undefined;
+      if (inner) {
+        // 环形方案：outline 开关不再生效，使用外层作为边框
+        if (options.outlineColor !== undefined) {
+          entity.ellipse.material = new Cesium.ColorMaterialProperty(this.resolveColor(options.outlineColor));
+        }
+        if (options.outlineWidth !== undefined) {
+          const thickness = Math.max(0, options.outlineWidth);
+          (entity as any)._ringThickness = thickness;
+          const outerRadius = (entity.ellipse.semiMajorAxis as any)?.getValue?.(Cesium.JulianDate.now()) ?? undefined;
+          // 如果拿不到，尽量从 ConstantProperty 读取
+          const R = typeof outerRadius === 'number' ? outerRadius : undefined;
+          if (R !== undefined) {
+            const innerRadius = Math.max(0, R - thickness);
+            inner.ellipse!.semiMajorAxis = new Cesium.ConstantProperty(innerRadius);
+            inner.ellipse!.semiMinorAxis = new Cesium.ConstantProperty(innerRadius);
+          }
+        }
+      } else {
+        // 非环形：按原生 outline 逻辑
+        if (options.outline !== undefined) {
+          entity.ellipse.outline = new Cesium.ConstantProperty(options.outline);
+        }
+        if (options.outlineColor !== undefined) {
+          entity.ellipse.outlineColor = new Cesium.ConstantProperty(this.resolveColor(options.outlineColor));
+        }
+        if (options.outlineWidth !== undefined) {
+          entity.ellipse.outlineWidth = new Cesium.ConstantProperty(options.outlineWidth);
+        }
       }
     }
   }
@@ -154,6 +275,11 @@ export class MapCircle {
     const entity = typeof entityOrId === 'string' ? this.entities.getById(entityOrId) : entityOrId;
     if (!entity) return false;
     delete (entity as any)._onClick;
+    const inner = (entity as any)._innerEntity as Entity | undefined;
+    if (inner) {
+      delete (inner as any)._onClick;
+      this.entities.remove(inner);
+    }
     return this.entities.remove(entity);
   }
 } 

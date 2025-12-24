@@ -67,7 +67,7 @@ export function useOverlayHelper(
         const latitude = Cesium.Math.toDegrees(cartographic.latitude);
 
         const marker = overlayService.value.addMarker({
-          position: [longitude, latitude],
+          position: [longitude, latitude, 500],
           pixelSize: 15,
           color: Cesium.Color.RED,
           outlineColor: Cesium.Color.WHITE,
@@ -139,9 +139,9 @@ export function useOverlayHelper(
     const center = viewer.value.camera.positionCartographic;
     const lon = Cesium.Math.toDegrees(center.longitude);
     const lat = Cesium.Math.toDegrees(center.latitude);
-
+    debugger;
     const icon = overlayService.value.addIcon({
-      position: [lon - 0.01, lat + 0.01],
+      position: [lon - 0.01, lat + 0.01, 200],
       image:
         'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMTYiIGN5PSIxNiIgcj0iMTQiIGZpbGw9IiNGRjAwMDAiLz4KPHN2ZyB4PSI4IiB5PSI4IiB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSI+CjxwYXRoIGQ9Ik04IDJMMTAuNSA2SDEzLjVMOS41IDEwTDEwLjUgMTRMOCAxMkw1LjUgMTRMNi41IDEwTDMgNkg1LjVMOCAyWiIgZmlsbD0iI0ZGRiIvPgo8L3N2Zz4KPC9zdmc+',
       width: 32,
@@ -379,23 +379,24 @@ export function useOverlayHelper(
     const lon = Cesium.Math.toDegrees(center.longitude);
     const lat = Cesium.Math.toDegrees(center.latitude);
 
-    const circle = overlayService.value.addCircle({
-      position: [lon + 0.01, lat - 0.01],
-      radius: 5000,
-      material: Cesium.Color.YELLOW.withAlpha(0.3),
-      outline: true,
-      outlineColor: Cesium.Color.YELLOW,
-      outlineWidth: 2,
+    // 圆形 A：演示粗边框（双层椭圆环：outlineWidth>1 即触发）
+    const circleA = overlayService.value.addCircle({
+      position: [lon + 0.012, lat - 0.01],
+      radius: 600,
+      material: Cesium.Color.fromCssColorString('#b71c1c').withAlpha(0.4), // 填充色
+      outline: true,                                  // 开启边框（用于颜色）
+      outlineColor: Cesium.Color.fromCssColorString('#d32f2f'),              // 边框颜色
+      outlineWidth: 20,                               // >1 触发双层椭圆环（米为单位）
       onClick: () => {
-        console.log('圆形被点击');
-        message.value = '圆形被点击';
+        console.log('圆形 A 被点击');
+        message.value = '圆形 A 被点击';
         setTimeout(() => (message.value = ''), 2000);
       },
     });
 
-    markerEntities.push(circle);
-    message.value = '已添加圆形';
-    setTimeout(() => (message.value = ''), 2000);
+    markerEntities.push(circleA);
+    message.value = '已添加两个粗边框圆形（双层椭圆环效果）';
+    setTimeout(() => (message.value = ''), 2200);
   };
 
   /**
