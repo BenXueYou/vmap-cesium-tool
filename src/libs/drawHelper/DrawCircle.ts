@@ -8,8 +8,7 @@ import { formatArea } from '../../utils/calc';
  */
 export class DrawCircle extends BaseDraw {
   private currentCircleEntity: Entity | null = null;
-  private currentRingEntity: Entity | null = null; // 外圈（带洞）多边形，用作粗边框
-  private currentFillEntity: Entity | null = null; // 内圈填充
+  private currentBorderEntity: Entity | null = null; // 边框折线，用作粗边框
   private centerPosition: Cartesian3 | null = null;
 
   /**
@@ -23,8 +22,7 @@ export class DrawCircle extends BaseDraw {
     this.clearTempEntities();
     this.tempPositions = [];
     this.currentCircleEntity = null;
-    this.currentRingEntity = null;
-    this.currentFillEntity = null;
+    this.currentBorderEntity = null;
     this.centerPosition = null;
 
     if (this.originalDepthTestAgainstTerrain === null) {
@@ -93,98 +91,64 @@ export class DrawCircle extends BaseDraw {
     const outlineColor = this.drawOptions?.outlineColor ? this.resolveColor(this.drawOptions.outlineColor) : Cesium.Color.BLUE;
     const outlineWidth = this.drawOptions?.outlineWidth ?? 2;
 
-    // 粗边框（outlineWidth > 1）时，使用环带多边形 + 内圈填充
-    if (outlineWidth > 1) {
-      // 清理旧的单椭圆预览
-      if (this.currentCircleEntity) {
-        this.entities.remove(this.currentCircleEntity);
-        const idx = this.tempEntities.indexOf(this.currentCircleEntity);
-        if (idx > -1) this.tempEntities.splice(idx, 1);
-        this.currentCircleEntity = null;
-      }
+    // 始终使用椭圆作为填充
+    if (this.currentCircleEntity) {
+      this.currentCircleEntity.ellipse!.semiMajorAxis = new Cesium.ConstantProperty(radius);
+      this.currentCircleEntity.ellipse!.semiMinorAxis = new Cesium.ConstantProperty(radius);
+      this.currentCircleEntity.position = new Cesium.ConstantPositionProperty(displayCenter);
+      this.currentCircleEntity.ellipse!.material = new Cesium.ColorMaterialProperty(fillColor.withAlpha(0.3));
+      this.currentCircleEntity.ellipse!.outline = new Cesium.ConstantProperty(outlineWidth <= 1);
+      this.currentCircleEntity.ellipse!.outlineColor = new Cesium.ConstantProperty(outlineColor);
+      this.currentCircleEntity.ellipse!.outlineWidth = new Cesium.ConstantProperty(outlineWidth <= 1 ? outlineWidth : 1);
+    } else {
+      this.currentCircleEntity = this.entities.add({
+        position: displayCenter,
+        ellipse: {
+          semiMajorAxis: radius,
+          semiMinorAxis: radius,
+          material: fillColor.withAlpha(0.3),
+          outline: outlineWidth <= 1,
+          outlineColor: outlineColor,
+          outlineWidth: outlineWidth <= 1 ? outlineWidth : 1,
+          heightReference: Cesium.HeightReference.NONE,
+        },
+      });
+      this.tempEntities.push(this.currentCircleEntity);
+    }
 
+    // 对于粗边框（outlineWidth > 1），使用闭合折线作为边框，避免环带导致的异常
+    if (outlineWidth > 1) {
       const centerCarto2 = Cesium.Cartographic.fromCartesian(displayCenter);
       const baseHeight = centerCarto2.height || 0;
       const heightEpsilon = 0.1;
       const outerRadius = radius;
-      const innerRadius = Math.max(0, radius - outlineWidth);
+      const strokePositions = this.generateCirclePositions(centerCarto2, outerRadius, baseHeight + heightEpsilon);
+      // 闭合折线
+      const closedStroke = [...strokePositions, strokePositions[0]];
 
-      const outerPositions = this.generateCirclePositions(centerCarto2, outerRadius, baseHeight + heightEpsilon);
-      const innerPositions = this.generateCirclePositions(centerCarto2, innerRadius, baseHeight);
-
-      if (this.currentRingEntity && this.currentRingEntity.polygon) {
-        this.currentRingEntity.polygon.hierarchy = new Cesium.ConstantProperty(
-          new Cesium.PolygonHierarchy(outerPositions, [new Cesium.PolygonHierarchy(innerPositions)])
-        );
-        this.currentRingEntity.polygon.material = new Cesium.ColorMaterialProperty(outlineColor);
+      if (this.currentBorderEntity && this.currentBorderEntity.polyline) {
+        this.currentBorderEntity.polyline.positions = new Cesium.ConstantProperty(closedStroke);
+        this.currentBorderEntity.polyline.material = new Cesium.ColorMaterialProperty(outlineColor);
+        this.currentBorderEntity.polyline.width = new Cesium.ConstantProperty(outlineWidth);
+        this.currentBorderEntity.polyline.clampToGround = new Cesium.ConstantProperty(false);
       } else {
-        this.currentRingEntity = this.entities.add({
-          polygon: {
-            hierarchy: new Cesium.PolygonHierarchy(outerPositions, [new Cesium.PolygonHierarchy(innerPositions)]),
-            material: outlineColor,
-            outline: false,
-            heightReference: Cesium.HeightReference.NONE,
+        this.currentBorderEntity = this.entities.add({
+          polyline: {
+            positions: closedStroke,
+            material: new Cesium.ColorMaterialProperty(outlineColor),
+            width: outlineWidth,
+            clampToGround: false,
           },
         });
-        this.tempEntities.push(this.currentRingEntity);
-      }
-
-      if (this.currentFillEntity && this.currentFillEntity.ellipse) {
-        this.currentFillEntity.position = new Cesium.ConstantPositionProperty(displayCenter);
-        this.currentFillEntity.ellipse.semiMajorAxis = new Cesium.ConstantProperty(innerRadius);
-        this.currentFillEntity.ellipse.semiMinorAxis = new Cesium.ConstantProperty(innerRadius);
-        this.currentFillEntity.ellipse.material = new Cesium.ColorMaterialProperty(fillColor.withAlpha(0.3));
-        this.currentFillEntity.ellipse.outline = new Cesium.ConstantProperty(false);
-      } else {
-        this.currentFillEntity = this.entities.add({
-          position: displayCenter,
-          ellipse: {
-            semiMajorAxis: innerRadius,
-            semiMinorAxis: innerRadius,
-            material: fillColor.withAlpha(0.3),
-            outline: false,
-            heightReference: Cesium.HeightReference.NONE,
-          },
-        });
-        this.tempEntities.push(this.currentFillEntity);
+        this.tempEntities.push(this.currentBorderEntity);
       }
     } else {
-      // 细边框：单椭圆预览
-      // 清理环预览
-      if (this.currentRingEntity) {
-        this.entities.remove(this.currentRingEntity);
-        const idx = this.tempEntities.indexOf(this.currentRingEntity);
+      // 细边框时不需要额外折线，清理可能存在的预览折线
+      if (this.currentBorderEntity) {
+        this.entities.remove(this.currentBorderEntity);
+        const idx = this.tempEntities.indexOf(this.currentBorderEntity);
         if (idx > -1) this.tempEntities.splice(idx, 1);
-        this.currentRingEntity = null;
-      }
-      if (this.currentFillEntity) {
-        this.entities.remove(this.currentFillEntity);
-        const idx2 = this.tempEntities.indexOf(this.currentFillEntity);
-        if (idx2 > -1) this.tempEntities.splice(idx2, 1);
-        this.currentFillEntity = null;
-      }
-
-      if (this.currentCircleEntity) {
-        this.currentCircleEntity.ellipse!.semiMajorAxis = new Cesium.ConstantProperty(radius);
-        this.currentCircleEntity.ellipse!.semiMinorAxis = new Cesium.ConstantProperty(radius);
-        this.currentCircleEntity.position = new Cesium.ConstantPositionProperty(displayCenter);
-        this.currentCircleEntity.ellipse!.material = new Cesium.ColorMaterialProperty(fillColor.withAlpha(0.3));
-        this.currentCircleEntity.ellipse!.outlineColor = new Cesium.ConstantProperty(outlineColor);
-        this.currentCircleEntity.ellipse!.outlineWidth = new Cesium.ConstantProperty(outlineWidth);
-      } else {
-        this.currentCircleEntity = this.entities.add({
-          position: displayCenter,
-          ellipse: {
-            semiMajorAxis: radius,
-            semiMinorAxis: radius,
-            material: fillColor.withAlpha(0.3),
-            outline: true,
-            outlineColor: outlineColor,
-            outlineWidth: outlineWidth,
-            heightReference: Cesium.HeightReference.NONE,
-          },
-        });
-        this.tempEntities.push(this.currentCircleEntity);
+        this.currentBorderEntity = null;
       }
     }
 
@@ -241,42 +205,36 @@ export class DrawCircle extends BaseDraw {
     const outlineWidth = this.drawOptions?.outlineWidth ?? 2;
 
     if (outlineWidth > 1) {
-      // 使用环带 + 内圈填充
-      const centerCarto2 = Cesium.Cartographic.fromCartesian(displayCenter);
-      const baseHeight = centerCarto2.height || 0;
-      const heightEpsilon = 0.1;
-      const outerRadius = radius;
-      const innerRadius = Math.max(0, radius - outlineWidth);
-      const outerPositions = this.generateCirclePositions(centerCarto2, outerRadius, baseHeight + heightEpsilon);
-      const innerPositions = this.generateCirclePositions(centerCarto2, innerRadius, baseHeight);
-
-      const outer = this.entities.add({
-        name: "绘制的圆-环",
-        polygon: {
-          hierarchy: new Cesium.PolygonHierarchy(outerPositions, [new Cesium.PolygonHierarchy(innerPositions)]),
-          material: outlineColor,
-          outline: false,
-          heightReference: Cesium.HeightReference.NONE,
-        },
-      });
-      const inner = this.entities.add({
-        name: "绘制的圆-填充",
+      // 粗边框：使用填充椭圆 + 闭合折线边框
+      finalEntity = this.entities.add({
+        name: "绘制的圆",
         position: displayCenter,
         ellipse: {
-          semiMajorAxis: innerRadius,
-          semiMinorAxis: innerRadius,
+          semiMajorAxis: radius,
+          semiMinorAxis: radius,
           material: fillColor.withAlpha(0.3),
           outline: false,
           heightReference: Cesium.HeightReference.NONE,
         },
       });
-      if (this.drawOptions?.onClick) {
-        (inner as any)._onClick = this.drawOptions.onClick;
-      }
-      (outer as any)._innerEntity = inner;
-      (outer as any)._isRing = true;
-      (outer as any)._ringThickness = outlineWidth;
-      finalEntity = outer;
+
+      const centerCarto2 = Cesium.Cartographic.fromCartesian(displayCenter);
+      const baseHeight = centerCarto2.height || 0;
+      const heightEpsilon = 0.1;
+      const outerRadius = radius;
+      const strokePositions = this.generateCirclePositions(centerCarto2, outerRadius, baseHeight + heightEpsilon);
+      const closedStroke = [...strokePositions, strokePositions[0]];
+
+      const borderEntity = this.entities.add({
+        name: "绘制的圆-边框",
+        polyline: {
+          positions: closedStroke,
+          material: new Cesium.ColorMaterialProperty(outlineColor),
+          width: outlineWidth,
+          clampToGround: this.offsetHeight > 0 ? false : true,
+        },
+      });
+      (finalEntity as any)._borderEntity = borderEntity;
     } else {
       finalEntity = this.entities.add({
         name: "绘制的圆",
@@ -334,22 +292,14 @@ export class DrawCircle extends BaseDraw {
     // 保留圆心位置的红色球体，删除半径上的点（第二个点）
     this.tempEntities.forEach((entity, index) => {
       if (entity) {
-        // 保留第一个点（圆心），删除其他点（半径上的点）
-        if (index === 0 && entity.point) {
-          // 保留圆心点实体
-          this.finishedPointEntities.push(entity);
-        } else {
-          // 删除半径上的点实体和其他临时实体
           this.entities.remove(entity);
-        }
       }
     });
 
     this.tempEntities = [];
     this.tempPositions = [];
     this.currentCircleEntity = null;
-    this.currentRingEntity = null;
-    this.currentFillEntity = null;
+    this.currentBorderEntity = null;
     this.centerPosition = null;
 
     if (this.originalDepthTestAgainstTerrain !== null) {

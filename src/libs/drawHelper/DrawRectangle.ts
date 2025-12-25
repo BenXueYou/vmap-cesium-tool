@@ -206,11 +206,9 @@ export class DrawRectangle extends BaseDraw {
       this.tempLabelEntities.push(rectAreaLabelEntity);
     }
 
-    // 将临时点实体转移到已完成点实体数组
+    // 结束绘制后移除所有红色点实体（不保留）
     this.tempEntities.forEach((entity) => {
-      if (entity && entity.point) {
-        this.finishedPointEntities.push(entity);
-      } else {
+      if (entity) {
         this.entities.remove(entity);
       }
     });

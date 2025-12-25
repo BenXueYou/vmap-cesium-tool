@@ -50,8 +50,29 @@ export class DrawPolygon extends BaseDraw {
         : sourceBase;
 
     if (polygonSource.length >= 3) {
-      const polygonPositions = polygonSource.map((pos) => {
-        const carto = Cesium.Cartographic.fromCartesian(pos);
+      // 先将源点转换为 Cartographic，并过滤掉经纬度为非有限数值的点
+      const cartos = polygonSource
+        .map((pos) => Cesium.Cartographic.fromCartesian(pos))
+        .filter((c) => c && Number.isFinite(c.longitude) && Number.isFinite(c.latitude)) as Cesium.Cartographic[];
+
+      if (cartos.length < 3) {
+        // 不满足有效点数量，清理预览实体
+        if (this.currentPolygonEntity) {
+          this.entities.remove(this.currentPolygonEntity);
+          const index = this.tempEntities.indexOf(this.currentPolygonEntity);
+          if (index > -1) this.tempEntities.splice(index, 1);
+          this.currentPolygonEntity = null;
+        }
+        if (this.currentBorderEntity) {
+          this.entities.remove(this.currentBorderEntity);
+          const idx = this.tempEntities.indexOf(this.currentBorderEntity);
+          if (idx > -1) this.tempEntities.splice(idx, 1);
+          this.currentBorderEntity = null;
+        }
+        return;
+      }
+
+      const polygonPositions = cartos.map((carto) => {
         const baseHeight = carto.height || 0;
         const extraHeight = this.offsetHeight > 0 ? this.offsetHeight : 0.1;
         return Cesium.Cartesian3.fromRadians(
@@ -141,14 +162,19 @@ export class DrawPolygon extends BaseDraw {
       return null;
     }
 
-    const groundPositions = validPositions.map((p) => {
-      const carto = Cesium.Cartographic.fromCartesian(p);
-      return Cesium.Cartesian3.fromRadians(
-        carto.longitude,
-        carto.latitude,
-        carto.height || 0
-      );
-    });
+    // 转换为 Cartographic 并过滤掉经纬度为非有限数值的点，防止 NaN 传入地面几何
+    const groundCartos = validPositions
+      .map((p) => Cesium.Cartographic.fromCartesian(p))
+      .filter((c) => c && Number.isFinite(c.longitude) && Number.isFinite(c.latitude)) as Cesium.Cartographic[];
+
+    if (groundCartos.length < 3) {
+      this.restoreRequestRenderModeIfNeeded();
+      return null;
+    }
+
+    const groundPositions = groundCartos.map((carto) =>
+      Cesium.Cartesian3.fromRadians(carto.longitude, carto.latitude, carto.height || 0)
+    );
 
     let finalEntity: Entity | null = null;
     let finalBorder: Entity | null = null;
@@ -279,11 +305,9 @@ export class DrawPolygon extends BaseDraw {
       this.tempLabelEntities.push(areaLabelEntity);
     }
 
-    // 将临时点实体转移到已完成点实体数组
+    // 结束绘制后移除所有红色点实体（不保留）
     this.tempEntities.forEach((entity) => {
-      if (entity && entity.point) {
-        this.finishedPointEntities.push(entity);
-      } else {
+      if (entity) {
         this.entities.remove(entity);
       }
     });

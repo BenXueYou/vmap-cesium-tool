@@ -87,6 +87,7 @@ onMounted(async () => {
       token: TDT_TK,
       mapType: 'tiandi',
       baseLayerPicker: false,
+      showRenderLoopErrors: true,
       terrainProvider: new Cesium.EllipsoidTerrainProvider(),
       success: () => {
         console.log('初始化地图成功');
