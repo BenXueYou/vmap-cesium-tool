@@ -269,55 +269,32 @@ export class CesiumMapToolbar {
    * 获取所有按钮配置（包括默认按钮和自定义按钮），并添加 sort 值
    */
   private getAllButtonsWithSort(): ButtonConfig[] {    
-    // 获取自定义按钮配置
-    const customButtons: ButtonConfig[] = [];
-    if (this.config.buttons && this.config.buttons.length > 0) {
-      this.config.buttons.forEach(customButton => {
-        const defaultButton = defaultButtons.find(btn => btn.id === customButton.id);
-        // 处理图标：支持 string、HTMLElement 或 false
-        let iconValue = '';
-        if (customButton.icon !== false) {
-          iconValue = typeof customButton.icon === 'string'
-            ? customButton.icon
-            : (defaultButton?.icon || '');
-        } else if (defaultButton?.icon) {
-          iconValue = defaultButton.icon;
-        }
-        customButtons.push({
-          id: customButton.id || defaultButton?.id || '',
-          icon: iconValue,
-          title: customButton.title || defaultButton?.title || '',
-          size: typeof customButton.size === 'number'
-            ? customButton.size
-            : (typeof defaultButton?.size === 'number' ? defaultButton.size : undefined),
-          backgroundColor: customButton.backgroundColor || defaultButton?.backgroundColor || '',
-          borderColor: customButton.borderColor || defaultButton?.borderColor || '',
-          borderWidth: customButton.borderWidth || defaultButton?.borderWidth || 1,
-          borderStyle: customButton.borderStyle || defaultButton?.borderStyle || 'solid',
-          callback: customButton.callback || defaultButton?.callback || (() => { }),
-          color: customButton.color || defaultButton?.color || 'rgba(66, 133, 244, 0.4)',
-          sort: customButton.sort ?? defaultButton?.sort ?? 9999, // 自定义按钮的 sort，未设置则使用默认值或排在最后
-        });
-      });
-    }
+    // Ensure config.buttons is defined
+    const customButtons = this.config.buttons || [];
 
-    // 合并默认按钮和自定义按钮，去重（自定义按钮优先）
-    const allButtons: ButtonConfig[] = [];
-    const addedIds = new Set<string>();
+    // Map custom buttons to include default properties where applicable
+    const allButtons = customButtons.map(customButton => {
+      const defaultButton = defaultButtons.find(btn => btn.id === customButton.id);
 
-    // 先添加所有按钮（包括默认和自定义）
-    [...defaultButtons, ...customButtons].forEach(button => {
-      if (!addedIds.has(button.id)) {
-        allButtons.push(button);
-        addedIds.add(button.id);
-      } else {
-        // 如果已存在，更新为自定义按钮的配置（自定义按钮优先）
-        const index = allButtons.findIndex(btn => btn.id === button.id);
-        if (index !== -1) {
-          allButtons[index] = button;
-        }
-      }
+      return {
+        id: customButton.id,
+        icon: typeof customButton.icon === 'string'
+          ? customButton.icon
+          : defaultButton?.icon || '',
+        title: customButton.title || defaultButton?.title || '',
+        size: customButton.size ?? defaultButton?.size,
+        backgroundColor: customButton.backgroundColor || defaultButton?.backgroundColor || '',
+        borderColor: customButton.borderColor || defaultButton?.borderColor || '',
+        borderWidth: customButton.borderWidth || defaultButton?.borderWidth || 1,
+        borderStyle: customButton.borderStyle || defaultButton?.borderStyle || 'solid',
+        callback: customButton.callback || defaultButton?.callback || (() => {}),
+        color: customButton.color || defaultButton?.color || 'rgba(66, 133, 244, 0.4)',
+        sort: customButton.sort ?? defaultButton?.sort ?? 9999,
+      };
     });
+
+    // Sort buttons based on their `sort` value
+    allButtons.sort((a, b) => (a.sort ?? Infinity) - (b.sort ?? Infinity));
 
     return allButtons;
   }
@@ -431,6 +408,8 @@ export class CesiumMapToolbar {
     // 获取按钮配置
     const buttons = this.getButtonConfigs();
 
+    console.log('创建工具栏按钮:', buttons);
+
     buttons.forEach(button => {
       const buttonElement = this.createButton(button);
       this.toolbarElement.appendChild(buttonElement);
@@ -444,15 +423,15 @@ export class CesiumMapToolbar {
    */
   private getButtonConfigs(): ButtonConfig[] {
     const allButtons = this.getAllButtonsWithSort();
-
-    // 根据 sort 值排序（sort 值越小越靠前，未设置 sort 的按钮排在最后）
-    allButtons.sort((a, b) => {
-      const sortA = a.sort ?? 9999;
-      const sortB = b.sort ?? 9999;
-      return sortA - sortB;
+    const filteredButtons = allButtons.filter(button => {
+      if (this.config.buttons) {
+        return this.config.buttons.some(configButton => configButton.id === button.id);
+      }
+      return true;
     });
-
-    return allButtons;
+    // 按sort排序
+    filteredButtons.sort((a, b) => (a.sort ?? Infinity) - (b.sort ?? Infinity));
+    return filteredButtons;
   }
 
   /**

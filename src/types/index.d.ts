@@ -14,6 +14,7 @@ export interface ToolbarConfig {
   borderWidth?: number;
   boxShadow?: string;
   zIndex?: number;
+  buttons?: ButtonConfig[]; // Explicit configuration of toolbar buttons
 }
 
 // 按钮配置接口
