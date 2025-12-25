@@ -414,13 +414,14 @@ export function useOverlayHelper(
         [lon - 0.015, lat - 0.01],
         [lon - 0.005, lat - 0.01],
         [lon, lat - 0.005],
-        [lon - 0.005, lat + 0.005],
-        [lon - 0.015, lat],
+        // [lon - 0.005, lat + 0.005],
+        // [lon - 0.015, lat],
       ],
-      material: Cesium.Color.RED.withAlpha(0.5),
+      // 预期：填充为半透明橙色，边框为不透明橙色
+      material: Cesium.Color.ORANGE.withAlpha(0.5),
       outline: true,
-      outlineColor: Cesium.Color.RED,
-      outlineWidth: 2,
+      outlineColor: Cesium.Color.ORANGE,
+      outlineWidth: 10,
       onClick: () => {
         console.log('多边形被点击');
         message.value = '多边形被点击';

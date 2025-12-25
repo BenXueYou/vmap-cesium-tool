@@ -176,42 +176,43 @@ export class MapPolygon {
 
     const ringThickness = (options.outlineWidth && options.outlineWidth > 1) ? options.outlineWidth : 0;
     if (ringThickness && ringThickness > 0) {
-      const heights = positions.map(p => Cesium.Cartographic.fromCartesian(p).height || 0);
-      const baseHeight = heights.length ? Math.min(...heights) : 0;
-      const heightEpsilon = 0.1;
-      const outerPositions = this.elevatePositions(positions, baseHeight + heightEpsilon);
-      const innerPositions = this.computeInnerOffsetPositions(positions, ringThickness, baseHeight);
-
-      const outer = this.entities.add({
+      // 方案改为：填充用 Polygon；粗边框用 Polyline（闭合折线），避免双层多边形叠加产生的视觉问题
+      const fill = this.entities.add({
+        id,
         polygon: {
-          hierarchy: new Cesium.PolygonHierarchy(outerPositions, [new Cesium.PolygonHierarchy(innerPositions)]),
-          material: new Cesium.ColorMaterialProperty(options.material ? this.resolveColor(options.material) : Cesium.Color.BLACK),
-          outline: false,
-          heightReference: options.heightReference ?? Cesium.HeightReference.NONE,
-        },
-      });
-
-      const inner = this.entities.add({
-        polygon: {
-          hierarchy: new Cesium.PolygonHierarchy(innerPositions),
-          material: new Cesium.ColorMaterialProperty(options.outlineColor ? this.resolveColor(options.outlineColor) : Cesium.Color.BLACK),
+          hierarchy: positions,
+          material: this.resolveMaterial(options.material ?? Cesium.Color.ORANGE.withAlpha(0.5)),
           outline: false,
           heightReference: options.heightReference ?? Cesium.HeightReference.NONE,
           extrudedHeight: options.extrudedHeight,
         },
       });
 
+      // 构造闭合边界路径
+      const borderPositions: Cesium.Cartesian3[] = positions.slice();
+      if (borderPositions.length >= 2) borderPositions.push(positions[0]);
+
+      const border = this.entities.add({
+        polyline: {
+          positions: borderPositions,
+          width: ringThickness,
+          material: new Cesium.ColorMaterialProperty(
+            this.resolveColor(options.outlineColor ?? Cesium.Color.ORANGE)
+          ),
+          clampToGround: true,
+        },
+      });
+
       if (options.onClick) {
-        (outer as any)._onClick = options.onClick;
-        (inner as any)._onClick = options.onClick;
+        (fill as any)._onClick = options.onClick;
+        (border as any)._onClick = options.onClick;
       }
 
-      (outer as any)._innerEntity = inner;
-      (outer as any)._isRing = true;
-      (outer as any)._ringThickness = ringThickness;
-      (outer as any)._outerPositions = positions;
+      (fill as any)._borderEntity = border;
+      (fill as any)._isThickOutline = true;
+      (fill as any)._outlineWidth = ringThickness;
 
-      return outer;
+      return fill;
     }
 
     const entity = this.entities.add({
@@ -239,17 +240,17 @@ export class MapPolygon {
    */
   public updatePositions(entity: Entity, positions: OverlayPosition[]): void {
     const newPositions = positions.map(pos => this.convertPosition(pos));
-    const inner = (entity as any)._innerEntity as Entity | undefined;
-    const thickness = (entity as any)._ringThickness as number | undefined;
-    if (entity.polygon && inner && thickness) {
-      const heights = newPositions.map(p => Cesium.Cartographic.fromCartesian(p).height || 0);
-      const baseHeight = heights.length ? Math.min(...heights) : 0;
-      const heightEpsilon = 0.1;
-      const outerPositions = this.elevatePositions(newPositions, baseHeight + heightEpsilon);
-      const innerPositions = this.computeInnerOffsetPositions(newPositions, thickness, baseHeight);
-      entity.polygon.hierarchy = new Cesium.ConstantProperty(new Cesium.PolygonHierarchy(outerPositions, [new Cesium.PolygonHierarchy(innerPositions)]));
-      inner.polygon!.hierarchy = new Cesium.ConstantProperty(new Cesium.PolygonHierarchy(innerPositions));
-      (entity as any)._outerPositions = newPositions;
+    const border = (entity as any)._borderEntity as Entity | undefined;
+    const isThick = (entity as any)._isThickOutline as boolean | undefined;
+    if (entity.polygon && border && isThick) {
+      // 更新填充
+      entity.polygon.hierarchy = new Cesium.ConstantProperty(new Cesium.PolygonHierarchy(newPositions));
+      // 更新边框折线（闭合）
+      const closed = newPositions.slice();
+      if (closed.length >= 2) closed.push(newPositions[0]);
+      if (border.polyline) {
+        border.polyline.positions = new Cesium.ConstantProperty(closed);
+      }
     } else if (entity.polygon) {
       entity.polygon.hierarchy = new Cesium.ConstantProperty(new Cesium.PolygonHierarchy(newPositions));
     }
@@ -259,28 +260,18 @@ export class MapPolygon {
    * 更新 Polygon 样式
    */
   public updateStyle(entity: Entity, options: Partial<Pick<PolygonOptions, 'material' | 'outline' | 'outlineColor' | 'outlineWidth'>>): void {
-    const inner = (entity as any)._innerEntity as Entity | undefined;
-    const isRing = (entity as any)._isRing as boolean | undefined;
-    if (isRing && entity.polygon && inner) {
-      if (options.outlineColor !== undefined) {
-        entity.polygon.material = new Cesium.ColorMaterialProperty(this.resolveColor(options.outlineColor));
-      }
+    const border = (entity as any)._borderEntity as Entity | undefined;
+    const isThick = (entity as any)._isThickOutline as boolean | undefined;
+    if (isThick && entity.polygon && border) {
       if (options.material !== undefined) {
-        inner.polygon!.material = this.resolveMaterial(options.material);
+        entity.polygon.material = this.resolveMaterial(options.material);
       }
-      if (options.outlineWidth !== undefined) {
-        const thickness = Math.max(0, options.outlineWidth);
-        (entity as any)._ringThickness = thickness;
-        const outerPositions = ((entity as any)._outerPositions as Cesium.Cartesian3[]) ?? undefined;
-        if (outerPositions && outerPositions.length >= 3) {
-          const heights = outerPositions.map(p => Cesium.Cartographic.fromCartesian(p).height || 0);
-          const baseHeight = heights.length ? Math.min(...heights) : 0;
-          const heightEpsilon = 0.1;
-          const outerElev = this.elevatePositions(outerPositions, baseHeight + heightEpsilon);
-          const innerPositions = this.computeInnerOffsetPositions(outerPositions, thickness, baseHeight);
-          entity.polygon.hierarchy = new Cesium.ConstantProperty(new Cesium.PolygonHierarchy(outerElev, [new Cesium.PolygonHierarchy(innerPositions)]));
-          inner.polygon!.hierarchy = new Cesium.ConstantProperty(new Cesium.PolygonHierarchy(innerPositions));
-        }
+      if (options.outlineColor !== undefined && border.polyline) {
+        border.polyline.material = new Cesium.ColorMaterialProperty(this.resolveColor(options.outlineColor));
+      }
+      if (options.outlineWidth !== undefined && border.polyline) {
+        border.polyline.width = new Cesium.ConstantProperty(Math.max(0, options.outlineWidth));
+        (entity as any)._outlineWidth = options.outlineWidth;
       }
     } else if (entity.polygon) {
       if (options.material !== undefined) {
@@ -305,10 +296,10 @@ export class MapPolygon {
     const entity = typeof entityOrId === 'string' ? this.entities.getById(entityOrId) : entityOrId;
     if (!entity) return false;
     delete (entity as any)._onClick;
-    const inner = (entity as any)._innerEntity as Entity | undefined;
-    if (inner) {
-      delete (inner as any)._onClick;
-      this.entities.remove(inner);
+    const border = (entity as any)._borderEntity as Entity | undefined;
+    if (border) {
+      delete (border as any)._onClick;
+      this.entities.remove(border);
     }
     return this.entities.remove(entity);
   }
