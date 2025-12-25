@@ -81,7 +81,11 @@ export function useDrawHelper(
 
     currentDrawMode.value = "circle";
     isDrawing.value = true;
-    drawHelper.value.startDrawingCircle();
+    drawHelper.value.startDrawingCircle({
+      fillColor: Cesium.Color.GREEN.withAlpha(0.5),
+      outlineColor: Cesium.Color.GREEN,
+      outlineWidth: 6,
+    });
     message.value = "开始绘制圆形：左键确定圆心，再次左键确定半径，双击完成";
 
     drawHelper.value.onDrawEnd(() => {
@@ -102,7 +106,7 @@ export function useDrawHelper(
     isDrawing.value = true;
     drawHelper.value.startDrawingPolygon({
       strokeWidth: 4,
-      strokeColor: Cesium.Color.BLUE,
+      strokeColor: Cesium.Color.YELLOW,
       fillColor: Cesium.Color.YELLOW.withAlpha(0.5),
     });
     message.value = "开始绘制多边形：左键添加点，双击完成，右键删除最后一点";

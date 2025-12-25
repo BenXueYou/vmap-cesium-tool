@@ -8,6 +8,7 @@ import { isValidCartesian3, calculatePolygonArea, calculatePolygonCenter, format
  */
 export class DrawPolygon extends BaseDraw {
   private currentPolygonEntity: Entity | null = null;
+  private currentBorderEntity: Entity | null = null;
 
   /**
    * 开始绘制
@@ -20,6 +21,7 @@ export class DrawPolygon extends BaseDraw {
     this.clearTempEntities();
     this.tempPositions = [];
     this.currentPolygonEntity = null;
+    this.currentBorderEntity = null;
 
     if (this.originalDepthTestAgainstTerrain === null) {
       this.originalDepthTestAgainstTerrain = this.scene.globe.depthTestAgainstTerrain;
@@ -60,34 +62,54 @@ export class DrawPolygon extends BaseDraw {
       });
       const heightReference = Cesium.HeightReference.NONE;
 
-      const fillColor = this.drawOptions?.fillColor ? this.resolveColor(this.drawOptions.fillColor) : Cesium.Color.LIGHTGREEN;
-      const outlineColor = this.drawOptions?.outlineColor ? this.resolveColor(this.drawOptions.outlineColor) : Cesium.Color.DARKGREEN;
-      const outlineWidth = this.drawOptions?.outlineWidth ?? 2;
+      // 使用输入参数：填充色、描边颜色与宽度
+      const fillColor = this.drawOptions?.fillColor
+        ? this.resolveColor(this.drawOptions.fillColor)
+        : Cesium.Color.LIGHTGREEN;
+      const strokeColor = this.drawOptions?.strokeColor
+        ? this.resolveColor(this.drawOptions.strokeColor)
+        : (this.drawOptions?.outlineColor ? this.resolveColor(this.drawOptions.outlineColor) : Cesium.Color.DARKGREEN);
+      const strokeWidth = this.drawOptions?.strokeWidth ?? (this.drawOptions?.outlineWidth ?? 2);
 
+      // 先更新/创建填充面
       if (this.currentPolygonEntity) {
-        this.currentPolygonEntity.polygon!.hierarchy =
-          new Cesium.ConstantProperty(
-            new Cesium.PolygonHierarchy(polygonPositions)
-          );
-        this.currentPolygonEntity.polygon!.heightReference =
-          new Cesium.ConstantProperty(heightReference);
-        this.currentPolygonEntity.polygon!.material = new Cesium.ColorMaterialProperty(fillColor.withAlpha(0.3));
-        this.currentPolygonEntity.polygon!.outlineColor = new Cesium.ConstantProperty(outlineColor);
-        this.currentPolygonEntity.polygon!.outlineWidth = new Cesium.ConstantProperty(outlineWidth);
+        this.currentPolygonEntity.polygon!.hierarchy = new Cesium.ConstantProperty(
+          new Cesium.PolygonHierarchy(polygonPositions)
+        );
+        this.currentPolygonEntity.polygon!.heightReference = new Cesium.ConstantProperty(heightReference);
+        this.currentPolygonEntity.polygon!.material = new Cesium.ColorMaterialProperty(fillColor);
+        this.currentPolygonEntity.polygon!.outline = new Cesium.ConstantProperty(false);
       } else {
         this.currentPolygonEntity = this.entities.add({
           polygon: {
-            hierarchy: new Cesium.ConstantProperty(
-              new Cesium.PolygonHierarchy(polygonPositions)
-            ),
-            material: fillColor.withAlpha(0.3),
-            outline: true,
-            outlineColor: outlineColor,
-            outlineWidth: outlineWidth,
+            hierarchy: new Cesium.ConstantProperty(new Cesium.PolygonHierarchy(polygonPositions)),
+            material: new Cesium.ColorMaterialProperty(fillColor),
+            outline: false,
             heightReference,
           },
         });
         this.tempEntities.push(this.currentPolygonEntity);
+      }
+
+      // 再更新/创建边框折线（闭合）
+      const closedPositions = polygonPositions.slice();
+      if (closedPositions.length >= 2) closedPositions.push(polygonPositions[0]);
+
+      if (this.currentBorderEntity && this.currentBorderEntity.polyline) {
+        this.currentBorderEntity.polyline.positions = new Cesium.ConstantProperty(closedPositions);
+        this.currentBorderEntity.polyline.width = new Cesium.ConstantProperty(strokeWidth);
+        this.currentBorderEntity.polyline.material = new Cesium.ColorMaterialProperty(strokeColor);
+        this.currentBorderEntity.polyline.clampToGround = new Cesium.ConstantProperty(false);
+      } else {
+        this.currentBorderEntity = this.entities.add({
+          polyline: {
+            positions: new Cesium.ConstantProperty(closedPositions),
+            width: strokeWidth,
+            material: new Cesium.ColorMaterialProperty(strokeColor),
+            clampToGround: false,
+          },
+        });
+        this.tempEntities.push(this.currentBorderEntity);
       }
     } else {
       if (this.currentPolygonEntity) {
@@ -97,6 +119,14 @@ export class DrawPolygon extends BaseDraw {
           this.tempEntities.splice(index, 1);
         }
         this.currentPolygonEntity = null;
+      }
+      if (this.currentBorderEntity) {
+        this.entities.remove(this.currentBorderEntity);
+        const idx = this.tempEntities.indexOf(this.currentBorderEntity);
+        if (idx > -1) {
+          this.tempEntities.splice(idx, 1);
+        }
+        this.currentBorderEntity = null;
       }
     }
   }
@@ -121,13 +151,16 @@ export class DrawPolygon extends BaseDraw {
     });
 
     let finalEntity: Entity | null = null;
+    let finalBorder: Entity | null = null;
 
     // 使用 drawOptions 中的颜色和边框设置
-    const fillColor = this.drawOptions?.fillColor ? this.resolveColor(this.drawOptions.fillColor) : Cesium.Color.LIGHTGREEN;
-    const outlineColor = this.drawOptions?.strokeColor 
+    const fillColor = this.drawOptions?.fillColor
+      ? this.resolveColor(this.drawOptions.fillColor)
+      : Cesium.Color.LIGHTGREEN;
+    const strokeColor = this.drawOptions?.strokeColor
       ? this.resolveColor(this.drawOptions.strokeColor)
       : (this.drawOptions?.outlineColor ? this.resolveColor(this.drawOptions.outlineColor) : Cesium.Color.DARKGREEN);
-    const outlineWidth = this.drawOptions?.strokeWidth ?? (this.drawOptions?.outlineWidth ?? 2);
+    const strokeWidth = this.drawOptions?.strokeWidth ?? (this.drawOptions?.outlineWidth ?? 2);
 
     if (this.offsetHeight > 0) {
       const elevatedPositions = groundPositions.map(pos => {
@@ -143,11 +176,20 @@ export class DrawPolygon extends BaseDraw {
         name: "绘制的多边形区域",
         polygon: {
           hierarchy: new Cesium.PolygonHierarchy(elevatedPositions),
-          material: fillColor.withAlpha(0.3),
-          outline: true,
-          outlineColor: outlineColor,
-          outlineWidth: outlineWidth,
+          material: new Cesium.ColorMaterialProperty(fillColor),
+          outline: false,
           heightReference: Cesium.HeightReference.NONE,
+        },
+      });
+      // 边框（不贴地，随高度提升）
+      const closedElev = elevatedPositions.slice();
+      if (closedElev.length >= 2) closedElev.push(elevatedPositions[0]);
+      finalBorder = this.entities.add({
+        polyline: {
+          positions: closedElev,
+          width: strokeWidth,
+          material: new Cesium.ColorMaterialProperty(strokeColor),
+          clampToGround: false,
         },
       });
       (finalEntity as any)._groundPositions = groundPositions;
@@ -164,11 +206,20 @@ export class DrawPolygon extends BaseDraw {
         name: "绘制的多边形区域",
         polygon: {
           hierarchy: new Cesium.PolygonHierarchy(groundPositions),
-          material: fillColor.withAlpha(0.3),
-          outline: true,
-          outlineColor: outlineColor,
-          outlineWidth: outlineWidth,
+          material: new Cesium.ColorMaterialProperty(fillColor),
+          outline: false,
           heightReference: Cesium.HeightReference.NONE,
+        },
+      });
+      // 边框（贴地）
+      const closedGround = groundPositions.slice();
+      if (closedGround.length >= 2) closedGround.push(groundPositions[0]);
+      finalBorder = this.entities.add({
+        polyline: {
+          positions: closedGround,
+          width: strokeWidth,
+          material: new Cesium.ColorMaterialProperty(strokeColor),
+          clampToGround: true,
         },
       });
       (finalEntity as any)._groundPositions = groundPositions;
@@ -178,6 +229,9 @@ export class DrawPolygon extends BaseDraw {
         (finalEntity as any)._drawType = this.getDrawType();
         if (this.drawOptions?.onClick) {
           (finalEntity as any)._onClick = this.drawOptions.onClick;
+        }
+        if (finalBorder) {
+          (finalEntity as any)._borderEntity = finalBorder;
         }
       }
     }
@@ -237,6 +291,7 @@ export class DrawPolygon extends BaseDraw {
     this.tempEntities = [];
     this.tempPositions = [];
     this.currentPolygonEntity = null;
+    this.currentBorderEntity = null;
 
     if (this.originalDepthTestAgainstTerrain !== null) {
       this.scene.globe.depthTestAgainstTerrain = this.originalDepthTestAgainstTerrain;
