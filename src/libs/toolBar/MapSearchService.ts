@@ -35,12 +35,15 @@ export class SearchService {
       return; // 如果搜索框已存在，不重复创建
     }
 
+    // 根据按钮在工具栏中的垂直偏移动态定位搜索框
+    const offsetTop = (buttonElement as HTMLElement).offsetTop;
+
     const searchContainer = document.createElement('div');
     searchContainer.className = 'search-container';
     searchContainer.style.cssText = `
       position: absolute;
       right: 100%;
-      top: 0;
+      top: ${offsetTop}px;
       margin-right: 8px;
       background: rgba(0, 40, 80, 0.95);
       border: 1px solid rgba(255, 255, 255, 0.2);
@@ -80,6 +83,26 @@ export class SearchService {
     // 插入到按钮前面
     this.toolbarElement.insertBefore(searchContainer, buttonElement);
     this.searchContainer = searchContainer;
+
+    // --- 屏幕边缘避让：防止搜索框超出可视区域 ---
+    const containerRect = searchContainer.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+
+    // 如果底部超出屏幕，则向上移动
+    if (containerRect.bottom > viewportHeight) {
+      const overflow = containerRect.bottom - viewportHeight;
+      const currentTop = parseFloat(searchContainer.style.top || '0');
+      const newTop = Math.max(0, currentTop - overflow);
+      searchContainer.style.top = `${newTop}px`;
+    }
+
+    // 如果顶部小于 0，也做一次修正
+    const updatedRect = searchContainer.getBoundingClientRect();
+    if (updatedRect.top < 0) {
+      const delta = -updatedRect.top;
+      const currentTop = parseFloat(searchContainer.style.top || '0');
+      searchContainer.style.top = `${currentTop + delta}px`;
+    }
 
     // 搜索功能
     let searchTimeout: ReturnType<typeof setTimeout>;

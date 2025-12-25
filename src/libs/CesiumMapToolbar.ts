@@ -702,12 +702,15 @@ export class CesiumMapToolbar {
       return; // 如果菜单已存在，不重复创建
     }
 
+    // 根据按钮在工具栏中的垂直偏移动态定位测量菜单
+    const offsetTop = (buttonElement as HTMLElement).offsetTop;
+
     const menu = document.createElement('div');
     menu.className = 'measurement-menu';
     menu.style.cssText = `
       position: absolute;
       right: 100%;
-      top: 0;
+      top: ${offsetTop}px;
       margin-right: 8px;
       background: rgba(0, 40, 80, 0.95);
       border: 1px solid rgba(255, 255, 255, 0.2);
@@ -757,7 +760,26 @@ export class CesiumMapToolbar {
       menu.appendChild(menuItem);
     });
 
+    // 插入到按钮前面，这样菜单出现在按钮左侧
     this.toolbarElement.insertBefore(menu, buttonElement);
+
+    // --- 屏幕边缘避让：防止测量菜单超出可视区域 ---
+    const menuRect = menu.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+
+    if (menuRect.bottom > viewportHeight) {
+      const overflow = menuRect.bottom - viewportHeight;
+      const currentTop = parseFloat(menu.style.top || '0');
+      const newTop = Math.max(0, currentTop - overflow);
+      menu.style.top = `${newTop}px`;
+    }
+
+    const updatedRect = menu.getBoundingClientRect();
+    if (updatedRect.top < 0) {
+      const delta = -updatedRect.top;
+      const currentTop = parseFloat(menu.style.top || '0');
+      menu.style.top = `${currentTop + delta}px`;
+    }
 
     // 鼠标离开菜单区域时关闭
     const closeMenu = () => {
