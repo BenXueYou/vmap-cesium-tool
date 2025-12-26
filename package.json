@@ -22,8 +22,8 @@
   },
   "scripts": {
     "dev": "vite --force",
-    "build": "vite build && vite build --mode lib",
-    "build:lib": "vite build --mode lib",
+    "build": "vite build --mode lib",
+    "build:dts": "vue-tsc -p tsconfig.dts.json",
     "build:plugin": "node scripts/build-plugin.js",
     "generate:file-list": "node scripts/generate-file-list.js",
     "preview": "vite preview",

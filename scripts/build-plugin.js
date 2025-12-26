@@ -19,7 +19,7 @@ try {
 
   // 构建库
   console.log('📦 构建库文件...');
-  execSync('npm run build:lib', { stdio: 'inherit' });
+  execSync('npm run build', { stdio: 'inherit' });
 
   // 复制类型定义文件
   console.log('📝 复制类型定义文件...');

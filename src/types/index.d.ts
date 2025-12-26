@@ -1,9 +1,9 @@
 // VMap Cesium Toolbar Plugin Type Definitions
 
 import type * as Cesium from 'cesium';
-import type { Viewer, Cartesian3, Cartographic, Entity, Cartesian2 } from 'cesium';
+import type { Viewer, Cartesian3, Cartographic, Entity, Cartesian2, Color } from 'cesium';
 
-// 工具栏配置接口
+// 工具栏配置接口（与 CesiumMapModel.ts 保持一致）
 export interface ToolbarConfig {
   position?: 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left';
   buttonSize?: number;
@@ -14,24 +14,55 @@ export interface ToolbarConfig {
   borderWidth?: number;
   boxShadow?: string;
   zIndex?: number;
-  buttons?: ButtonConfig[]; // Explicit configuration of toolbar buttons
+  buttons?: CustomButtonConfig[];
 }
 
-// 按钮配置接口
+// 按钮配置接口（内部默认按钮配置使用）
 export interface ButtonConfig {
+  sort?: number;
   id: string;
   icon: string;
   title: string;
   size?: number;
   color?: string;
+  borderColor?: string;
+  borderWidth?: number;
+  borderStyle?: string;
   hoverColor?: string;
   activeColor?: string;
+  backgroundColor?: string;
+  callback?: () => void;
+  activeIcon?: string | HTMLElement;
+}
+
+// 自定义按钮配置接口（对外主要使用）
+export interface CustomButtonConfig {
+  id: string;
+  icon: string | HTMLElement | false;
+  title: string;
+  enabled?: boolean;
+  visible?: boolean;
+  size?: number;
+  color?: string;
+  borderColor?: string;
+  borderWidth?: number;
+  borderStyle?: string;
+  padding?: string;
+  hoverColor?: string;
+  activeColor?: string;
+  backgroundColor?: string;
+  sort?: number;
+  activeIcon?: string | HTMLElement | false;
+  callback?: () => void;
+  onClick?: (buttonId: string, buttonElement: HTMLElement) => void;
 }
 
 // 搜索回调接口
 export interface SearchCallback {
   onSearch?: (query: string) => Promise<SearchResult[]>;
   onSelect?: (result: SearchResult) => void;
+  onSearchInput?: (query: string, container: HTMLElement) => void;
+  onSearchResults?: (results: SearchResult[], container: HTMLElement) => void;
 }
 
 // 搜索结果接口
@@ -53,8 +84,8 @@ export interface MeasurementCallback {
 
 // 缩放回调接口
 export interface ZoomCallback {
-  onZoomIn?: (beforeLevel: number, afterLevel: number) => void;
-  onZoomOut?: (beforeLevel: number, afterLevel: number) => void;
+  onZoomIn?: (beforeHeight: number, afterHeight: number, currentLevel: number) => void;
+  onZoomOut?: (beforeHeight: number, afterHeight: number, currentLevel: number) => void;
 }
 
 // 地图类型接口
@@ -62,7 +93,9 @@ export interface MapType {
   id: string;
   name: string;
   thumbnail: string;
-  provider: any; // Cesium.ImageryProvider
+  provider: (token: string) => Cesium.ImageryProvider[];
+  terrainProvider?: (token: string) => Cesium.TerrainProvider | null;
+  geoWTFS?: (token: string, viewer: Cesium.Viewer) => any | null;
 }
 
 // 视锥体选项接口
@@ -79,17 +112,37 @@ export interface FrustumOptions {
 }
 
 // 覆盖物选项接口
+// 覆盖物选项（与 CesiumMapModel.ts 保持一致）
 export interface OverlayOptions {
   position: Cartesian3;
   type: 'point' | 'label' | 'billboard' | 'model' | 'cylinder';
-  text?: string;
-  image?: string;
-  model?: string;
-  color?: any; // Cesium.Color
-  scale?: number;
-  height?: number;
-  width?: number;
-  heightReference?: any; // Cesium.HeightReference
+  point?: {
+    pixelSize?: number;
+    color?: Color;
+    outlineColor?: Color;
+    outlineWidth?: number;
+  };
+  label?: {
+    text: string;
+    font?: string;
+    fillColor?: Color;
+    outlineColor?: Color;
+    outlineWidth?: number;
+  };
+  billboard?: {
+    image: string;
+    scale?: number;
+  };
+  model?: {
+    uri: string;
+    scale?: number;
+  };
+  cylinder?: {
+    length: number;
+    topRadius: number;
+    bottomRadius: number;
+    material?: Color;
+  };
 }
 
 // 地图中心点接口
@@ -103,45 +156,50 @@ export interface MapCenter {
 
 // 初始化选项接口
 export interface InitOptions {
-  token?: string;
-  cesiumToken?: string;
-  terrain?: any; // Cesium.Terrain
-  terrainProvider?: any; // Cesium.TerrainProvider
+  terrain?: Cesium.Terrain;
+  terrainProvider?: Cesium.TerrainProvider;
   mapType?: string;
-  imageryProvider?: any; // Cesium.UrlTemplateImageryProvider
-  imageryLayers?: any; // Cesium.ImageryLayerCollection
-  terrainShadows?: any; // Cesium.ShadowMode
-  contextOptions?: any; // Cesium.ContextOptions
+  imageryProvider?: Cesium.UrlTemplateImageryProvider;
+  imageryLayers?: Cesium.ImageryLayerCollection;
+  terrainShadows?: Cesium.ShadowMode;
+  contextOptions?: Cesium.ContextOptions;
   scene3DOnly?: boolean;
-  isFlyTo?: boolean;
-  isFly?: boolean;
   selectionIndicator?: boolean;
   navigationHelpButton?: boolean;
   fullscreenButton?: boolean;
   geocoder?: boolean;
   homeButton?: boolean;
   infoBox?: boolean;
+  vrButton?: boolean;
   sceneModePicker?: boolean;
-  baseLayerPicker?: boolean;
   timeline?: boolean;
   animation?: boolean;
-  clock?: any; // Cesium.Clock
+  isFly?: boolean;
+  flyDuration?: number;
+  baseLayerPicker?: boolean;
   navigationInstructionsInitiallyVisible?: boolean;
-  sceneMode?: any; // Cesium.SceneMode
-  screenSpaceEventHandler?: any; // Cesium.ScreenSpaceEventHandler
+  clock?: Cesium.Clock;
+  sceneMode?: Cesium.SceneMode;
+  screenSpaceEventHandler?: Cesium.ScreenSpaceEventHandler;
   useDefaultRenderLoop?: boolean;
   targetFrameRate?: number;
   showRenderLoopErrors?: boolean;
   automaticallyTrackDataSourceClocks?: boolean;
-  dataSources?: any; // Cesium.DataSourceCollection
+  dataSources?: Cesium.DataSourceCollection;
   creationTime?: number;
   useBrowserRecommendedResolution?: boolean;
   resolutionScale?: number;
   orderIndependentTransparency?: boolean;
   shadows?: boolean;
+  depthTestAgainstTerrain?: boolean;
   terrainExaggeration?: number;
   maximumScreenSpaceError?: number;
   maximumNumberOfLoadedTiles?: number;
+  token?: string;
+  cesiumToken?: string;
+  success?: () => void;
+  cancel?: () => void;
+  mapCenter?: MapCenter;
 }
 
 // 主要类声明
@@ -162,6 +220,16 @@ export declare class CesiumMapToolbar {
   setInitialCenter(center: { longitude: number; latitude: number; height: number }): void;
   getInitialCenter(): { longitude: number; latitude: number; height: number } | undefined;
   resetToInitialLocation(): void;
+  /** 当前测量模式：none / distance / area */
+  readonly measurement: {
+    getMeasureMode: () => 'none' | 'distance' | 'area';
+  };
+  /** 更新内置或自定义按钮配置 */
+  updateButtonConfig(buttonId: string, config: Partial<CustomButtonConfig>): void;
+  /** 添加或替换自定义按钮 */
+  addCustomButton(config: CustomButtonConfig): void;
+  /** 按 id 移除按钮 */
+  removeButton(buttonId: string): void;
   drawMonitoringCircle(
     longitude: number,
     latitude: number,
@@ -373,6 +441,20 @@ export declare class CesiumOverlayService {
   destroy(): void;
 }
 
+// 单个信息窗口工具类（与 libs/overlay/MapInfoWindow.ts 保持一致）
+export declare class MapInfoWindow {
+  constructor(viewer: Viewer, container: HTMLElement);
+  setDefaultUpdateInterval(ms: number): void;
+  forceUpdateAll(): void;
+  add(options: InfoWindowOptions): Entity;
+  update(options: Partial<InfoWindowOptions> & { id: string }): void;
+  updatePosition(entity: Entity, position: OverlayPosition): void;
+  setVisible(entity: Entity, visible: boolean): void;
+  remove(entity: Entity): void;
+  removeAll(): void;
+  destroy(): void;
+}
+
 // Overlay: 工具类声明（只暴露主要方法）
 export declare class MapMarker {
   constructor(viewer: Viewer);
@@ -431,29 +513,119 @@ export declare class MapCircle {
   updateStyle(entity: Entity, options: Partial<Pick<CircleOptions, 'material' | 'outline' | 'outlineColor' | 'outlineWidth'>>): void;
 }
 
-// 绘制相关类型（与内部实现保持一致）
-export interface DrawOptions {
-  strokeColor?: any | string;
-  strokeWidth?: number;
-  fillColor?: any | string;
-  outlineColor?: any | string;
-  outlineWidth?: number;
-  heightEpsilon?: number; // 高度容差，用于环形方案
-  selected?: {
-    color?: any | string;
-    width?: number;
-    outlineColor?: any | string;
-    outlineWidth?: number;
-  };
-  onClick?: (entity: Entity, type?: 'line' | 'polygon' | 'rectangle' | 'circle', positions?: Cartesian3[]) => void;
+// toolbar: 相机控制器及服务（与工具栏相关类保持一致）
+export interface MapInitialCenter {
+  longitude: number;
+  latitude: number;
+  height: number;
 }
 
+export interface CesiumMapControllerOptions {
+  initialCenter?: MapInitialCenter;
+  getMapTypes?: () => MapType[];
+  getCurrentMapTypeId?: () => string;
+  getToken?: () => string;
+  zoomCallback?: ZoomCallback;
+  onSceneModeChanged?: () => void;
+}
+
+export declare class CesiumMapController {
+  constructor(viewer: Viewer, options?: CesiumMapControllerOptions);
+  setupCameraZoomLimitListener(): void;
+  getCurrentZoomLevel(): number;
+  setZoomLevel(zoomLevel: number): void;
+  zoomIn(): void;
+  zoomOut(): void;
+  toggle2D3D(buttonElement: HTMLElement): void;
+  resetLocation(): void;
+  setInitialCenter(center: MapInitialCenter): void;
+  getInitialCenter(): MapInitialCenter | undefined;
+  toggleFullscreen(): void;
+  isFullscreen(): boolean;
+  enterFullscreen(): void;
+  exitFullscreen(): void;
+}
+
+export interface MapLayersServiceConfig {
+  mapTypes: MapType[];
+  currentMapType: string;
+  token: string;
+  isNoFlyZoneChecked: boolean;
+  isNoFlyZoneVisible: boolean;
+  onMapTypeChange?: (mapTypeId: string) => void;
+  onNoFlyZoneToggle?: (isChecked: boolean) => void;
+  onShowNoFlyZones?: () => Promise<void> | void;
+}
+
+export declare class MapLayersService {
+  constructor(viewer: Viewer, toolbarElement: HTMLElement, config: MapLayersServiceConfig);
+  updateConfig(config: Partial<MapLayersServiceConfig>): void;
+  toggleLayers(buttonElement: HTMLElement): void;
+  switchMapType(mapTypeId: string): void;
+  getCurrentMapType(): string;
+  closeLayersMenu(): void;
+  destroy(): void;
+}
+
+export declare class SearchService {
+  constructor(viewer: Viewer, toolbarElement: HTMLElement, searchCallback?: SearchCallback);
+  setSearchCallback(callback: SearchCallback): void;
+  toggleSearch(buttonElement: HTMLElement): void;
+  displaySearchResults(results: SearchResult[], container: HTMLElement): void;
+  selectSearchResult(result: SearchResult): void;
+  closeSearchContainer(): void;
+  destroy(): void;
+}
+
+export interface NotFlyZonesServiceConfig {
+  extrudedHeight?: number;
+  autoLoad?: boolean;
+}
+
+export declare class NotFlyZonesService {
+  constructor(viewer: Viewer, config?: NotFlyZonesServiceConfig);
+  showNoFlyZones(): Promise<void>;
+  hideNoFlyZones(): void;
+  toggleNoFlyZones(): Promise<void>;
+  getNoFlyZoneVisible(): boolean;
+  destroy(): void;
+}
+
+// 工具栏按钮默认配置与排序（来自 MapToolBarConfig.ts）
+export declare const defaultButtonSorts: Record<string, number>;
+export declare const defaultButtons: ButtonConfig[];
+
+// 绘制相关类型（与内部实现保持一致）
+// 绘制底层工具类型（与 drawHelper/BaseDraw.ts 保持一致）
 export interface DrawResult {
   entity: Entity | null;
   type: 'line' | 'polygon' | 'rectangle' | 'circle';
   positions: Cartesian3[];
   distance?: number;
   areaKm2?: number;
+}
+
+export interface DrawCallbacks {
+  onDrawStart?: () => void;
+  onDrawEnd?: (entity: Entity | null) => void;
+  onEntityRemoved?: (entity: Entity) => void;
+  onMeasureComplete?: (result: DrawResult) => void;
+}
+
+export interface DrawOptions {
+  strokeColor?: Cesium.Color | string;
+  strokeWidth?: number;
+  fillColor?: Cesium.Color | string;
+  outlineColor?: Cesium.Color | string;
+  outlineWidth?: number;
+  heightEpsilon?: number;
+  selected?: {
+    color?: Cesium.Color | string;
+    width?: number;
+    outlineColor?: Cesium.Color | string;
+    outlineWidth?: number;
+  };
+  onClick?: (entity: Entity, type?: 'line' | 'polygon' | 'rectangle' | 'circle', positions?: Cartesian3[]) => void;
 }
 
 export declare class DrawHelper {
@@ -480,6 +652,61 @@ export declare class DrawHelper {
   handleSceneModeChanged(): void;
   // 资源释放
   destroy(): void;
+}
+
+// 底层抽象绘制类及具体实现（通过 `export * from './libs/drawHelper/index'` 暴露）
+export declare abstract class BaseDraw {
+  protected viewer: Viewer;
+  protected scene: Cesium.Scene;
+  protected entities: Cesium.EntityCollection;
+  protected offsetHeight: number;
+  protected originalDepthTestAgainstTerrain: boolean | null;
+  protected originalRequestRenderMode: boolean | null;
+  protected callbacks: DrawCallbacks;
+  protected tempPositions: Cartesian3[];
+  protected tempEntities: Entity[];
+  protected tempLabelEntities: Entity[];
+  protected finishedPointEntities: Entity[];
+  protected drawOptions?: DrawOptions;
+  protected resolveColor(input?: Cesium.Color | string): Cesium.Color;
+  protected applySelectedStyleToEntity(entity: Entity): void;
+  protected restoreOriginalStyleForEntity(entity: Entity): void;
+  protected updateOffsetHeight(): void;
+  protected pickGlobePosition(windowPosition: Cesium.Cartesian2): Cartesian3 | null;
+  protected rememberOriginalRequestRenderModeIfNeeded(): void;
+  protected restoreRequestRenderModeIfNeeded(): void;
+  abstract updateDrawingEntity(previewPoint?: Cartesian3): void;
+  abstract startDrawing(options?: DrawOptions): void;
+  abstract finishDrawing(): DrawResult | null;
+  abstract getDrawType(): 'line' | 'polygon' | 'rectangle' | 'circle';
+}
+
+export declare class DrawLine extends BaseDraw {
+  updateDrawingEntity(previewPoint?: Cartesian3): void;
+  startDrawing(options?: DrawOptions): void;
+  finishDrawing(): DrawResult | null;
+  getDrawType(): 'line';
+}
+
+export declare class DrawPolygon extends BaseDraw {
+  updateDrawingEntity(previewPoint?: Cartesian3): void;
+  startDrawing(options?: DrawOptions): void;
+  finishDrawing(): DrawResult | null;
+  getDrawType(): 'polygon';
+}
+
+export declare class DrawRectangle extends BaseDraw {
+  updateDrawingEntity(previewPoint?: Cartesian3): void;
+  startDrawing(options?: DrawOptions): void;
+  finishDrawing(): DrawResult | null;
+  getDrawType(): 'rectangle';
+}
+
+export declare class DrawCircle extends BaseDraw {
+  updateDrawingEntity(previewPoint?: Cartesian3): void;
+  startDrawing(options?: DrawOptions): void;
+  finishDrawing(): DrawResult | null;
+  getDrawType(): 'circle';
 }
 
 export declare function initCesium(
