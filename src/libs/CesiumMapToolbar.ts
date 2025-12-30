@@ -610,6 +610,7 @@ export class CesiumMapToolbar {
 
       // 添加鼠标离开事件来关闭菜单
       button.addEventListener('mouseleave', () => {
+        debugger;
         this.closeMenuOnButtonLeave(config.id);
       });
     }
@@ -620,17 +621,15 @@ export class CesiumMapToolbar {
    */
   private closeMenuOnButtonLeave(buttonId: string): void {
     // 延迟关闭，给用户时间移动到菜单上
-    setTimeout(() => {
+    const closeTimeout = setTimeout(() => {
       switch (buttonId) {
         case 'search':
           const searchContainer = this.toolbarElement.querySelector('.search-container');
           if (searchContainer) {
-            // 检查是否在搜索框或输入框中
             const isHoveringSearch = searchContainer.matches(':hover');
             const searchInput = searchContainer.querySelector('input') as HTMLInputElement;
             const isInputFocused = searchInput && document.activeElement === searchInput;
 
-            // 如果不在搜索框上且输入框未聚焦，则关闭
             if (!isHoveringSearch && !isInputFocused) {
               this.searchService.closeSearchContainer();
             }
@@ -643,7 +642,11 @@ export class CesiumMapToolbar {
           }
           break;
         case 'layers':
-          this.mapLayersService.closeLayersMenu();
+          const layersMenu = this.toolbarElement.querySelector('.layers-menu');
+          if (layersMenu && !layersMenu.matches(':hover')) {
+            debugger;
+            this.mapLayersService.closeLayersMenu();
+          }
           break;
       }
     }, 100); // 100ms延迟，给用户时间移动到菜单
@@ -663,6 +666,9 @@ export class CesiumMapToolbar {
     // 如果触发的是非搜索按钮，先关闭搜索框
     if (buttonId !== 'search') {
       this.closeSearchContainer();
+    }
+    if (buttonId !== 'layers') {
+      this.mapLayersService.closeLayersMenu();
     }
 
     switch (buttonId) {

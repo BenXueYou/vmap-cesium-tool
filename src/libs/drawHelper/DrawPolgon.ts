@@ -86,10 +86,10 @@ export class DrawPolygon extends BaseDraw {
       // 使用输入参数：填充色、描边颜色与宽度
       const fillColor = this.drawOptions?.fillColor
         ? this.resolveColor(this.drawOptions.fillColor)
-        : Cesium.Color.LIGHTGREEN;
+        : Cesium.Color.LIGHTGREEN.withAlpha(0.3);
       const strokeColor = this.drawOptions?.strokeColor
         ? this.resolveColor(this.drawOptions.strokeColor)
-        : (this.drawOptions?.outlineColor ? this.resolveColor(this.drawOptions.outlineColor) : Cesium.Color.DARKGREEN);
+        : (this.drawOptions?.outlineColor ? this.resolveColor(this.drawOptions.outlineColor) : Cesium.Color.LIGHTGREEN);
       const strokeWidth = this.drawOptions?.strokeWidth ?? (this.drawOptions?.outlineWidth ?? 2);
 
       // 先更新/创建填充面
@@ -182,10 +182,10 @@ export class DrawPolygon extends BaseDraw {
     // 使用 drawOptions 中的颜色和边框设置
     const fillColor = this.drawOptions?.fillColor
       ? this.resolveColor(this.drawOptions.fillColor)
-      : Cesium.Color.LIGHTGREEN;
+      : Cesium.Color.LIGHTGREEN.withAlpha(0.3);
     const strokeColor = this.drawOptions?.strokeColor
       ? this.resolveColor(this.drawOptions.strokeColor)
-      : (this.drawOptions?.outlineColor ? this.resolveColor(this.drawOptions.outlineColor) : Cesium.Color.DARKGREEN);
+      : (this.drawOptions?.outlineColor ? this.resolveColor(this.drawOptions.outlineColor) : Cesium.Color.LIGHTGREEN);
     const strokeWidth = this.drawOptions?.strokeWidth ?? (this.drawOptions?.outlineWidth ?? 2);
     if (this.offsetHeight > 0) {
       const elevatedPositions = groundPositions.map(pos => {

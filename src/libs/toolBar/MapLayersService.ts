@@ -39,49 +39,8 @@ export class MapLayersService {
     this.config = { ...this.config, ...config };
   }
 
-  /**
-   * 切换图层菜单
-   */
-  public toggleLayers(buttonElement: HTMLElement): void {
-    const existingMenu = this.toolbarElement.querySelector('.layers-menu');
-    if (existingMenu) {
-      return; // 如果菜单已存在，不重复创建
-    }
-
-    // 根据按钮在工具栏中的垂直偏移动态定位图层菜单
-    const offsetTop = (buttonElement as HTMLElement).offsetTop;
-
-    const menu = document.createElement('div');
-    menu.className = 'layers-menu';
-    menu.style.cssText = `
-      position: absolute;
-      right: 100%;
-      top: ${offsetTop}px;
-      margin-right: 8px;
-      background: rgba(0, 40, 80, 0.95);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      border-radius: 8px;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-      padding: 10px 12px;
-      max-width: 520px;
-      z-index: 1001;
-      display: flex;
-      flex-direction: column;
-    `;
-
-    // 第一部分：地图类型
-    const mapTypeSection = this.createMapTypeSection(menu);
-    
-    // 第二部分：叠加图层
-    const overlaySection = this.createOverlaySection(menu);
-
-    // 组装菜单
-    menu.appendChild(mapTypeSection);
-    menu.appendChild(overlaySection);
-
-    this.toolbarElement.insertBefore(menu, buttonElement);
-
-    // --- 屏幕边缘避让：防止图层菜单超出可视区域 ---
+  // --- 屏幕边缘避让：防止图层菜单超出可视区域 ---
+  adjustMenuPosition = (menu: HTMLElement) => {
     const menuRect = menu.getBoundingClientRect();
     const viewportHeight = window.innerHeight;
     const viewportWidth = window.innerWidth;
@@ -116,20 +75,52 @@ export class MapLayersService {
       const currentRight = parseFloat(menu.style.marginRight || '0');
       menu.style.marginRight = `${currentRight - delta - margin}px`;
     }
+  };
 
-    // 如果禁飞区尚未加载，尝试加载
-    if (!this.config.isNoFlyZoneVisible && this.config.isNoFlyZoneChecked && this.config.onShowNoFlyZones) {
-      setTimeout(() => {
-        const result = this.config.onShowNoFlyZones!();
-        if (result instanceof Promise) {
-          result.catch((error) => {
-            console.error('加载禁飞区失败:', error);
-          });
-        }
-        // 更新配置中的可见状态
-        this.config.isNoFlyZoneVisible = true;
-      }, 100);
+  /**
+   * 切换图层菜单
+   */
+  public toggleLayers(buttonElement: HTMLElement): void {
+    const existingMenu = this.toolbarElement.querySelector('.layers-menu');
+    if (existingMenu) {
+      return; // 如果菜单已存在，不重复创建
     }
+
+    // 根据按钮在工具栏中的垂直偏移动态定位图层菜单
+    const offsetTop = buttonElement.offsetTop;
+
+    const menu = document.createElement('div');
+    menu.className = 'layers-menu';
+    menu.style.cssText = `
+      position: absolute;
+      right: 100%;
+      top: ${offsetTop}px;
+      margin-right: 8px;
+      background: rgba(0, 40, 80, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+      padding: 10px 12px;
+      max-width: 520px;
+      z-index: 1001;
+      display: flex;
+      flex-direction: column;
+    `;
+
+    // 第一部分：地图类型
+    const mapTypeSection = this.createMapTypeSection(menu);
+
+    // 第二部分：叠加图层
+    const overlaySection = this.createOverlaySection(menu);
+
+    // 组装菜单
+    menu.appendChild(mapTypeSection);
+    menu.appendChild(overlaySection);
+
+    this.toolbarElement.insertBefore(menu, buttonElement);
+
+    // 在菜单插入 DOM 后立即调整位置
+    setTimeout(() => this.adjustMenuPosition(menu), 0);
 
     // 鼠标离开菜单区域时关闭
     let closeTimeout: number | null = null;
@@ -207,6 +198,7 @@ export class MapLayersService {
     const isCurrentType = mapType.id === this.config.currentMapType;
     mapTypeItem.style.cssText = `
       width: 100px;
+      height: 100px;
       position: relative;
       cursor: pointer;
       border-radius: 4px;
@@ -295,7 +287,6 @@ export class MapLayersService {
       flex-direction: column;
       align-items: flex-start;
       background: transparent;
-      margin-top: 12px;
     `;
 
     const overlayTitle = document.createElement('div');
@@ -331,7 +322,7 @@ export class MapLayersService {
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 8px 12px;
+      padding: 4px 12px;
       border-radius: 4px;
       cursor: pointer;
       transition: background-color 0.2s;
@@ -388,7 +379,7 @@ export class MapLayersService {
     overlayItem.addEventListener('click', () => {
       const isChecked = this.config.isNoFlyZoneChecked;
       const newChecked = !isChecked;
-      
+
       // 更新复选框状态
       if (newChecked) {
         checkbox.style.background = '#023C61';
@@ -476,7 +467,6 @@ export class MapLayersService {
     if (layersMenu) {
       // 添加延迟关闭逻辑，避免鼠标短暂移出时关闭菜单
       let closeTimeout: number | null = null;
-
       const closeMenu = () => {
         if (closeTimeout) {
           clearTimeout(closeTimeout);
@@ -485,16 +475,15 @@ export class MapLayersService {
           layersMenu.remove();
         }, 200); // 延迟关闭菜单
       };
-
       const cancelCloseMenu = () => {
         if (closeTimeout) {
           clearTimeout(closeTimeout);
           closeTimeout = null;
         }
       };
-
       layersMenu.addEventListener('mouseleave', closeMenu);
       layersMenu.addEventListener('mouseenter', cancelCloseMenu);
+      layersMenu.remove();
     }
   }
 

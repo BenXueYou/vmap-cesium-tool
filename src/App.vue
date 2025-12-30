@@ -143,7 +143,7 @@ const addHeatMap = () => {
   // 初始化热力图图层
   initHeatmap({
     radius: 20,
-    opacity: 0.7,
+    opacity: 0.9,
     minValue: 0,
     maxValue: baseMax,
     gradient,
@@ -158,7 +158,7 @@ const addHeatMap = () => {
 
   updateHeatmapData(heatmapData);
   setHeatmapVisible(true);
-  setHeatmapOpacity(0.7);
+  setHeatmapOpacity(0.9);
   setHeatmapGradient(gradient);
 
   // 简单用所有点的平均值作为视角中心
