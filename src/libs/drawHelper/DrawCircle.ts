@@ -315,7 +315,19 @@ export class DrawCircle extends BaseDraw {
       centerCarto.longitude + radiusInRadians,
       centerCarto.latitude + radiusInRadians
     );
-    const positions = Cesium.Rectangle.subsample(rectangle, this.scene.globe.ellipsoid);
+    // Rectangle.subsample 返回的点列同样是闭合的（最后一个点与第一个点相同），
+    // 这里做一次去重，避免业务使用 positions 时看到两个相同经纬度的点。
+    const sampledPositions = Cesium.Rectangle.subsample(rectangle, this.scene.globe.ellipsoid);
+    const positions = (() => {
+      if (sampledPositions.length > 1) {
+        const first = sampledPositions[0];
+        const last = sampledPositions[sampledPositions.length - 1];
+        if (Cesium.Cartesian3.equalsEpsilon(first, last, Cesium.Math.EPSILON9)) {
+          return sampledPositions.slice(0, sampledPositions.length - 1);
+        }
+      }
+      return sampledPositions;
+    })();
 
     const result: DrawResult = {
       entity: finalEntity,
@@ -332,7 +344,8 @@ export class DrawCircle extends BaseDraw {
     this.restoreRequestRenderModeIfNeeded();
 
     if (this.callbacks.onDrawEnd) {
-      this.callbacks.onDrawEnd(finalEntity);
+      // 在 onDrawEnd 中同时传出实体和完整的 DrawResult
+      this.callbacks.onDrawEnd(finalEntity, result);
     }
 
     return result;

@@ -1,14 +1,5 @@
 import * as Cesium from "cesium";
 import type { Primitive } from "cesium";
-import {
-  isValidCartesian3,
-  formatDistance,
-  formatArea,
-  calculateRectangle,
-  calculateRectangleArea,
-  calculatePolygonArea,
-  calculatePolygonCenter
-} from '../utils/calc';
 import { DrawLine, DrawPolygon, DrawRectangle, DrawCircle, type DrawCallbacks, type DrawOptions } from './drawHelper';
 /**
  * Cesium 绘图辅助工具类
@@ -75,7 +66,7 @@ class DrawHelper {
     this.updateOffsetHeight();
     
     // 确保启用地形深度测试以获得正确的高度
-    this.scene.globe.depthTestAgainstTerrain = true;
+    // this.scene.globe.depthTestAgainstTerrain = true;
 
     // 初始化绘制类实例
     const callbacks: DrawCallbacks = {

@@ -33,6 +33,16 @@ export function useDrawHelper(
 
     currentDrawMode.value = "line";
     isDrawing.value = true;
+    drawHelper.value.onMeasureComplete((result: {
+      type: "line" | "polygon" | "rectangle" | "circle";
+      positions: Cesium.Cartesian3[];
+      distance?: number;
+      areaKm2?: number;
+    }) => {
+      if (result.type === "line") {
+        console.log("线条绘制完成，点信息:", result.positions);
+      }
+    });
     drawHelper.value.startDrawingLine({
       strokeWidth: 4,
       strokeColor: Cesium.Color.BLUE,
@@ -55,6 +65,16 @@ export function useDrawHelper(
 
     currentDrawMode.value = "rectangle";
     isDrawing.value = true;
+    drawHelper.value.onMeasureComplete((result: {
+      type: "line" | "polygon" | "rectangle" | "circle";
+      positions: Cesium.Cartesian3[];
+      distance?: number;
+      areaKm2?: number;
+    }) => {
+      if (result.type === "rectangle") {
+        console.log("矩形绘制完成，点信息:", result.positions);
+      }
+    });
     drawHelper.value.startDrawingRectangle({
       fillColor: Cesium.Color.YELLOW.withAlpha(0.5),
       outlineColor: Cesium.Color.YELLOW,
@@ -81,6 +101,16 @@ export function useDrawHelper(
 
     currentDrawMode.value = "circle";
     isDrawing.value = true;
+    drawHelper.value.onMeasureComplete((result: {
+      type: "line" | "polygon" | "rectangle" | "circle";
+      positions: Cesium.Cartesian3[];
+      distance?: number;
+      areaKm2?: number;
+    }) => {
+      if (result.type === "circle") {
+        console.log("圆形绘制完成，点信息:", result.positions);
+      }
+    });
     drawHelper.value.startDrawingCircle({
       fillColor: Cesium.Color.GREEN.withAlpha(0.5),
       outlineColor: Cesium.Color.GREEN,
@@ -104,6 +134,16 @@ export function useDrawHelper(
 
     currentDrawMode.value = "polygon";
     isDrawing.value = true;
+    drawHelper.value.onMeasureComplete((result: {
+      type: "line" | "polygon" | "rectangle" | "circle";
+      positions: Cesium.Cartesian3[];
+      distance?: number;
+      areaKm2?: number;
+    }) => {
+      if (result.type === "polygon") {
+        console.log("多边形绘制完成，点信息:", result.positions);
+      }
+    });
     drawHelper.value.startDrawingPolygon({
       strokeWidth: 4,
       strokeColor: Cesium.Color.YELLOW,
@@ -111,12 +151,14 @@ export function useDrawHelper(
     });
     message.value = "开始绘制多边形：左键添加点，双击完成，右键删除最后一点";
 
-    drawHelper.value.onDrawEnd(() => {
+    drawHelper.value.onDrawEnd((entity: Cesium.Entity) => {
+      console.log("多边形绘制完成:", entity);
       isDrawing.value = false;
       currentDrawMode.value = null;
       message.value = "多边形绘制完成";
       setTimeout(() => {
         message.value = "";
+        console.log("多边形绘制完成:", entity._borderEntity);
       }, 2000);
     });
   };

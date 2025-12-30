@@ -325,8 +325,9 @@ export function useOverlayHelper(
       material: Cesium.Color.RED,
       clampToGround: true,
       onClick: () => {
-        console.log('折线被点击');
+        console.log('折线被点击', polyline);
         message.value = '折线被点击';
+        overlayService.value!.setOverlayVisible(polyline.id, false); // 切换所有覆盖物的显示状态
         setTimeout(() => (message.value = ''), 2000);
       },
     });
@@ -381,15 +382,21 @@ export function useOverlayHelper(
 
     // 圆形 A：演示粗边框（双层椭圆环：outlineWidth>1 即触发）
     const circleA = overlayService.value.addCircle({
-      position: [lon + 0.012, lat - 0.01],
-      radius: 600,
+      position: [120.09747987, 30.12573937],
+      radius: 2635.9,
       material: Cesium.Color.fromCssColorString('#b71c1c').withAlpha(0.4), // 填充色
       outline: true,                                  // 开启边框（用于颜色）
       outlineColor: Cesium.Color.fromCssColorString('#d32f2f'),              // 边框颜色
       outlineWidth: 20,                               // >1 触发双层椭圆环（米为单位）
       onClick: () => {
-        console.log('圆形 A 被点击');
+        console.log('圆形 A 被点击=', circleA);
+        console.log('圆形 A 被点击=', circleA.id);
+        console.log('圆形 A 被点击=', circleA._innerEntity.id);
         message.value = '圆形 A 被点击';
+        // circleA.show = !circleA.show;
+        // circleA._innerEntity.show = !circleA._innerEntity.show;
+        // overlayService.value!.setOverlayVisible(circleA.id, false); 
+        // overlayService.value!.setOverlayVisible(circleA._innerEntity.id, false); 
         setTimeout(() => (message.value = ''), 2000);
       },
     });
@@ -410,13 +417,18 @@ export function useOverlayHelper(
     const lat = Cesium.Math.toDegrees(center.latitude);
 
     const poly = overlayService.value.addPolygon({
-      positions: [
-        [lon - 0.015, lat - 0.01],
-        [lon - 0.005, lat - 0.01],
-        [lon, lat - 0.005],
-        // [lon - 0.005, lat + 0.005],
-        // [lon - 0.015, lat],
-      ],
+      // positions: [
+      //   [lon - 0.015, lat - 0.01],
+      //   [lon - 0.005, lat - 0.01],
+      //   [lon, lat - 0.005],
+      // ],
+      // positions: [
+      //   [120.18965632598375, 29.965010101455256], 
+      //   [120.21315165524578, 29.965098259065662], 
+      //   [120.18965915933653, 29.950994372532026], 
+      //   [120.1781605071513, 29.955780181296227], 
+      // ],
+      positions: [[120.19619413234396,30.186834775221342],[120.19751133777739,30.186779919361378],[120.19641969581805,30.186125462043783],[120.19641969581805,30.186125462043783]],
       // 预期：填充为半透明橙色，边框为不透明橙色
       material: Cesium.Color.ORANGE.withAlpha(0.5),
       outline: true,

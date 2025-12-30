@@ -187,7 +187,6 @@ export class DrawPolygon extends BaseDraw {
       ? this.resolveColor(this.drawOptions.strokeColor)
       : (this.drawOptions?.outlineColor ? this.resolveColor(this.drawOptions.outlineColor) : Cesium.Color.DARKGREEN);
     const strokeWidth = this.drawOptions?.strokeWidth ?? (this.drawOptions?.outlineWidth ?? 2);
-
     if (this.offsetHeight > 0) {
       const elevatedPositions = groundPositions.map(pos => {
         const carto = Cesium.Cartographic.fromCartesian(pos);
@@ -225,6 +224,9 @@ export class DrawPolygon extends BaseDraw {
         (finalEntity as any)._drawType = this.getDrawType();
         if (this.drawOptions?.onClick) {
           (finalEntity as any)._onClick = this.drawOptions.onClick;
+        }
+        if (finalBorder) {
+          (finalEntity as any)._borderEntity = finalBorder;
         }
       }
     } else {
@@ -337,7 +339,8 @@ export class DrawPolygon extends BaseDraw {
     this.restoreRequestRenderModeIfNeeded();
 
     if (this.callbacks.onDrawEnd) {
-      this.callbacks.onDrawEnd(finalEntity);
+      // 将完整的 DrawResult 作为第二个参数传递给 onDrawEnd 回调
+      this.callbacks.onDrawEnd(finalEntity, result);
     }
 
     return result;

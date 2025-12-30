@@ -18,7 +18,7 @@ export interface DrawResult {
  */
 export interface DrawCallbacks {
   onDrawStart?: () => void;
-  onDrawEnd?: (entity: Entity | null) => void;
+  onDrawEnd?: (entity: Entity | null, result: DrawResult) => void;
   onEntityRemoved?: (entity: Entity) => void;
   onMeasureComplete?: (result: DrawResult) => void;
 }

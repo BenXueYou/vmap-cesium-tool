@@ -1,7 +1,7 @@
 // VMap Cesium Toolbar Plugin Type Definitions
 
 import type * as Cesium from 'cesium';
-import type { Viewer, Cartesian3, Cartographic, Entity, Cartesian2, Color } from 'cesium';
+import type { Viewer, Cartesian3, Entity, Color } from 'cesium';
 
 // 工具栏配置接口（与 CesiumMapModel.ts 保持一致）
 export interface ToolbarConfig {
@@ -607,7 +607,7 @@ export interface DrawResult {
 
 export interface DrawCallbacks {
   onDrawStart?: () => void;
-  onDrawEnd?: (entity: Entity | null) => void;
+  onDrawEnd?: (entity: Entity | null, result: DrawResult) => void;
   onEntityRemoved?: (entity: Entity) => void;
   onMeasureComplete?: (result: DrawResult) => void;
 }

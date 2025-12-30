@@ -222,7 +222,19 @@ export class DrawRectangle extends BaseDraw {
       this.originalDepthTestAgainstTerrain = null;
     }
 
-    const rectPositions = Cesium.Rectangle.subsample(rect, this.scene.globe.ellipsoid);
+    // Cesium.Rectangle.subsample 通常会返回一个首尾闭合的点列（最后一个点与第一个点相同），
+    // 这里为了方便业务侧直接使用 positions，去掉末尾与首点重复的那个点。
+    const rectSampledPositions = Cesium.Rectangle.subsample(rect, this.scene.globe.ellipsoid);
+    const rectPositions = (() => {
+      if (rectSampledPositions.length > 1) {
+        const first = rectSampledPositions[0];
+        const last = rectSampledPositions[rectSampledPositions.length - 1];
+        if (Cesium.Cartesian3.equalsEpsilon(first, last, Cesium.Math.EPSILON9)) {
+          return rectSampledPositions.slice(0, rectSampledPositions.length - 1);
+        }
+      }
+      return rectSampledPositions;
+    })();
     const result: DrawResult = {
       entity: finalEntity,
       type: "rectangle",
@@ -238,7 +250,8 @@ export class DrawRectangle extends BaseDraw {
     this.restoreRequestRenderModeIfNeeded();
 
     if (this.callbacks.onDrawEnd) {
-      this.callbacks.onDrawEnd(finalEntity);
+      // 把矩形的 DrawResult 一并传给 onDrawEnd
+      this.callbacks.onDrawEnd(finalEntity, result);
     }
 
     return result;

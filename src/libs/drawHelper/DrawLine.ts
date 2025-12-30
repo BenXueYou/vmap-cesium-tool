@@ -224,7 +224,8 @@ export class DrawLine extends BaseDraw {
     this.restoreRequestRenderModeIfNeeded();
 
     if (this.callbacks.onDrawEnd) {
-      this.callbacks.onDrawEnd(finalEntity);
+      // 第二个参数传出完整的 DrawResult，方便外部在 onDrawEnd 中直接拿到所有信息
+      this.callbacks.onDrawEnd(finalEntity, result);
     }
 
     return result;
