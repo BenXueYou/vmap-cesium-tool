@@ -84,19 +84,37 @@ export class MapLayersService {
     // --- 屏幕边缘避让：防止图层菜单超出可视区域 ---
     const menuRect = menu.getBoundingClientRect();
     const viewportHeight = window.innerHeight;
+    const viewportWidth = window.innerWidth;
+    const margin = 10; // 添加一个固定的间距
 
+    // 确保菜单不会超出屏幕底部
     if (menuRect.bottom > viewportHeight) {
       const overflow = menuRect.bottom - viewportHeight;
       const currentTop = parseFloat(menu.style.top || '0');
-      const newTop = Math.max(0, currentTop - overflow);
+      const newTop = Math.max(margin, currentTop - overflow - margin);
       menu.style.top = `${newTop}px`;
     }
 
+    // 确保菜单不会超出屏幕顶部
     const updatedRect = menu.getBoundingClientRect();
     if (updatedRect.top < 0) {
       const delta = -updatedRect.top;
       const currentTop = parseFloat(menu.style.top || '0');
-      menu.style.top = `${currentTop + delta}px`;
+      menu.style.top = `${currentTop + delta + margin}px`;
+    }
+
+    // 确保菜单不会超出屏幕右侧
+    if (menuRect.right > viewportWidth) {
+      const overflow = menuRect.right - viewportWidth;
+      const currentRight = parseFloat(menu.style.marginRight || '0');
+      menu.style.marginRight = `${currentRight + overflow + margin}px`;
+    }
+
+    // 确保菜单不会超出屏幕左侧
+    if (menuRect.left < 0) {
+      const delta = -menuRect.left;
+      const currentRight = parseFloat(menu.style.marginRight || '0');
+      menu.style.marginRight = `${currentRight - delta - margin}px`;
     }
 
     // 如果禁飞区尚未加载，尝试加载
@@ -114,12 +132,26 @@ export class MapLayersService {
     }
 
     // 鼠标离开菜单区域时关闭
+    let closeTimeout: number | null = null;
     const closeMenu = () => {
-      menu.remove();
+      if (closeTimeout) {
+        clearTimeout(closeTimeout);
+      }
+      closeTimeout = window.setTimeout(() => {
+        menu.remove();
+      }, 200); // 延迟关闭菜单
     };
 
-    // 监听菜单的鼠标离开事件
+    const cancelCloseMenu = () => {
+      if (closeTimeout) {
+        clearTimeout(closeTimeout);
+        closeTimeout = null;
+      }
+    };
+
+    // 监听菜单的鼠标事件
     menu.addEventListener('mouseleave', closeMenu);
+    menu.addEventListener('mouseenter', cancelCloseMenu);
   }
 
   /**
@@ -442,7 +474,27 @@ export class MapLayersService {
   public closeLayersMenu(): void {
     const layersMenu = this.toolbarElement.querySelector('.layers-menu');
     if (layersMenu) {
-      layersMenu.remove();
+      // 添加延迟关闭逻辑，避免鼠标短暂移出时关闭菜单
+      let closeTimeout: number | null = null;
+
+      const closeMenu = () => {
+        if (closeTimeout) {
+          clearTimeout(closeTimeout);
+        }
+        closeTimeout = window.setTimeout(() => {
+          layersMenu.remove();
+        }, 200); // 延迟关闭菜单
+      };
+
+      const cancelCloseMenu = () => {
+        if (closeTimeout) {
+          clearTimeout(closeTimeout);
+          closeTimeout = null;
+        }
+      };
+
+      layersMenu.addEventListener('mouseleave', closeMenu);
+      layersMenu.addEventListener('mouseenter', cancelCloseMenu);
     }
   }
 
