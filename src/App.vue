@@ -21,13 +21,16 @@
       <button @click="addLabel">添加标签</button>
       <button @click="addRectangle">添加矩形</button>
       <button @click="addInfoWindow">添加窗口</button>
+
+      <br />
+      <button @click="addHeatMap">添加热力图</button>
     </div>
   </div>
 </template>
 
 <script lang="ts" setup>
 import { onMounted, ref, onBeforeUnmount } from "vue";
-import { initCesium } from "./libs/CesiumMapLoader";
+import { initCesium, setCameraView } from "./libs/CesiumMapLoader";
 import { CesiumMapToolbar } from "./libs/CesiumMapToolbar";
 import type { ToolbarConfig } from "./libs/CesiumMapModel";
 import { useToolBarConfig } from "./hooks/toolBarConfig";
@@ -35,7 +38,8 @@ import { useDrawHelper } from "./hooks/useDrawHelper";
 import { useOverlayHelper } from "./hooks/useOverlayHelper";
 import { getViteTdToken, getViteCesiumToken } from "./utils/common";
 import * as Cesium from "cesium";
-
+import { useHeatmapHelper } from "./hooks/useHeatmapHelper";
+import { defaultHeatmapData, defaultHeatmapColors, defaultHeatmapOpacity } from "./z.const";
 let viewer = ref<Cesium.Viewer>();
 const message = ref("");
 let mapToolbar: CesiumMapToolbar | null = null;
@@ -75,7 +79,101 @@ const {
   destroyOverlayService,
 } = useOverlayHelper(viewer, message);
 
+const {
+  heatmapLayer,
+  visible,
+  initHeatmap,
+  updateHeatmapData,
+  setHeatmapVisible,
+  setHeatmapOpacity,
+  setHeatmapGradient,
+  destroyHeatmap,
+} = useHeatmapHelper(viewer);
 
+const addHeatMap = () => {
+  if (!viewer.value) return;
+
+  // 数据格式参考 src/z.const.ts 中的 defaultHeatmapData：
+  // 既支持嵌套帧 [[{..},{..}], [...]]，也兼容扁平数组 [{..},{..}]。
+  const rawItems: any = defaultHeatmapData as any;
+
+  const normalizePoint = (it: any) => ({
+    lon: Number(it.lon ?? it.lng ?? it.longitude),
+    lat: Number(it.lat ?? it.latitude),
+    // 这里用 height 作为强度值，若为空则回退为 1
+    value: Number(it.height) || 1,
+    appearTime: Number(it.appearTime) || 0,
+  });
+
+  const isNestedFrames = Array.isArray(rawItems) && rawItems.length > 0 && Array.isArray(rawItems[0]);
+
+  const frames: any[][] = isNestedFrames
+    ? (rawItems as any[]).map((frame: any[]) =>
+        (frame || [])
+          .map(normalizePoint)
+          .filter((p) => Number.isFinite(p.lon) && Number.isFinite(p.lat))
+      )
+    : [
+        ((rawItems as any[]) || [])
+          .map(normalizePoint)
+          .filter((p) => Number.isFinite(p.lon) && Number.isFinite(p.lat)),
+      ];
+
+  const allPoints = frames.flat();
+  if (allPoints.length === 0) {
+    message.value = "热力图数据为空";
+    return;
+  }
+
+  // 计算最大强度，用于设置 max 和构建颜色梯度
+  const maxValue = Math.max(...allPoints.map((p: any) => p.value));
+  const baseMax = Math.max(maxValue, 110); // 至少覆盖到 110 的档位
+
+  // 依据原天地图方案的分级：<40, 40-60, 60-90, 90-110, >=110
+  const thresholds = [40, 60, 90, 110];
+  const colors = ["#0033ff", "#00ffff", "#00b800", "#ffff00", "#ff0000"]; // 蓝-青-绿-黄-红
+  const gradient: Record<number, string> = {};
+  gradient[0] = colors[0];
+  thresholds.forEach((t, idx) => {
+    const stop = Math.min(1, t / baseMax);
+    gradient[stop] = colors[idx + 1];
+  });
+  gradient[1] = colors[colors.length - 1];
+
+  // 初始化热力图图层
+  initHeatmap({
+    radius: 20,
+    opacity: 0.7,
+    minValue: 0,
+    maxValue: baseMax,
+    gradient,
+  });
+
+  // 目前先一次性加载所有点（如果后续需要逐帧动画，可以基于 frames 实现）
+  const heatmapData = allPoints.map((p: any) => ({
+    lon: p.lon,
+    lat: p.lat,
+    value: p.value,
+  }));
+
+  updateHeatmapData(heatmapData);
+  setHeatmapVisible(true);
+  setHeatmapOpacity(0.7);
+  setHeatmapGradient(gradient);
+
+  // 简单用所有点的平均值作为视角中心
+  const avgLon =
+    allPoints.reduce((sum: number, p: any) => sum + p.lon, 0) / allPoints.length;
+  const avgLat =
+    allPoints.reduce((sum: number, p: any) => sum + p.lat, 0) / allPoints.length;
+
+  setCameraView(viewer.value, {
+    longitude: avgLon,
+    latitude: avgLat,
+    height: 8000,
+    pitch: -90,
+  });
+};
 
 // 初始化地图
 onMounted(async () => {
@@ -105,7 +203,7 @@ onMounted(async () => {
 
   // 初始化绘图助手
   initDrawHelper();
-  
+
   // 初始化工具栏
   const container = document.getElementById("cesiumContainer");
   if (container) {
@@ -128,7 +226,7 @@ onMounted(async () => {
   }
 });
 
-const customToolBarBtn = (mapToolbar:CesiumMapToolbar) => {
+const customToolBarBtn = (mapToolbar: CesiumMapToolbar) => {
   // 1. 测试添加报警按钮 - 插入到搜索和测量之间（sort: 0.5）
   mapToolbar.addCustomButton({
     id: 'test-alert',

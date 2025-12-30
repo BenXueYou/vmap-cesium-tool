@@ -1,6 +1,7 @@
 import { ref, type Ref } from "vue";
 import * as Cesium from "cesium";
 import DrawHelper from "../libs/CesiumMapDraw";
+import type { DrawResult } from "../libs/drawHelper";
 
 /**
  * 绘制相关的辅助逻辑
@@ -151,14 +152,14 @@ export function useDrawHelper(
     });
     message.value = "开始绘制多边形：左键添加点，双击完成，右键删除最后一点";
 
-    drawHelper.value.onDrawEnd((entity: Cesium.Entity) => {
+    drawHelper.value.onDrawEnd((entity: Cesium.Entity | null) => {
       console.log("多边形绘制完成:", entity);
       isDrawing.value = false;
       currentDrawMode.value = null;
       message.value = "多边形绘制完成";
-      setTimeout(() => {
+      setTimeout  (() => {
         message.value = "";
-        console.log("多边形绘制完成:", entity._borderEntity);
+        console.log("多边形绘制完成:", (entity as any)._borderEntity);
       }, 2000);
     });
   };

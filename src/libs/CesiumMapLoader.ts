@@ -88,7 +88,7 @@ const defaultMapOptions: InitOptions = {
 }
 
 
-const setCameraView = (viewer: CesiumViewer, center: MapCenter) => {
+export const setCameraView = (viewer: CesiumViewer, center: MapCenter) => {
   viewer.camera.setView({
     destination: Cesium.Cartesian3.fromDegrees(center.longitude, center.latitude, center.height), // 中国中心坐标
     orientation: {
@@ -98,7 +98,7 @@ const setCameraView = (viewer: CesiumViewer, center: MapCenter) => {
   });
 }
 
-const setCameraFlyTo = (viewer: CesiumViewer, center: MapCenter, options: InitOptions) => {
+export const setCameraFlyTo = (viewer: CesiumViewer, center: MapCenter, options: InitOptions) => {
   // 设置初始视角为中国区域 (经度, 纬度, 高度)
   viewer.camera.flyTo({
     destination: Cesium.Cartesian3.fromDegrees(center.longitude, center.latitude, center.height), // 中国中心坐标
