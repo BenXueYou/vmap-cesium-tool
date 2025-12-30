@@ -610,7 +610,6 @@ export class CesiumMapToolbar {
 
       // 添加鼠标离开事件来关闭菜单
       button.addEventListener('mouseleave', () => {
-        debugger;
         this.closeMenuOnButtonLeave(config.id);
       });
     }
@@ -621,7 +620,7 @@ export class CesiumMapToolbar {
    */
   private closeMenuOnButtonLeave(buttonId: string): void {
     // 延迟关闭，给用户时间移动到菜单上
-    const closeTimeout = setTimeout(() => {
+    setTimeout(() => {
       switch (buttonId) {
         case 'search':
           const searchContainer = this.toolbarElement.querySelector('.search-container');
@@ -644,7 +643,6 @@ export class CesiumMapToolbar {
         case 'layers':
           const layersMenu = this.toolbarElement.querySelector('.layers-menu');
           if (layersMenu && !layersMenu.matches(':hover')) {
-            debugger;
             this.mapLayersService.closeLayersMenu();
           }
           break;

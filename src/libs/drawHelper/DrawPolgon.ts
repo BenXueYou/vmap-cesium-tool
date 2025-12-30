@@ -347,6 +347,31 @@ export class DrawPolygon extends BaseDraw {
   }
 
   /**
+   * 清理所有绘制相关的实体
+   */
+  public clear(): void {
+    // 清理多边形实体
+    if (this.currentPolygonEntity) {
+      this.entities.remove(this.currentPolygonEntity);
+      const index = this.tempEntities.indexOf(this.currentPolygonEntity);
+      if (index > -1) {
+        this.tempEntities.splice(index, 1);
+      }
+      this.currentPolygonEntity = null;
+    }
+
+    // 清理边框实体
+    if (this.currentBorderEntity) {
+      this.entities.remove(this.currentBorderEntity);
+      const index = this.tempEntities.indexOf(this.currentBorderEntity);
+      if (index > -1) {
+        this.tempEntities.splice(index, 1);
+      }
+      this.currentBorderEntity = null;
+    }
+  }
+
+  /**
    * 获取绘制类型
    */
   public getDrawType(): "line" | "polygon" | "rectangle" | "circle" {

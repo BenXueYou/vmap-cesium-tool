@@ -639,16 +639,21 @@ class DrawHelper {
   clearAll(): void {
     // 先结束可能的绘制
     this.endDrawing();
-    
+
     // 强制清除所有点实体
     this.clearAllPoints();
-    
-    // 清除所有已完成的实体
+
+    // 清除所有已完成的实体（包括其关联的边框实体）
     this.finishedEntities.forEach((entity) => {
+      if (!entity) return;
+      const border = (entity as any)._borderEntity as Cesium.Entity | undefined;
+      if (border) {
+        this.entities.remove(border);
+      }
       this.entities.remove(entity);
     });
     this.finishedEntities = [];
-    
+
     // 清除所有已完成的标签实体
     this.finishedLabelEntities.forEach((entity) => {
       if (entity) {
@@ -656,7 +661,7 @@ class DrawHelper {
       }
     });
     this.finishedLabelEntities = [];
-    
+
     // 清除所有通过公共方法创建的实体
     this.publicEntities.forEach((entity) => {
       if (entity) {
@@ -664,7 +669,7 @@ class DrawHelper {
       }
     });
     this.publicEntities = [];
-    
+
     // 清理临时实体（包括绘制过程中的点实体）
     this.tempEntities.forEach((entity) => {
       if (entity) {
@@ -672,7 +677,7 @@ class DrawHelper {
       }
     });
     this.tempEntities = [];
-    
+
     // 清理临时标签实体
     this.tempLabelEntities.forEach((entity) => {
       if (entity && entity.label) {
@@ -680,9 +685,15 @@ class DrawHelper {
       }
     });
     this.tempLabelEntities = [];
-    
+
     // 确保清理所有可能残留的实体
     this.tempPositions = [];
+
+    // 清理 DrawPolygon 的边框实体
+    if (this.drawPolygon) {
+      debugger;
+      this.drawPolygon.clear();
+    }
   }
 
   /**
@@ -741,6 +752,10 @@ class DrawHelper {
   removeEntity(entity: Cesium.Entity): void {
     const index = this.finishedEntities.indexOf(entity);
     if (index > -1) {
+      const border = (entity as any)._borderEntity as Cesium.Entity | undefined;
+      if (border) {
+        this.entities.remove(border);
+      }
       this.entities.remove(entity);
       this.finishedEntities.splice(index, 1);
       if (this.onEntityRemovedCallback) {
