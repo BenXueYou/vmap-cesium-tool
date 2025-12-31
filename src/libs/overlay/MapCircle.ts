@@ -1,6 +1,6 @@
 import * as Cesium from "cesium";
 import type { Viewer, Entity, Cartesian3, Color, HeightReference } from "cesium";
-import type { OverlayPosition } from './types';
+import type { OverlayPosition, OverlayEntity } from './types';
 
 /**
  * Circle 选项
@@ -125,19 +125,22 @@ export class MapCircle {
       });
 
       if (options.onClick) {
-        (outer as any)._onClick = options.onClick;
-        (inner as any)._onClick = options.onClick;
+        const outerEntity = outer as OverlayEntity;
+        const innerEntity = inner as OverlayEntity;
+        outerEntity._onClick = options.onClick;
+        innerEntity._onClick = options.onClick;
       }
 
       // 记录元数据，便于更新/移除
-      (outer as any)._innerEntity = inner;
-      (outer as any)._isRing = true;
-      (outer as any)._ringThickness = ringThickness;
-      (outer as any)._fillMaterial = material;
-      (outer as any)._ringHeightEpsilon = heightEpsilon;
-      (outer as any)._centerCartographic = baseCarto;
-      (outer as any)._outerRadius = outerRadius;
-      (outer as any)._innerRadius = innerRadius;
+      const outerEntity = outer as OverlayEntity;
+      outerEntity._innerEntity = inner;
+      outerEntity._isRing = true;
+      outerEntity._ringThickness = ringThickness;
+      outerEntity._fillMaterial = material;
+      outerEntity._ringHeightEpsilon = heightEpsilon;
+      outerEntity._centerCartographic = baseCarto;
+      outerEntity._outerRadius = outerRadius;
+      outerEntity._innerRadius = innerRadius;
 
       return outer;
     } else {
@@ -157,7 +160,8 @@ export class MapCircle {
       });
 
       if (options.onClick) {
-        (entity as any)._onClick = options.onClick;
+        const overlayEntity = entity as OverlayEntity;
+        overlayEntity._onClick = options.onClick;
       }
 
       return entity;
@@ -195,7 +199,7 @@ export class MapCircle {
   public updatePosition(entity: Entity, position: OverlayPosition): void {
     const newPosition = this.convertPosition(position);
     entity.position = new Cesium.ConstantPositionProperty(newPosition);
-    const inner = (entity as any)._innerEntity as Entity | undefined;
+    const inner = (entity as OverlayEntity)._innerEntity;
     if (inner) {
       inner.position = new Cesium.ConstantPositionProperty(newPosition);
     }
@@ -209,8 +213,9 @@ export class MapCircle {
       entity.ellipse.semiMajorAxis = new Cesium.ConstantProperty(radius);
       entity.ellipse.semiMinorAxis = new Cesium.ConstantProperty(radius);
     }
-    const inner = (entity as any)._innerEntity as Entity | undefined;
-    const thickness = (entity as any)._ringThickness as number | undefined;
+    const overlayEntity = entity as OverlayEntity;
+    const inner = overlayEntity._innerEntity;
+    const thickness = overlayEntity._ringThickness;
     if (inner && thickness !== undefined) {
       const innerRadius = Math.max(0, radius - thickness);
       if (inner.ellipse) {
@@ -228,22 +233,23 @@ export class MapCircle {
       if (options.material !== undefined) {
         const mat = this.resolveMaterial(options.material);
         // 若为环形方案，material 作为填充色应用到内层；否则应用到当前实体
-        const inner = (entity as any)._innerEntity as Entity | undefined;
+        const inner = (entity as OverlayEntity)._innerEntity;
         if (inner && inner.ellipse) {
           inner.ellipse.material = mat instanceof Cesium.Color ? new Cesium.ColorMaterialProperty(mat) : (mat as Cesium.MaterialProperty);
         } else {
           entity.ellipse.material = mat instanceof Cesium.Color ? new Cesium.ColorMaterialProperty(mat) : (mat as Cesium.MaterialProperty);
         }
       }
-      const inner = (entity as any)._innerEntity as Entity | undefined;
+      const inner = (entity as OverlayEntity)._innerEntity;
       if (inner) {
         // 环形方案：outline 开关不再生效，使用外层作为边框
         if (options.outlineColor !== undefined) {
           entity.ellipse.material = new Cesium.ColorMaterialProperty(this.resolveColor(options.outlineColor));
         }
         if (options.outlineWidth !== undefined) {
+          const overlayEntity = entity as OverlayEntity;
           const thickness = Math.max(0, options.outlineWidth);
-          (entity as any)._ringThickness = thickness;
+          overlayEntity._ringThickness = thickness;
           const outerRadius = (entity.ellipse.semiMajorAxis as any)?.getValue?.(Cesium.JulianDate.now()) ?? undefined;
           // 如果拿不到，尽量从 ConstantProperty 读取
           const R = typeof outerRadius === 'number' ? outerRadius : undefined;
@@ -274,12 +280,13 @@ export class MapCircle {
   public remove(entityOrId: Entity | string): boolean {
     const entity = typeof entityOrId === 'string' ? this.entities.getById(entityOrId) : entityOrId;
     if (!entity) return false;
-    delete (entity as any)._onClick;
-    const inner = (entity as any)._innerEntity as Entity | undefined;
+    const overlayEntity = entity as OverlayEntity;
+    const inner = overlayEntity._innerEntity;
     if (inner) {
-      delete (inner as any)._onClick;
+      (inner as OverlayEntity)._onClick = undefined;
       this.entities.remove(inner);
     }
+    overlayEntity._onClick = undefined;
     return this.entities.remove(entity);
   }
 } 

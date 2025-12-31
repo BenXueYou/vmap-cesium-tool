@@ -1,5 +1,7 @@
 import * as Cesium from "cesium";
 import type { Viewer, Entity } from "cesium";
+import type { DrawEntity } from './drawHelper';
+import type { OverlayEntity } from './overlay/types';
 import { MapMarker, type MarkerOptions } from './overlay/MapMarker';
 import { MapLabel, type LabelOptions } from './overlay/MapLabel';
 import { MapIcon, type IconOptions } from './overlay/MapIcon';
@@ -77,8 +79,12 @@ export class CesiumOverlayService {
     this.viewer.cesiumWidget.screenSpaceEventHandler.setInputAction((click: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
       const pickedObject = this.viewer.scene.pick(click.position);
       if (pickedObject && Cesium.defined(pickedObject.id) && pickedObject.id instanceof Cesium.Entity) {
-        const entity = pickedObject.id;
-        const onClick = (entity as any)._onClick as ((entity: Entity) => void) | undefined;
+        const entity = pickedObject.id as DrawEntity & OverlayEntity;
+        // 如果是绘制模块创建的实体（带有 _drawType），交给绘制模块自己的点击处理器，避免重复触发
+        if (entity._drawType !== undefined) {
+          return;
+        }
+        const onClick = entity._onClick as ((entity: Entity) => void) | undefined;
         if (onClick) {
           onClick(entity);
         }
@@ -201,7 +207,8 @@ export class CesiumOverlayService {
     const entity = this.overlayMap.get(id);
     if (entity) {
       // 如果是信息窗口，移除DOM元素
-      const infoWindow = (entity as any)._infoWindow as HTMLElement | undefined;
+      const overlay = entity as OverlayEntity;
+      const infoWindow = overlay._infoWindow;
       if (infoWindow) {
         this.infoWindow.remove(entity);
       }
@@ -228,8 +235,10 @@ export class CesiumOverlayService {
     const entity = this.overlayMap.get(id);
     if (!entity) return false;
 
+    const overlay = entity as OverlayEntity;
+
     // 根据实体类型调用对应的更新方法
-    if (entity.point && !(entity as any)._infoWindow) {
+    if (entity.point && !overlay._infoWindow) {
       // Marker
       this.marker.updatePosition(entity, position);
     } else if (entity.label) {
@@ -250,7 +259,7 @@ export class CesiumOverlayService {
     }
 
     // 如果是信息窗口，更新位置
-    if ((entity as any)._infoWindow) {
+    if (overlay._infoWindow) {
       this.infoWindow.updatePosition(entity, position);
     }
 
@@ -264,9 +273,10 @@ export class CesiumOverlayService {
     const entity = this.overlayMap.get(id);
     if (entity) {
       entity.show = visible;
+      const overlay = entity as OverlayEntity;
       
       // 如果是信息窗口，更新DOM显示
-      if ((entity as any)._infoWindow) {
+      if (overlay._infoWindow) {
         this.infoWindow.setVisible(entity, visible);
       }
       

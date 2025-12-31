@@ -1,6 +1,6 @@
 import * as Cesium from "cesium";
 import type { Viewer, Entity, Cartesian3, Color, HeightReference, LabelStyle, VerticalOrigin, HorizontalOrigin } from "cesium";
-import type { OverlayPosition } from './types';
+import type { OverlayPosition, OverlayEntity } from './types';
 
 /**
  * Label 选项
@@ -101,7 +101,8 @@ export class MapLabel {
     });
 
     if (options.onClick) {
-      (entity as any)._onClick = options.onClick;
+      const overlayEntity = entity as OverlayEntity;
+      overlayEntity._onClick = options.onClick;
     }
 
     return entity;
@@ -153,7 +154,7 @@ export class MapLabel {
   public remove(entityOrId: Entity | string): boolean {
     const entity = typeof entityOrId === 'string' ? this.entities.getById(entityOrId) : entityOrId;
     if (!entity) return false;
-    delete (entity as any)._onClick;
+    (entity as OverlayEntity)._onClick = undefined;
     return this.entities.remove(entity);
   }
 } 

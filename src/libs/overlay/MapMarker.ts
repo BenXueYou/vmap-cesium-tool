@@ -1,6 +1,6 @@
 import * as Cesium from "cesium";
 import type { Viewer, Entity, Cartesian3, Color, HeightReference } from "cesium";
-import type { OverlayPosition } from './types';
+import type { OverlayPosition, OverlayEntity } from './types';
 
 /**
  * Marker 选项
@@ -83,7 +83,8 @@ export class MapMarker {
     });
 
     if (options.onClick) {
-      (entity as any)._onClick = options.onClick;
+      const overlayEntity = entity as OverlayEntity;
+      overlayEntity._onClick = options.onClick;
     }
 
     return entity;
@@ -124,7 +125,7 @@ export class MapMarker {
     const entity = typeof entityOrId === 'string' ? this.entities.getById(entityOrId) : entityOrId;
     if (!entity) return false;
     // 清理事件引用
-    delete (entity as any)._onClick;
+    (entity as OverlayEntity)._onClick = undefined;
     return this.entities.remove(entity);
   }
 } 

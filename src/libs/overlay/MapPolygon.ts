@@ -1,6 +1,6 @@
 import * as Cesium from "cesium";
 import type { Viewer, Entity, Cartesian3, Color, HeightReference } from "cesium";
-import type { OverlayPosition } from './types';
+import type { OverlayPosition, OverlayEntity } from './types';
 
 /**
  * Polygon 选项
@@ -204,13 +204,16 @@ export class MapPolygon {
       });
 
       if (options.onClick) {
-        (fill as any)._onClick = options.onClick;
-        (border as any)._onClick = options.onClick;
+        const fillEntity = fill as OverlayEntity;
+        const borderEntity = border as OverlayEntity;
+        fillEntity._onClick = options.onClick;
+        borderEntity._onClick = options.onClick;
       }
 
-      (fill as any)._borderEntity = border;
-      (fill as any)._isThickOutline = true;
-      (fill as any)._outlineWidth = ringThickness;
+      const fillEntity = fill as OverlayEntity;
+      fillEntity._borderEntity = border;
+      fillEntity._isThickOutline = true;
+      fillEntity._outlineWidth = ringThickness;
 
       return fill;
     }
@@ -229,7 +232,8 @@ export class MapPolygon {
     });
 
     if (options.onClick) {
-      (entity as any)._onClick = options.onClick;
+      const overlayEntity = entity as OverlayEntity;
+      overlayEntity._onClick = options.onClick;
     }
 
     return entity;
@@ -240,8 +244,9 @@ export class MapPolygon {
    */
   public updatePositions(entity: Entity, positions: OverlayPosition[]): void {
     const newPositions = positions.map(pos => this.convertPosition(pos));
-    const border = (entity as any)._borderEntity as Entity | undefined;
-    const isThick = (entity as any)._isThickOutline as boolean | undefined;
+    const overlayEntity = entity as OverlayEntity;
+    const border = overlayEntity._borderEntity;
+    const isThick = overlayEntity._isThickOutline;
     if (entity.polygon && border && isThick) {
       // 更新填充
       entity.polygon.hierarchy = new Cesium.ConstantProperty(new Cesium.PolygonHierarchy(newPositions));
@@ -260,8 +265,9 @@ export class MapPolygon {
    * 更新 Polygon 样式
    */
   public updateStyle(entity: Entity, options: Partial<Pick<PolygonOptions, 'material' | 'outline' | 'outlineColor' | 'outlineWidth'>>): void {
-    const border = (entity as any)._borderEntity as Entity | undefined;
-    const isThick = (entity as any)._isThickOutline as boolean | undefined;
+    const overlayEntity = entity as OverlayEntity;
+    const border = overlayEntity._borderEntity;
+    const isThick = overlayEntity._isThickOutline;
     if (isThick && entity.polygon && border) {
       if (options.material !== undefined) {
         entity.polygon.material = this.resolveMaterial(options.material);
@@ -271,7 +277,7 @@ export class MapPolygon {
       }
       if (options.outlineWidth !== undefined && border.polyline) {
         border.polyline.width = new Cesium.ConstantProperty(Math.max(0, options.outlineWidth));
-        (entity as any)._outlineWidth = options.outlineWidth;
+        overlayEntity._outlineWidth = options.outlineWidth;
       }
     } else if (entity.polygon) {
       if (options.material !== undefined) {
@@ -295,12 +301,13 @@ export class MapPolygon {
   public remove(entityOrId: Entity | string): boolean {
     const entity = typeof entityOrId === 'string' ? this.entities.getById(entityOrId) : entityOrId;
     if (!entity) return false;
-    delete (entity as any)._onClick;
-    const border = (entity as any)._borderEntity as Entity | undefined;
+    const overlayEntity = entity as OverlayEntity;
+    const border = overlayEntity._borderEntity;
     if (border) {
-      delete (border as any)._onClick;
+      (border as OverlayEntity)._onClick = undefined;
       this.entities.remove(border);
     }
+    overlayEntity._onClick = undefined;
     return this.entities.remove(entity);
   }
 }

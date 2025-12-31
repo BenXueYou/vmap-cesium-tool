@@ -1,6 +1,6 @@
 import * as Cesium from "cesium";
 import type { Primitive } from "cesium";
-import { DrawLine, DrawPolygon, DrawRectangle, DrawCircle, type DrawCallbacks, type DrawOptions } from './drawHelper';
+import { BaseDraw, DrawLine, DrawPolygon, DrawRectangle, DrawCircle, type DrawCallbacks, type DrawOptions, type DrawEntity, toggleSelectedStyle } from './drawHelper';
 /**
  * Cesium 绘图辅助工具类
  * 支持绘制点、线、多边形、矩形，并提供编辑和删除功能
@@ -10,8 +10,7 @@ class DrawHelper {
   private viewer: Cesium.Viewer;
   private scene: Cesium.Scene;
   private entities: Cesium.EntityCollection;
-  private frustumPrimitives: Primitive[] = [];
-
+  
   // 绘图状态和数据
   private drawMode: "line" | "polygon" | "rectangle" | "circle" | null = null;
   private isDrawing: boolean = false;
@@ -29,7 +28,8 @@ class DrawHelper {
   private drawPolygon: DrawPolygon;
   private drawRectangle: DrawRectangle;
   private drawCircle: DrawCircle;
-  private currentDrawer: DrawLine | DrawPolygon | DrawRectangle | DrawCircle | null = null;
+  // 使用抽象基类类型，避免直接依赖子类内部实现
+  private currentDrawer: BaseDraw | null = null;
   // 事件处理器
   private screenSpaceEventHandler: Cesium.ScreenSpaceEventHandler | null = null;
   // 实体点击处理器（用于触发绘制完成实体的点击回调与选中样式）
@@ -106,88 +106,30 @@ class DrawHelper {
         const entity = picked && (picked as any).id as Cesium.Entity | undefined;
         if (!entity) return;
 
+        const drawEntity = entity as DrawEntity;
+
+        // 只处理由绘制模块创建的实体，普通覆盖物交给 CesiumOverlayService 处理，避免重复触发
+        const isDrawEntity = drawEntity._drawType !== undefined;
+        if (!isDrawEntity) {
+          return;
+        }
+
         // 用户回调
-        const cb = (entity as any)._onClick as ((entity: Cesium.Entity, type?: any, positions?: Cesium.Cartesian3[]) => void) | undefined;
+        const cb = drawEntity._onClick as ((entity: Cesium.Entity, type?: any, positions?: Cesium.Cartesian3[]) => void) | undefined;
         try {
           if (cb) {
-            const pos = (entity as any)._groundPositions || (entity as any)._groundPosition || undefined;
-            cb(entity, (entity as any)._drawType, pos);
+            const pos = drawEntity._groundPositions || drawEntity._groundPosition || undefined;
+            const normalizedPos = Array.isArray(pos) ? pos : pos ? [pos] : undefined;
+            cb(drawEntity, drawEntity._drawType, normalizedPos);
           }
         } catch (e) {
           console.warn('entity onClick handler error', e);
         }
 
         // 切换选中样式
-        const opts = (entity as any)._drawOptions as DrawOptions | undefined;
+        const opts = drawEntity._drawOptions as DrawOptions | undefined;
         if (opts?.selected) {
-          try {
-            const sel = opts.selected;
-            if ((entity as any)._isSelected) {
-              const orig = (entity as any)._originalStyle;
-              if (orig) {
-                if (entity.polyline && orig.material) {
-                  entity.polyline.material = orig.material;
-                  entity.polyline.width = orig.width ?? entity.polyline.width;
-                }
-                if (entity.polygon && orig.material) {
-                  entity.polygon.material = orig.material;
-                  entity.polygon.outlineColor = orig.outlineColor ?? entity.polygon.outlineColor;
-                  entity.polygon.outlineWidth = orig.outlineWidth ?? entity.polygon.outlineWidth;
-                }
-                if (entity.rectangle && orig.material) {
-                  entity.rectangle.material = orig.material;
-                  entity.rectangle.outlineColor = orig.outlineColor ?? entity.rectangle.outlineColor;
-                  entity.rectangle.outlineWidth = orig.outlineWidth ?? entity.rectangle.outlineWidth;
-                }
-                if (entity.ellipse && orig.material) {
-                  entity.ellipse.material = orig.material;
-                  entity.ellipse.outlineColor = orig.outlineColor ?? entity.ellipse.outlineColor;
-                  entity.ellipse.outlineWidth = orig.outlineWidth ?? entity.ellipse.outlineWidth;
-                }
-              }
-              (entity as any)._isSelected = false;
-            } else {
-              (entity as any)._originalStyle = {};
-              if (entity.polyline) {
-                (entity as any)._originalStyle.material = entity.polyline.material;
-                (entity as any)._originalStyle.width = entity.polyline.width;
-                const color = sel?.color ? Cesium.Color.fromCssColorString(String(sel.color)) : Cesium.Color.YELLOW;
-                entity.polyline.material = new Cesium.ColorMaterialProperty(color);
-                entity.polyline.width = new Cesium.ConstantProperty(sel?.width ?? ((entity.polyline.width as any) || 5) + 2);
-              }
-              if (entity.polygon) {
-                (entity as any)._originalStyle.material = entity.polygon.material;
-                (entity as any)._originalStyle.outlineColor = entity.polygon.outlineColor;
-                (entity as any)._originalStyle.outlineWidth = entity.polygon.outlineWidth;
-                const color = sel?.color ? Cesium.Color.fromCssColorString(String(sel.color)) : Cesium.Color.YELLOW;
-                entity.polygon.material = new Cesium.ColorMaterialProperty(color.withAlpha(0.5));
-                entity.polygon.outlineColor = new Cesium.ConstantProperty(sel?.outlineColor ? Cesium.Color.fromCssColorString(String(sel.outlineColor)) : (entity.polygon.outlineColor as any));
-                entity.polygon.outlineWidth = new Cesium.ConstantProperty(sel?.outlineWidth ?? ((entity.polygon.outlineWidth as any) || 2));
-              }
-              if (entity.rectangle) {
-                (entity as any)._originalStyle.material = entity.rectangle.material;
-                (entity as any)._originalStyle.outlineColor = entity.rectangle.outlineColor;
-                (entity as any)._originalStyle.outlineWidth = entity.rectangle.outlineWidth;
-                const color = sel?.color ? Cesium.Color.fromCssColorString(String(sel.color)) : Cesium.Color.YELLOW;
-                entity.rectangle.material = new Cesium.ColorMaterialProperty(color.withAlpha(0.5));
-                entity.rectangle.outlineColor = new Cesium.ConstantProperty(sel?.outlineColor ? Cesium.Color.fromCssColorString(String(sel.outlineColor)) : (entity.rectangle.outlineColor as any));
-                entity.rectangle.outlineWidth = new Cesium.ConstantProperty(sel?.outlineWidth ?? ((entity.rectangle.outlineWidth as any) || 2));
-              }
-              if (entity.ellipse) {
-                (entity as any)._originalStyle.material = entity.ellipse.material;
-                (entity as any)._originalStyle.outlineColor = entity.ellipse.outlineColor;
-                (entity as any)._originalStyle.outlineWidth = entity.ellipse.outlineWidth;
-                const color = sel?.color ? Cesium.Color.fromCssColorString(String(sel.color)) : Cesium.Color.YELLOW;
-                entity.ellipse.material = new Cesium.ColorMaterialProperty(color.withAlpha(0.5));
-                entity.ellipse.outlineColor = new Cesium.ConstantProperty(sel?.outlineColor ? Cesium.Color.fromCssColorString(String(sel.outlineColor)) : (entity.ellipse.outlineColor as any));
-                entity.ellipse.outlineWidth = new Cesium.ConstantProperty(sel?.outlineWidth ?? ((entity.ellipse.outlineWidth as any) || 2));
-              }
-
-              (entity as any)._isSelected = true;
-            }
-          } catch (e) {
-            console.warn('toggle selected style failed', e);
-          }
+          toggleSelectedStyle(drawEntity);
         }
       }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
     } catch (e) {
@@ -407,10 +349,9 @@ class DrawHelper {
     }
     
     if (this.currentDrawer) {
-      // addPoint 是受保护的方法，需要通过类型断言访问
-      (this.currentDrawer as any).addPoint(position);
-      this.tempPositions = (this.currentDrawer as any).tempPositions;
-      this.tempEntities = (this.currentDrawer as any).tempEntities;
+      this.currentDrawer.addPointForHelper(position);
+      this.tempPositions = this.currentDrawer.getTempPositions();
+      this.tempEntities = this.currentDrawer.getTempEntities();
       this.updateDrawingEntity();
     }
   }
@@ -419,80 +360,22 @@ class DrawHelper {
    * 删除最后一个添加的点及其相关的临时实体
    */
   private removeLastPoint(): void {
-    if (this.tempPositions.length > 0) {
-      // 移除最后一个位置
-      this.tempPositions.pop();
-
-      // 移除所有临时实体（包括点实体和线/面实体）
-      this.tempEntities.forEach((entity) => {
-        if (entity) {
-          this.entities.remove(entity);
-        }
-      });
-      this.tempEntities = [];
-
-      // 移除所有临时标签实体
-      this.tempLabelEntities.forEach((entity) => {
-        if (entity) {
-          this.entities.remove(entity);
-        }
-      });
-      this.tempLabelEntities = [];
-
-      // 同步绘制类的临时数据
-      if (this.currentDrawer) {
-        (this.currentDrawer as any).tempPositions = [...this.tempPositions];
-        (this.currentDrawer as any).tempEntities = [];
-        (this.currentDrawer as any).tempLabelEntities = [];
-      }
-
-      // 重新创建剩余的点实体和绘制实体
-      this.recreateRemainingEntities();
-    }
-  }
-
-  /**
-   * 重新创建剩余的点实体和绘制实体
-   * 用于右键删除点后的重建
-   */
-  private recreateRemainingEntities(): void {
-    // 重新创建所有剩余的点实体
-    this.tempPositions.forEach((position) => {
-      if (this.currentDrawer) {
-        // addPoint 是受保护的方法，需要通过类型断言访问
-        (this.currentDrawer as any).addPoint(position);
-      } else {
-        // 使用原有逻辑
-        const carto = Cesium.Cartographic.fromCartesian(position);
-        const elevatedPosition = Cesium.Cartesian3.fromRadians(
-          carto.longitude,
-          carto.latitude,
-          (carto.height || 0) + this.offsetHeight
-        );
-
-        const pointEntity = this.entities.add({
-          position: elevatedPosition,
-          point: {
-            pixelSize: 8,
-            color: Cesium.Color.RED,
-            outlineColor: Cesium.Color.WHITE,
-            outlineWidth: 3,
-            heightReference: Cesium.HeightReference.NONE,
-            scaleByDistance: new Cesium.NearFarScalar(1.5e2, 1.0, 1.5e7, 0.5),
-          },
-        });
-        this.tempEntities.push(pointEntity);
-      }
-    });
-
-    // 同步临时数据
-    if (this.currentDrawer) {
-      this.tempPositions = (this.currentDrawer as any).tempPositions;
-      this.tempEntities = (this.currentDrawer as any).tempEntities;
+    if (!this.currentDrawer) {
+      return;
     }
 
-    // 重新创建绘制实体（线/面）
-    this.updateDrawingEntity();
+    const positions = this.currentDrawer.getTempPositions();
+    if (!positions || positions.length === 0) {
+      return;
+    }
+
+    // 委托给绘制基类处理删除最后一个点及预览重建
+    this.currentDrawer.removeLastPointAndRedraw();
+
+    // 同步临时数据到调度器本地状态
+    this.tempPositions = this.currentDrawer.getTempPositions();
+    this.tempEntities = this.currentDrawer.getTempEntities();
+    this.tempLabelEntities = this.currentDrawer.getTempLabelEntities();
   }
 
   /**
@@ -515,9 +398,9 @@ class DrawHelper {
 
     this.currentDrawer.updateDrawingEntity(previewPoint);
     // 同步临时数据
-    this.tempPositions = (this.currentDrawer as any).tempPositions;
-    this.tempEntities = (this.currentDrawer as any).tempEntities;
-    this.tempLabelEntities = (this.currentDrawer as any).tempLabelEntities;
+    this.tempPositions = this.currentDrawer.getTempPositions();
+    this.tempEntities = this.currentDrawer.getTempEntities();
+    this.tempLabelEntities = this.currentDrawer.getTempLabelEntities();
   }
 
   /**
@@ -546,10 +429,10 @@ class DrawHelper {
     }
 
     // 同步临时数据
-    this.tempPositions = (this.currentDrawer as any).tempPositions;
-    this.tempEntities = (this.currentDrawer as any).tempEntities;
-    this.tempLabelEntities = (this.currentDrawer as any).tempLabelEntities;
-    this.finishedPointEntities = (this.currentDrawer as any).finishedPointEntities;
+    this.tempPositions = this.currentDrawer.getTempPositions();
+    this.tempEntities = this.currentDrawer.getTempEntities();
+    this.tempLabelEntities = this.currentDrawer.getTempLabelEntities();
+    this.finishedPointEntities = this.currentDrawer.getFinishedPointEntities();
 
     // 将临时标签实体转移到已完成标签实体数组
     this.tempLabelEntities.forEach((entity) => {
@@ -571,23 +454,16 @@ class DrawHelper {
   private endDrawingInternal(resetMode: boolean): void {
     // 如果使用绘制类，清理绘制类的临时数据
     if (this.currentDrawer) {
-      (this.currentDrawer as any).clearTempEntities();
-      this.tempPositions = (this.currentDrawer as any).tempPositions;
-      this.tempEntities = (this.currentDrawer as any).tempEntities;
-      this.tempLabelEntities = (this.currentDrawer as any).tempLabelEntities;
+      this.currentDrawer.clearTempEntitiesForHelper();
+      this.tempPositions = this.currentDrawer.getTempPositions();
+      this.tempEntities = this.currentDrawer.getTempEntities();
+      this.tempLabelEntities = this.currentDrawer.getTempLabelEntities();
     }
 
-    // 清理临时实体
-    this.tempEntities.forEach((entity) => {
-      this.entities.remove(entity);
-    });
+    // 重置本地临时数据引用（具体实体清理由各绘制类负责）
     this.tempEntities = [];
-    this.tempPositions = [];
-    // 清理临时标签实体
-    this.tempLabelEntities.forEach((entity) => {
-      this.entities.remove(entity);
-    });
     this.tempLabelEntities = [];
+    this.tempPositions = [];
 
     if (resetMode) {
       this.drawMode = null;
@@ -670,28 +546,13 @@ class DrawHelper {
     });
     this.publicEntities = [];
 
-    // 清理临时实体（包括绘制过程中的点实体）
-    this.tempEntities.forEach((entity) => {
-      if (entity) {
-        this.entities.remove(entity);
-      }
-    });
+    // 重置本地临时数据引用（具体实体清理由各绘制类负责）
     this.tempEntities = [];
-
-    // 清理临时标签实体
-    this.tempLabelEntities.forEach((entity) => {
-      if (entity && entity.label) {
-        this.entities.remove(entity);
-      }
-    });
     this.tempLabelEntities = [];
-
-    // 确保清理所有可能残留的实体
     this.tempPositions = [];
 
     // 清理 DrawPolygon 的边框实体
     if (this.drawPolygon) {
-      debugger;
       this.drawPolygon.clear();
     }
   }
@@ -727,13 +588,12 @@ class DrawHelper {
       }
     });
     this.finishedPointEntities = [];
-    
-    // 清除临时点实体
-    this.tempEntities.forEach((entity) => {
-      if (entity && entity.point) {
-        this.entities.remove(entity);
-      }
-    });
+
+    // 清除当前绘制过程中的临时点实体，委托给绘制基类
+    if (this.currentDrawer) {
+      this.currentDrawer.clearTempPointEntitiesForHelper();
+      this.tempEntities = this.currentDrawer.getTempEntities();
+    }
     
     // 清除所有可能的点实体（通过实体名称查找）
     const allEntities = this.entities.values;
@@ -770,57 +630,6 @@ class DrawHelper {
    */
   getFinishedEntities(): Cesium.Entity[] {
     return [...this.finishedEntities];
-  }
-
-  /**
-   * 使用 Canvas 绘制总长文本，生成用于 billboard 的图片
-   */
-  private createTotalLengthBillboardImage(text: string): HTMLCanvasElement {
-    const paddingX = 12;
-    const paddingY = 6;
-    const font = "bold 16px 'Microsoft YaHei', 'PingFang SC', sans-serif";
-
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      // 兜底：返回一个小画布避免报错
-      canvas.width = 1;
-      canvas.height = 1;
-      return canvas;
-    }
-
-    // 先测量文本宽度
-    ctx.font = font;
-    const metrics = ctx.measureText(text);
-    const textWidth = metrics.width;
-    const textHeight = 20; // 近似行高
-
-    canvas.width = Math.ceil(textWidth + paddingX * 2);
-    canvas.height = Math.ceil(textHeight + paddingY * 2);
-
-    // 再次设置字体（重新设置会重置部分状态）
-    ctx.font = font;
-    ctx.textBaseline = 'middle';
-    ctx.textAlign = 'center';
-
-    // 绘制半透明黑色背景
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // 绘制白色文本
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillText(text, canvas.width / 2, canvas.height / 2);
-
-    return canvas;
-  }
-
-  /**
-   * 使用 Canvas 绘制分段长度文本，生成用于 billboard 的图片
-   * 样式与总长保持一致，便于统一视觉
-   */
-  private createSegmentLengthBillboardImage(text: string): HTMLCanvasElement {
-    // 目前与总长样式一致，后续如需区分可单独调整
-    return this.createTotalLengthBillboardImage(text);
   }
 
   // --- 回调注册 ---

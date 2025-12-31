@@ -1,6 +1,7 @@
 import { ref, type Ref } from "vue";
 import * as Cesium from "cesium";
 import type { Entity } from "cesium";
+import type { OverlayEntity } from '../libs/overlay/types';
 import { CesiumOverlayService } from "../libs/overlay";
 
 /**
@@ -389,9 +390,10 @@ export function useOverlayHelper(
       outlineColor: Cesium.Color.fromCssColorString('#d32f2f'),              // 边框颜色
       outlineWidth: 20,                               // >1 触发双层椭圆环（米为单位）
       onClick: () => {
-        console.log('圆形 A 被点击=', circleA);
-        console.log('圆形 A 被点击=', circleA.id);
-        console.log('圆形 A 被点击=', circleA._innerEntity.id);
+        const circleOverlay = circleA as OverlayEntity;
+        console.log('圆形 A 被点击=', circleOverlay);
+        console.log('圆形 A 被点击=', circleOverlay.id);
+        console.log('圆形 A 被点击=', circleOverlay._innerEntity?.id);
         message.value = '圆形 A 被点击';
         // circleA.show = !circleA.show;
         // circleA._innerEntity.show = !circleA._innerEntity.show;

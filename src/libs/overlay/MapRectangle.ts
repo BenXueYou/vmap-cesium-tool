@@ -1,5 +1,6 @@
 import * as Cesium from "cesium";
 import type { Viewer, Entity, Color, HeightReference } from "cesium";
+import type { OverlayEntity } from './types';
 
 /**
  * Rectangle 选项
@@ -124,14 +125,17 @@ export class MapRectangle {
       });
 
       if (options.onClick) {
-        (outer as any)._onClick = options.onClick;
-        (inner as any)._onClick = options.onClick;
+        const outerEntity = outer as OverlayEntity;
+        const innerEntity = inner as OverlayEntity;
+        outerEntity._onClick = options.onClick;
+        innerEntity._onClick = options.onClick;
       }
 
-      (outer as any)._innerEntity = inner;
-      (outer as any)._isRing = true;
-      (outer as any)._ringThickness = ringThickness;
-      (outer as any)._outerRectangle = options.coordinates;
+      const outerEntity = outer as OverlayEntity;
+      outerEntity._innerEntity = inner;
+      outerEntity._isRing = true;
+      outerEntity._ringThickness = ringThickness;
+      outerEntity._outerRectangle = options.coordinates;
 
       return outer;
     }
@@ -150,7 +154,8 @@ export class MapRectangle {
     });
 
     if (options.onClick) {
-      (entity as any)._onClick = options.onClick;
+      const overlayEntity = entity as OverlayEntity;
+      overlayEntity._onClick = options.onClick;
     }
 
     return entity;
@@ -160,8 +165,9 @@ export class MapRectangle {
    * 更新 Rectangle 坐标
    */
   public updateCoordinates(entity: Entity, coordinates: Cesium.Rectangle): void {
-    const inner = (entity as any)._innerEntity as Entity | undefined;
-    const thickness = (entity as any)._ringThickness as number | undefined;
+    const overlayEntity = entity as OverlayEntity;
+    const inner = overlayEntity._innerEntity;
+    const thickness = overlayEntity._ringThickness;
     if (entity.polygon && inner && thickness) {
       const baseHeight = 0;
       const heightEpsilon = 0.1;
@@ -172,7 +178,7 @@ export class MapRectangle {
         new Cesium.PolygonHierarchy(outerPositions, [new Cesium.PolygonHierarchy(innerPositions)])
       );
       inner.rectangle!.coordinates = new Cesium.ConstantProperty(innerRect);
-      (entity as any)._outerRectangle = coordinates;
+      overlayEntity._outerRectangle = coordinates;
     } else if (entity.rectangle) {
       entity.rectangle.coordinates = new Cesium.ConstantProperty(coordinates);
     }
@@ -182,8 +188,9 @@ export class MapRectangle {
    * 更新 Rectangle 样式
    */
   public updateStyle(entity: Entity, options: Partial<Pick<RectangleOptions, 'material' | 'outline' | 'outlineColor' | 'outlineWidth'>>): void {
-    const inner = (entity as any)._innerEntity as Entity | undefined;
-    const isRing = (entity as any)._isRing as boolean | undefined;
+    const overlayEntity = entity as OverlayEntity;
+    const inner = overlayEntity._innerEntity;
+    const isRing = overlayEntity._isRing;
     if (isRing && entity.polygon && inner) {
       if (options.outlineColor !== undefined) {
         entity.polygon.material = new Cesium.ColorMaterialProperty(this.resolveColor(options.outlineColor));
@@ -193,8 +200,8 @@ export class MapRectangle {
       }
       if (options.outlineWidth !== undefined) {
         const thickness = Math.max(0, options.outlineWidth);
-        (entity as any)._ringThickness = thickness;
-        const outerRect = ((entity as any)._outerRectangle as Cesium.Rectangle) ?? undefined;
+        overlayEntity._ringThickness = thickness;
+        const outerRect = overlayEntity._outerRectangle ?? undefined;
         if (outerRect) {
           const baseHeight = 0;
           const heightEpsilon = 0.1;
@@ -229,12 +236,13 @@ export class MapRectangle {
   public remove(entityOrId: Entity | string): boolean {
     const entity = typeof entityOrId === 'string' ? this.entities.getById(entityOrId) : entityOrId;
     if (!entity) return false;
-    delete (entity as any)._onClick;
-    const inner = (entity as any)._innerEntity as Entity | undefined;
+    const overlayEntity = entity as OverlayEntity;
+    const inner = overlayEntity._innerEntity;
     if (inner) {
-      delete (inner as any)._onClick;
+      (inner as OverlayEntity)._onClick = undefined;
       this.entities.remove(inner);
     }
+    overlayEntity._onClick = undefined;
     return this.entities.remove(entity);
   }
 } 

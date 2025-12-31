@@ -24,6 +24,28 @@ export interface DrawCallbacks {
 }
 
 /**
+ * 扩展后的绘制实体类型
+ * 用于在 Entity 上挂载绘图相关的元数据
+ */
+export type DrawEntity = Entity & {
+  _drawType?: "line" | "polygon" | "rectangle" | "circle";
+  _drawOptions?: DrawOptions;
+  _groundPositions?: Cartesian3[];
+  _groundPosition?: Cartesian3;
+  _groundRectangle?: Cesium.Rectangle;
+  _radius?: number;
+  _borderEntity?: Entity;
+  _onClick?: (entity: Entity, ...args: any[]) => void;
+  _isSelected?: boolean;
+  _originalStyle?: {
+    material?: any;
+    width?: any;
+    outlineColor?: any;
+    outlineWidth?: any;
+  };
+};
+
+/**
  * 绘制时可选的样式和事件回调
  */
 export interface DrawOptions {
@@ -69,6 +91,92 @@ export abstract class BaseDraw {
   protected drawOptions?: DrawOptions;
 
   /**
+   * 公开只读访问当前临时数据，供调度器使用
+   */
+  public getTempPositions(): Cartesian3[] {
+    return this.tempPositions;
+  }
+
+  public getTempEntities(): Entity[] {
+    return this.tempEntities;
+  }
+
+  public getTempLabelEntities(): Entity[] {
+    return this.tempLabelEntities;
+  }
+
+  public getFinishedPointEntities(): Entity[] {
+    return this.finishedPointEntities;
+  }
+
+  /**
+   * 允许调度器安全地重建临时数据
+   */
+  public setTempPositions(positions: Cartesian3[]): void {
+    this.tempPositions = positions;
+  }
+
+  public setTempEntities(entities: Entity[]): void {
+    this.tempEntities = entities;
+  }
+
+  public setTempLabelEntities(entities: Entity[]): void {
+    this.tempLabelEntities = entities;
+  }
+
+  /**
+   * 供调度器调用的公开包装方法
+   */
+  public addPointForHelper(position: Cartesian3): void {
+    this.addPoint(position);
+  }
+
+  public clearTempEntitiesForHelper(): void {
+    this.clearTempEntities();
+  }
+
+  /**
+   * 清除当前绘制过程中的临时点实体
+   * 仅删除带有 point 组件的临时实体，保留其它临时线/面实体
+   */
+  public clearTempPointEntitiesForHelper(): void {
+    const remaining: Entity[] = [];
+    this.tempEntities.forEach((entity) => {
+      if (entity && (entity as Entity).point) {
+        this.entities.remove(entity);
+      } else if (entity) {
+        remaining.push(entity);
+      }
+    });
+    this.tempEntities = remaining;
+  }
+
+  /**
+   * 删除最后一个点并根据剩余点重建预览实体
+   * 供调度器在右键删除点时调用，具体重建逻辑仍由各子类的 updateDrawingEntity 实现
+   */
+  public removeLastPointAndRedraw(): void {
+    if (this.tempPositions.length === 0) {
+      return;
+    }
+
+    // 复制当前点位并移除最后一个
+    const remainingPositions = this.tempPositions.slice(0, this.tempPositions.length - 1);
+
+    // 清理当前所有临时实体（点实体、线/面实体、临时标签）
+    this.clearTempEntities();
+
+    // 重建内部状态：从剩余点重新创建点实体
+    this.tempPositions = [];
+    remainingPositions.forEach((pos) => {
+      this.addPoint(pos);
+    });
+
+    // 根据剩余点重建线/面等预览实体
+    this.updateDrawingEntity();
+  }
+
+  /**
    * 将任意颜色输入解析为 Cesium.Color
    */
   protected resolveColor(input?: Cesium.Color | string): Cesium.Color {
@@ -83,109 +191,19 @@ export abstract class BaseDraw {
   }
 
   /**
-   * 应用选中样式（可切换）
+   * 应用/切换选中样式（统一逻辑，供调度器和子类共用）
    */
   protected applySelectedStyleToEntity(entity: Entity): void {
-    try {
-      const opts = (entity as any)._drawOptions as DrawOptions | undefined;
-      const sel = opts?.selected;
-      if (!sel) return;
-
-      // 如果已选中，则还原
-      if ((entity as any)._isSelected) {
-        this.restoreOriginalStyleForEntity(entity);
-        (entity as any)._isSelected = false;
-        return;
-      }
-
-      // 保存原始样式（第一次）
-      if (!(entity as any)._originalStyle) {
-        (entity as any)._originalStyle = {};
-        if (entity.polyline) {
-          (entity as any)._originalStyle.material = entity.polyline.material;
-          (entity as any)._originalStyle.width = entity.polyline.width;
-        }
-        if (entity.polygon) {
-          (entity as any)._originalStyle.material = entity.polygon.material;
-          (entity as any)._originalStyle.outlineColor = entity.polygon.outlineColor;
-          (entity as any)._originalStyle.outlineWidth = entity.polygon.outlineWidth;
-        }
-        if (entity.rectangle) {
-          (entity as any)._originalStyle.material = entity.rectangle.material;
-          (entity as any)._originalStyle.outlineColor = entity.rectangle.outlineColor;
-          (entity as any)._originalStyle.outlineWidth = entity.rectangle.outlineWidth;
-        }
-        if (entity.ellipse) {
-          (entity as any)._originalStyle.material = entity.ellipse.material;
-          (entity as any)._originalStyle.outlineColor = entity.ellipse.outlineColor;
-          (entity as any)._originalStyle.outlineWidth = entity.ellipse.outlineWidth;
-        }
-      }
-
-      // 应用高亮样式
-      if (entity.polyline) {
-        const color = sel.color ? this.resolveColor(sel.color) : Cesium.Color.YELLOW;
-        const width = sel.width ?? ((entity.polyline.width as any) || 5) + 2;
-        entity.polyline.material = new Cesium.ColorMaterialProperty(color);
-        entity.polyline.width = new Cesium.ConstantProperty(width);
-      }
-
-      if (entity.polygon) {
-        const color = sel.color ? this.resolveColor(sel.color) : Cesium.Color.YELLOW;
-        entity.polygon.material = new Cesium.ColorMaterialProperty(color.withAlpha(0.5));
-        entity.polygon.outlineColor = new Cesium.ConstantProperty(sel.outlineColor ? this.resolveColor(sel.outlineColor) : this.resolveColor('#ffffff'));
-        entity.polygon.outlineWidth = new Cesium.ConstantProperty(sel.outlineWidth ?? ((entity.polygon.outlineWidth as any) || 2));
-      }
-
-      if (entity.rectangle) {
-        const color = sel.color ? this.resolveColor(sel.color) : Cesium.Color.YELLOW;
-        entity.rectangle.material = new Cesium.ColorMaterialProperty(color.withAlpha(0.5));
-        entity.rectangle.outlineColor = new Cesium.ConstantProperty(sel.outlineColor ? this.resolveColor(sel.outlineColor) : this.resolveColor('#ffffff'));
-        entity.rectangle.outlineWidth = new Cesium.ConstantProperty(sel.outlineWidth ?? ((entity.rectangle.outlineWidth as any) || 2));
-      }
-
-      if (entity.ellipse) {
-        const color = sel.color ? this.resolveColor(sel.color) : Cesium.Color.YELLOW;
-        entity.ellipse.material = new Cesium.ColorMaterialProperty(color.withAlpha(0.5));
-        entity.ellipse.outlineColor = new Cesium.ConstantProperty(sel.outlineColor ? this.resolveColor(sel.outlineColor) : this.resolveColor('#ffffff'));
-        entity.ellipse.outlineWidth = new Cesium.ConstantProperty(sel.outlineWidth ?? ((entity.ellipse.outlineWidth as any) || 2));
-      }
-
-      (entity as any)._isSelected = true;
-    } catch (e) {
-      console.warn('applySelectedStyleToEntity failed', e);
-    }
+    toggleSelectedStyle(entity as DrawEntity);
   }
 
   /**
-   * 恢复原始样式
+   * 恢复原始样式（兼容旧接口，内部仍走统一逻辑）
    */
   protected restoreOriginalStyleForEntity(entity: Entity): void {
-    try {
-      const orig = (entity as any)._originalStyle;
-      if (!orig) return;
-      if (entity.polyline && orig.material) {
-        entity.polyline.material = orig.material;
-        entity.polyline.width = orig.width ?? entity.polyline.width;
-      }
-      if (entity.polygon && orig.material) {
-        entity.polygon.material = orig.material;
-        entity.polygon.outlineColor = orig.outlineColor ?? entity.polygon.outlineColor;
-        entity.polygon.outlineWidth = orig.outlineWidth ?? entity.polygon.outlineWidth;
-      }
-      if (entity.rectangle && orig.material) {
-        entity.rectangle.material = orig.material;
-        entity.rectangle.outlineColor = orig.outlineColor ?? entity.rectangle.outlineColor;
-        entity.rectangle.outlineWidth = orig.outlineWidth ?? entity.rectangle.outlineWidth;
-      }
-      if (entity.ellipse && orig.material) {
-        entity.ellipse.material = orig.material;
-        entity.ellipse.outlineColor = orig.outlineColor ?? entity.ellipse.outlineColor;
-        entity.ellipse.outlineWidth = orig.outlineWidth ?? entity.ellipse.outlineWidth;
-      }
-      (entity as any)._isSelected = false;
-    } catch (e) {
-      console.warn('restoreOriginalStyleForEntity failed', e);
+    const drawEntity = entity as DrawEntity;
+    if (drawEntity._isSelected) {
+      toggleSelectedStyle(drawEntity);
     }
   }
 
@@ -390,6 +408,127 @@ export abstract class BaseDraw {
   }
 
   // 其余公共方法（如有需要可在子类中覆盖）
+}
+
+/**
+ * 静态工具方法：切换实体的选中样式
+ * 用于避免在多个模块中重复实现相同逻辑
+ */
+export function toggleSelectedStyle(entity: DrawEntity): void {
+  try {
+    const opts = entity._drawOptions as DrawOptions | undefined;
+    const sel = opts?.selected;
+    if (!sel) return;
+
+    // 已选中则恢复
+    if (entity._isSelected) {
+      const orig = entity._originalStyle;
+      if (!orig) {
+        entity._isSelected = false;
+        return;
+      }
+      if (entity.polyline && orig.material) {
+        entity.polyline.material = orig.material;
+        entity.polyline.width = orig.width ?? entity.polyline.width;
+      }
+      if (entity.polygon && orig.material) {
+        entity.polygon.material = orig.material;
+        entity.polygon.outlineColor = orig.outlineColor ?? entity.polygon.outlineColor;
+        entity.polygon.outlineWidth = orig.outlineWidth ?? entity.polygon.outlineWidth;
+      }
+      if (entity.rectangle && orig.material) {
+        entity.rectangle.material = orig.material;
+        entity.rectangle.outlineColor = orig.outlineColor ?? entity.rectangle.outlineColor;
+        entity.rectangle.outlineWidth = orig.outlineWidth ?? entity.rectangle.outlineWidth;
+      }
+      if (entity.ellipse && orig.material) {
+        entity.ellipse.material = orig.material;
+        entity.ellipse.outlineColor = orig.outlineColor ?? entity.ellipse.outlineColor;
+        entity.ellipse.outlineWidth = orig.outlineWidth ?? entity.ellipse.outlineWidth;
+      }
+      entity._isSelected = false;
+      return;
+    }
+
+    // 首次选中：保存原始样式
+    if (!entity._originalStyle) {
+      entity._originalStyle = {};
+      if (entity.polyline) {
+        entity._originalStyle.material = entity.polyline.material;
+        entity._originalStyle.width = entity.polyline.width;
+      }
+      if (entity.polygon) {
+        entity._originalStyle.material = entity.polygon.material;
+        entity._originalStyle.outlineColor = entity.polygon.outlineColor;
+        entity._originalStyle.outlineWidth = entity.polygon.outlineWidth;
+      }
+      if (entity.rectangle) {
+        entity._originalStyle.material = entity.rectangle.material;
+        entity._originalStyle.outlineColor = entity.rectangle.outlineColor;
+        entity._originalStyle.outlineWidth = entity.rectangle.outlineWidth;
+      }
+      if (entity.ellipse) {
+        entity._originalStyle.material = entity.ellipse.material;
+        entity._originalStyle.outlineColor = entity.ellipse.outlineColor;
+        entity._originalStyle.outlineWidth = entity.ellipse.outlineWidth;
+      }
+    }
+
+    const resolveColor = (input?: Cesium.Color | string): Cesium.Color => {
+      try {
+        if (!input) return Cesium.Color.YELLOW;
+        if (input instanceof Cesium.Color) return input;
+        return Cesium.Color.fromCssColorString(String(input));
+      } catch {
+        return Cesium.Color.YELLOW;
+      }
+    };
+
+    // 应用高亮样式
+    if (entity.polyline) {
+      const color = sel.color ? resolveColor(sel.color) : Cesium.Color.YELLOW;
+      const width = sel.width ?? ((entity.polyline.width as any) || 5) + 2;
+      entity.polyline.material = new Cesium.ColorMaterialProperty(color);
+      entity.polyline.width = new Cesium.ConstantProperty(width);
+    }
+
+    if (entity.polygon) {
+      const color = sel.color ? resolveColor(sel.color) : Cesium.Color.YELLOW;
+      entity.polygon.material = new Cesium.ColorMaterialProperty(color.withAlpha(0.5));
+      entity.polygon.outlineColor = new Cesium.ConstantProperty(
+        sel.outlineColor ? resolveColor(sel.outlineColor) : resolveColor('#ffffff')
+      );
+      entity.polygon.outlineWidth = new Cesium.ConstantProperty(
+        sel.outlineWidth ?? ((entity.polygon.outlineWidth as any) || 2)
+      );
+    }
+
+    if (entity.rectangle) {
+      const color = sel.color ? resolveColor(sel.color) : Cesium.Color.YELLOW;
+      entity.rectangle.material = new Cesium.ColorMaterialProperty(color.withAlpha(0.5));
+      entity.rectangle.outlineColor = new Cesium.ConstantProperty(
+        sel.outlineColor ? resolveColor(sel.outlineColor) : resolveColor('#ffffff')
+      );
+      entity.rectangle.outlineWidth = new Cesium.ConstantProperty(
+        sel.outlineWidth ?? ((entity.rectangle.outlineWidth as any) || 2)
+      );
+    }
+
+    if (entity.ellipse) {
+      const color = sel.color ? resolveColor(sel.color) : Cesium.Color.YELLOW;
+      entity.ellipse.material = new Cesium.ColorMaterialProperty(color.withAlpha(0.5));
+      entity.ellipse.outlineColor = new Cesium.ConstantProperty(
+        sel.outlineColor ? resolveColor(sel.outlineColor) : resolveColor('#ffffff')
+      );
+      entity.ellipse.outlineWidth = new Cesium.ConstantProperty(
+        sel.outlineWidth ?? ((entity.ellipse.outlineWidth as any) || 2)
+      );
+    }
+
+    entity._isSelected = true;
+  } catch (e) {
+    console.warn('toggleSelectedStyle failed', e);
+  }
 }
 
 

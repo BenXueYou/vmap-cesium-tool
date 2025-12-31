@@ -1,4 +1,4 @@
-export { BaseDraw, type DrawResult, type DrawCallbacks, type DrawOptions } from './BaseDraw';
+export { BaseDraw, type DrawResult, type DrawCallbacks, type DrawOptions, type DrawEntity, toggleSelectedStyle } from './BaseDraw';
 export { DrawLine } from './DrawLine';
 export { DrawPolygon } from './DrawPolgon';
 export { DrawRectangle } from './DrawRectangle';
