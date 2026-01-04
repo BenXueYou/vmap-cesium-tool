@@ -290,6 +290,7 @@ class DrawHelper {
     this.viewer.cesiumWidget.screenSpaceEventHandler.removeInputAction(
       Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK
     );
+    // 绘图双击事件， 我需要添加校验，只有在点击地图时才触发，点击地图之外不触发
     this.screenSpaceEventHandler.setInputAction(
       (dblClick: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
         if (!this.isDrawing) return;

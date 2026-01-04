@@ -11,6 +11,7 @@ import { MapPolyline, type PolylineOptions } from './overlay/MapPolyline';
 import { MapPolygon, type PolygonOptions } from './overlay/MapPolygon';
 import { MapRectangle, type RectangleOptions } from './overlay/MapRectangle';
 import { MapCircle, type CircleOptions } from './overlay/MapCircle';
+import { MapRing, type RingOptions } from './overlay/MapRing';
 import type { OverlayPosition } from './overlay/types';
 
 /**
@@ -33,6 +34,7 @@ export class CesiumOverlayService {
   public readonly polygon: MapPolygon;
   public readonly rectangle: MapRectangle;
   public readonly circle: MapCircle;
+  public readonly ring: MapRing;
 
   constructor(viewer: Viewer) {
     this.viewer = viewer;
@@ -50,6 +52,7 @@ export class CesiumOverlayService {
     this.polygon = new MapPolygon(viewer);
     this.rectangle = new MapRectangle(viewer);
     this.circle = new MapCircle(viewer);
+    this.ring = new MapRing(viewer);
   }
 
   /**
@@ -191,6 +194,16 @@ export class CesiumOverlayService {
     return entity;
   }
 
+  /**
+   * 添加 Ring
+   */
+  public addRing(options: RingOptions): Entity {
+    const id = options.id || this.generateId('ring');
+    const entity = this.ring.add({ ...options, id });
+    this.overlayMap.set(id, entity);
+    return entity;
+  }
+
   // ========== 管理方法 ==========
 
   /**
@@ -211,6 +224,16 @@ export class CesiumOverlayService {
       const infoWindow = overlay._infoWindow;
       if (infoWindow) {
         this.infoWindow.remove(entity);
+      }
+
+      // 复合覆盖物：同时移除关联实体（如圆环的内层线、图形边框等）
+      if (overlay._innerEntity) {
+        this.entities.remove(overlay._innerEntity);
+        overlay._innerEntity = undefined;
+      }
+      if (overlay._borderEntity) {
+        this.entities.remove(overlay._borderEntity);
+        overlay._borderEntity = undefined;
       }
       
       this.entities.remove(entity);
@@ -248,8 +271,13 @@ export class CesiumOverlayService {
       // Icon 或 SVG
       this.icon.updatePosition(entity, position);
     } else if (entity.polyline) {
-      // Polyline - 需要多个位置，这里只更新第一个位置（实际使用中可能需要重新设计）
-      console.warn('Polyline position update requires multiple positions');
+      // Polyline：若为 Ring，允许更新中心；否则保持原行为
+      if (overlay._overlayType === 'ring') {
+        this.ring.updatePosition(entity, position);
+      } else {
+        // Polyline - 需要多个位置，这里只更新第一个位置（实际使用中可能需要重新设计）
+        console.warn('Polyline position update requires multiple positions');
+      }
     } else if (entity.polygon) {
       // Polygon - 需要多个位置，这里只更新第一个位置（实际使用中可能需要重新设计）
       console.warn('Polygon position update requires multiple positions');
@@ -274,6 +302,14 @@ export class CesiumOverlayService {
     if (entity) {
       entity.show = visible;
       const overlay = entity as OverlayEntity;
+
+      // 复合覆盖物：联动显示/隐藏关联实体
+      if (overlay._innerEntity) {
+        overlay._innerEntity.show = visible;
+      }
+      if (overlay._borderEntity) {
+        overlay._borderEntity.show = visible;
+      }
       
       // 如果是信息窗口，更新DOM显示
       if (overlay._infoWindow) {

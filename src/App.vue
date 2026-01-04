@@ -21,6 +21,7 @@
       <button @click="addLabel">添加标签</button>
       <button @click="addRectangle">添加矩形</button>
       <button @click="addInfoWindow">添加窗口</button>
+      <button @click="addRing">添加圆环</button>
 
       <br />
       <button @click="addHeatMap">添加热力图</button>
@@ -76,6 +77,7 @@ const {
   addRectangle,
   addInfoWindow,
   cancelMarkerMode,
+  addRing,
   destroyOverlayService,
 } = useOverlayHelper(viewer, message);
 

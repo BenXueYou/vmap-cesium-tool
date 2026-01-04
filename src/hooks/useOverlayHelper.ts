@@ -140,7 +140,6 @@ export function useOverlayHelper(
     const center = viewer.value.camera.positionCartographic;
     const lon = Cesium.Math.toDegrees(center.longitude);
     const lat = Cesium.Math.toDegrees(center.latitude);
-    debugger;
     const icon = overlayService.value.addIcon({
       position: [lon - 0.01, lat + 0.01, 200],
       image:
@@ -409,6 +408,44 @@ export function useOverlayHelper(
   };
 
   /**
+   * 添加发光圆环（MapRing）
+   */
+  const addRing = () => {
+    if (!viewer.value || !overlayService.value) return;
+
+    const center = viewer.value.camera.positionCartographic;
+    const lon = Cesium.Math.toDegrees(center.longitude);
+    const lat = Cesium.Math.toDegrees(center.latitude);
+
+    const ring = overlayService.value.addRing({
+      position: [lon, lat, 0],
+      radius: 150,
+      // MapRing 中：color = 发光颜色，lineColor = 实线颜色
+      color: Cesium.Color.RED.withAlpha(0.6),
+        lineColor: Cesium.Color.RED.withAlpha(0.8),
+        glowWidth: 14,
+        lineWidth: 6,
+      glowPower: 0.35,
+      clampToGround: true,
+      segments: 128,
+      onClick: (entity) => {
+        console.log('发光圆环被点击:', entity);
+        message.value = '发光圆环被点击';
+        // 演示：点击后短暂隐藏再显示
+        overlayService.value!.setOverlayVisible(entity.id, false);
+        setTimeout(() => {
+          overlayService.value!.setOverlayVisible(entity.id, true);
+          message.value = '';
+        }, 800);
+      },
+    });
+
+    markerEntities.push(ring);
+    message.value = '已添加发光圆环';
+    setTimeout(() => (message.value = ''), 2000);
+  };
+
+  /**
    * 添加多边形（示例 / 辅助方法）
    */
   const addPolygon = () => {
@@ -480,6 +517,7 @@ export function useOverlayHelper(
     addLine,
     addArea,
     addCircle,
+    addRing,
     addPolygon,
     addRectangle,
     addInfoWindow,

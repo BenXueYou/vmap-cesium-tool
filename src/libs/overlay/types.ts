@@ -13,6 +13,9 @@ export interface OverlayEntity extends Entity {
 	/** 覆盖物点击回调（由各 Map* 工具类设置） */
 	_onClick?: (entity: Entity) => void;
 
+	/** 覆盖物类型标识（用于 CesiumOverlayService 做差异化更新/删除） */
+	_overlayType?: string;
+
 	/** 信息窗口根 DOM（由 MapInfoWindow / CesiumOverlayService 使用） */
 	_infoWindow?: HTMLElement;
 
@@ -25,6 +28,8 @@ export interface OverlayEntity extends Entity {
 	_outlineWidth?: number;
 	_isRing?: boolean;
 	_ringThickness?: number;
+	_ringSegments?: number;
+	_ringGlowPower?: number;
 	_fillMaterial?: MaterialProperty | Color | string;
 	_ringHeightEpsilon?: number;
 	_centerCartographic?: Cartographic;

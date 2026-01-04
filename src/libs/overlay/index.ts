@@ -8,6 +8,7 @@ export { MapPolyline } from './MapPolyline';
 export { MapPolygon } from './MapPolygon';
 export { MapRectangle } from './MapRectangle';
 export { MapCircle } from './MapCircle';
+export { MapRing } from './MapRing';
 
 export type { OverlayPosition } from './types';
 export type { MarkerOptions } from './MapMarker';
@@ -19,3 +20,4 @@ export type { PolylineOptions } from './MapPolyline';
 export type { PolygonOptions } from './MapPolygon';
 export type { RectangleOptions } from './MapRectangle';
 export type { CircleOptions } from './MapCircle';
+export type { RingOptions } from './MapRing';
