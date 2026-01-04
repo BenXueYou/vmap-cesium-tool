@@ -829,3 +829,16 @@ declare const _default: {
 };
 
 export default _default;
+
+// Heatmap-related types
+export interface HeatmapOptions {
+  intensity?: number;
+  radius?: number;
+  gradient?: Record<number, string>;
+}
+
+export interface HeatmapLayer {
+  addData(data: { x: number; y: number; value: number }[]): void;
+  setOptions(options: HeatmapOptions): void;
+  clear(): void;
+}

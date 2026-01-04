@@ -25,6 +25,11 @@
 
       <br />
       <button @click="addHeatMap">添加热力图</button>
+      <button @click="enableHeatmapAuto">开启热力图动态聚合</button>
+      <button @click="disableHeatmapAuto">关闭热力图动态聚合</button>
+      <button @click="setHeatmapLodCoarse">聚合档位：粗</button>
+      <button @click="setHeatmapLodMedium">聚合档位：中</button>
+      <button @click="setHeatmapLodFine">聚合档位：细</button>
     </div>
   </div>
 </template>
@@ -89,6 +94,8 @@ const {
   setHeatmapVisible,
   setHeatmapOpacity,
   setHeatmapGradient,
+  setHeatmapAutoUpdate,
+  stopHeatmapAutoUpdate,
   destroyHeatmap,
 } = useHeatmapHelper(viewer);
 
@@ -162,6 +169,7 @@ const addHeatMap = () => {
   setHeatmapVisible(true);
   setHeatmapOpacity(0.9);
   setHeatmapGradient(gradient);
+  
 
   // 简单用所有点的平均值作为视角中心
   const avgLon =
@@ -175,6 +183,97 @@ const addHeatMap = () => {
     height: 8000,
     pitch: -90,
   });
+};
+
+// 热力图：动态聚合（方格聚合 + moveEnd + WebWorker）测试
+const enableHeatmapAuto = () => {
+  if (!heatmapLayer.value) {
+    message.value = "请先添加热力图";
+    return;
+  }
+  setHeatmapAutoUpdate({
+    enabled: true,
+    // 可按需要调整：视域 padding 越大，边缘变化越不明显但计算更重
+    viewPaddingRatio: 0.15,
+  });
+  message.value = "已开启热力图动态聚合（拖动/缩放后更新）";
+  setTimeout(() => (message.value = ""), 2000);
+};
+
+const disableHeatmapAuto = () => {
+  if (!heatmapLayer.value) return;
+  stopHeatmapAutoUpdate();
+  message.value = "已关闭热力图动态聚合";
+  setTimeout(() => (message.value = ""), 1500);
+};
+
+const ensureHeatmapForAuto = (): boolean => {
+  if (!heatmapLayer.value) {
+    message.value = "请先添加热力图";
+    return false;
+  }
+  return true;
+};
+
+// 三档 LOD：通过 cellSizeMetersByHeight 调整网格边长（米）
+const setHeatmapLodCoarse = () => {
+  if (!ensureHeatmapForAuto()) return;
+  setHeatmapAutoUpdate({
+    enabled: true,
+    viewPaddingRatio: 0.15,
+    cellSizeMetersByHeight: (h: number) => {
+      if (h > 2_000_000) return 50_000;
+      if (h > 1_000_000) return 30_000;
+      if (h > 500_000) return 20_000;
+      if (h > 200_000) return 10_000;
+      if (h > 100_000) return 6_000;
+      if (h > 50_000) return 3_000;
+      if (h > 20_000) return 1_800;
+      return 1_000;
+    },
+  });
+  message.value = "已切换：聚合档位=粗";
+  setTimeout(() => (message.value = ""), 1500);
+};
+
+const setHeatmapLodMedium = () => {
+  if (!ensureHeatmapForAuto()) return;
+  setHeatmapAutoUpdate({
+    enabled: true,
+    viewPaddingRatio: 0.15,
+    cellSizeMetersByHeight: (h: number) => {
+      if (h > 2_000_000) return 20_000;
+      if (h > 1_000_000) return 12_000;
+      if (h > 500_000) return 8_000;
+      if (h > 200_000) return 4_000;
+      if (h > 100_000) return 2_000;
+      if (h > 50_000) return 1_000;
+      if (h > 20_000) return 600;
+      return 300;
+    },
+  });
+  message.value = "已切换：聚合档位=中";
+  setTimeout(() => (message.value = ""), 1500);
+};
+
+const setHeatmapLodFine = () => {
+  if (!ensureHeatmapForAuto()) return;
+  setHeatmapAutoUpdate({
+    enabled: true,
+    viewPaddingRatio: 0.15,
+    cellSizeMetersByHeight: (h: number) => {
+      if (h > 2_000_000) return 12_000;
+      if (h > 1_000_000) return 8_000;
+      if (h > 500_000) return 5_000;
+      if (h > 200_000) return 2_000;
+      if (h > 100_000) return 1_000;
+      if (h > 50_000) return 600;
+      if (h > 20_000) return 300;
+      return 150;
+    },
+  });
+  message.value = "已切换：聚合档位=细";
+  setTimeout(() => (message.value = ""), 1500);
 };
 
 // 初始化地图

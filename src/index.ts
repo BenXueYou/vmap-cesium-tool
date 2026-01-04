@@ -43,6 +43,10 @@ export type * from './libs/toolBar/MapToolBarConfig';
 export * from './libs/toolBar/NotFlyZonesService';
 export type * from './libs/toolBar/NotFlyZonesService';
 
+// Heatmap functionality
+export { HeatmapLayer } from './libs/CesiumHeatmapLayer';
+export type { HeatmapOptions } from './types/index';
+
 // 默认导出
 export default {
   CesiumMapToolbar,

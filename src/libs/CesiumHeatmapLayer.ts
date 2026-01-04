@@ -32,6 +32,17 @@ export interface HeatmapOptions {
   gradient?: HeatmapGradient;
 }
 
+export interface HeatmapAutoUpdateOptions {
+  /** 是否启用随视角变化自动重绘（默认 true） */
+  enabled?: boolean;
+  /** 视域范围 padding（比例，默认 0.15） */
+  viewPaddingRatio?: number;
+  /** 聚合网格边长（米）。不传则根据相机高度自动估算 */
+  cellSizeMeters?: number;
+  /** 根据相机高度（米）动态返回网格边长（米）。优先级高于 cellSizeMeters */
+  cellSizeMetersByHeight?: (cameraHeightMeters: number) => number;
+}
+
 /**
  * Cesium 热力图图层封装
  * - 使用离屏 Canvas 绘制热力图
@@ -48,6 +59,30 @@ export default class CesiumHeatmapLayer {
   private options: Required<HeatmapOptions>;
   private data: HeatPoint[] = [];
   private gradientLUT: Uint8ClampedArray; // 长度 256 * 4 (RGBA)
+
+  // auto update / aggregation
+  private autoUpdateEnabled = false;
+  private autoUpdateOptions: Required<HeatmapAutoUpdateOptions> = {
+    enabled: true,
+    viewPaddingRatio: 0.15,
+    cellSizeMeters: 1000,
+    cellSizeMetersByHeight: (h: number) => {
+      // 粗略的 LOD：相机越高，网格越粗（单位：米）
+      if (h > 2_000_000) return 20_000;
+      if (h > 1_000_000) return 12_000;
+      if (h > 500_000) return 8_000;
+      if (h > 200_000) return 4_000;
+      if (h > 100_000) return 2_000;
+      if (h > 50_000) return 1_000;
+      if (h > 20_000) return 600;
+      return 300;
+    },
+  };
+  private removeMoveEndListener: (() => void) | null = null;
+  private aggregateWorker: Worker | null = null;
+  private workerReady = false;
+  private pendingUpdate = false;
+  private lastUpdateKey = "";
 
   constructor(viewer: Cesium.Viewer, options: HeatmapOptions = {}) {
     this.viewer = viewer;
@@ -125,7 +160,14 @@ export default class CesiumHeatmapLayer {
 
     this.rectangle = Cesium.Rectangle.fromDegrees(minLon, minLat, maxLon, maxLat);
 
-    this.renderHeatmap();
+    // 如果启用了自动更新，渲染将由 moveEnd 驱动（且采用聚合后的视域数据）。
+    if (!this.autoUpdateEnabled) {
+      this.renderHeatmap(this.data, this.rectangle, { persistMinMax: true });
+    } else {
+      this.ensureWorker();
+      this.pushDataToWorker();
+      this.requestAutoUpdate();
+    }
   }
 
   /**
@@ -135,7 +177,11 @@ export default class CesiumHeatmapLayer {
     this.options.gradient = gradient;
     this.buildGradientLUT();
     if (this.data.length > 0) {
-      this.renderHeatmap();
+      if (!this.autoUpdateEnabled) {
+        if (this.rectangle) this.renderHeatmap(this.data, this.rectangle, { persistMinMax: true });
+      } else {
+        this.requestAutoUpdate();
+      }
     }
   }
 
@@ -162,7 +208,57 @@ export default class CesiumHeatmapLayer {
    * 销毁并移除图层
    */
   public destroy(): void {
+    this.stopAutoUpdate();
+    if (this.aggregateWorker) {
+      try {
+        this.aggregateWorker.terminate();
+      } catch {
+        // ignore
+      }
+      this.aggregateWorker = null;
+      this.workerReady = false;
+    }
     this.clearLayer();
+  }
+
+  /**
+   * 启用/关闭基于视域与缩放的自动聚合重绘（方格聚合 + moveEnd + WebWorker）。
+   * - 启用后：热力图仅渲染当前视域范围内的聚合结果，缩放/平移后自动更新。
+   * - 关闭后：回退为 setData() 时按全量范围绘制一张 SingleTile。
+   */
+  public setAutoUpdate(options: HeatmapAutoUpdateOptions = {}): void {
+    const enabled = options.enabled ?? true;
+    this.autoUpdateOptions = {
+      ...this.autoUpdateOptions,
+      ...options,
+      enabled,
+      viewPaddingRatio: options.viewPaddingRatio ?? this.autoUpdateOptions.viewPaddingRatio,
+      cellSizeMeters: options.cellSizeMeters ?? this.autoUpdateOptions.cellSizeMeters,
+      cellSizeMetersByHeight: options.cellSizeMetersByHeight ?? this.autoUpdateOptions.cellSizeMetersByHeight,
+    };
+
+    if (enabled) {
+      this.startAutoUpdateInternal();
+    } else {
+      this.stopAutoUpdate();
+      if (this.data.length > 0 && this.rectangle) {
+        this.renderHeatmap(this.data, this.rectangle, { persistMinMax: true });
+      }
+    }
+  }
+
+  public stopAutoUpdate(): void {
+    this.autoUpdateEnabled = false;
+    if (this.removeMoveEndListener) {
+      try {
+        this.removeMoveEndListener();
+      } catch {
+        // ignore
+      }
+      this.removeMoveEndListener = null;
+    }
+    this.pendingUpdate = false;
+    this.lastUpdateKey = "";
   }
 
   private clearLayer(): void {
@@ -174,6 +270,219 @@ export default class CesiumHeatmapLayer {
       }
       this.imageryLayer = null;
     }
+  }
+
+  private startAutoUpdateInternal(): void {
+    if (this.autoUpdateEnabled) return;
+    this.autoUpdateEnabled = true;
+    this.ensureWorker();
+    this.pushDataToWorker();
+
+    const handler = () => {
+      this.requestAutoUpdate();
+    };
+
+    // Cesium Event addEventListener 通常会返回一个移除函数
+    const remove = (this.viewer.camera.moveEnd as any)?.addEventListener?.(handler);
+    this.removeMoveEndListener = typeof remove === "function" ? remove : null;
+
+    // 立即触发一次
+    this.requestAutoUpdate();
+  }
+
+  private requestAutoUpdate(): void {
+    if (!this.autoUpdateEnabled) return;
+    if (!this.workerReady) {
+      // worker 还没 ready，先标记 pending
+      this.pendingUpdate = true;
+      return;
+    }
+
+    const view = this.getPaddedViewRectangleDegrees(this.autoUpdateOptions.viewPaddingRatio);
+    if (!view) return;
+
+    const cameraHeight = this.viewer.camera.positionCartographic?.height ?? 0;
+    const cellMeters = this.autoUpdateOptions.cellSizeMetersByHeight
+      ? this.autoUpdateOptions.cellSizeMetersByHeight(cameraHeight)
+      : this.autoUpdateOptions.cellSizeMeters;
+
+    const key = `${view.west.toFixed(4)},${view.south.toFixed(4)},${view.east.toFixed(4)},${view.north.toFixed(4)}|${Math.round(
+      cameraHeight
+    )}|${Math.round(cellMeters)}`;
+    if (key === this.lastUpdateKey) return;
+    this.lastUpdateKey = key;
+
+    this.aggregateWorker?.postMessage({
+      type: "aggregate",
+      bbox: view,
+      cellMeters,
+    });
+  }
+
+  private getPaddedViewRectangleDegrees(paddingRatio: number): { west: number; south: number; east: number; north: number } | null {
+    const rect = this.viewer.camera.computeViewRectangle(this.viewer.scene.globe.ellipsoid);
+    if (!rect) return null;
+
+    const west = Cesium.Math.toDegrees(rect.west);
+    const east = Cesium.Math.toDegrees(rect.east);
+    const south = Cesium.Math.toDegrees(rect.south);
+    const north = Cesium.Math.toDegrees(rect.north);
+
+    // 跨日界线的情况先简单跳过（否则需要拆分为两个 bbox）
+    if (west > east) return null;
+
+    const dx = (east - west) * paddingRatio;
+    const dy = (north - south) * paddingRatio;
+    return {
+      west: west - dx,
+      east: east + dx,
+      south: south - dy,
+      north: north + dy,
+    };
+  }
+
+  private ensureWorker(): void {
+    if (this.aggregateWorker) return;
+
+    const workerCode = `
+      let lons = null;
+      let lats = null;
+      let values = null;
+
+      function clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
+
+      function degLatPerMeter() { return 1.0 / 110540.0; }
+      function degLonPerMeter(latDeg) {
+        const rad = latDeg * Math.PI / 180.0;
+        const cos = Math.cos(rad);
+        const denom = 111320.0 * (cos === 0 ? 1e-6 : cos);
+        return 1.0 / denom;
+      }
+
+      function aggregate(bbox, cellMeters) {
+        if (!lons || !lats || !values) return { points: [], stats: { min: 0, max: 1 } };
+
+        const west = bbox.west;
+        const east = bbox.east;
+        const south = bbox.south;
+        const north = bbox.north;
+        const lat0 = (south + north) * 0.5;
+
+        const dLat = cellMeters * degLatPerMeter();
+        const dLon = cellMeters * degLonPerMeter(lat0);
+        const cols = Math.max(1, Math.ceil((east - west) / (dLon || 1e-9)));
+
+        const sums = new Map();
+        const counts = new Map();
+
+        const n = lons.length;
+        for (let idx = 0; idx < n; idx++) {
+          const lon = lons[idx];
+          const lat = lats[idx];
+          if (!(lon >= west && lon <= east && lat >= south && lat <= north)) continue;
+          const v = values[idx];
+          if (!Number.isFinite(v)) continue;
+          const i = Math.floor((lon - west) / (dLon || 1e-9));
+          const j = Math.floor((lat - south) / (dLat || 1e-9));
+          const key = j * cols + i;
+          sums.set(key, (sums.get(key) || 0) + v);
+          counts.set(key, (counts.get(key) || 0) + 1);
+        }
+
+        const points = [];
+        let minV = Infinity;
+        let maxV = -Infinity;
+        for (const [key, sum] of sums.entries()) {
+          const j = Math.floor(key / cols);
+          const i = key - j * cols;
+          const lonC = west + (i + 0.5) * dLon;
+          const latC = south + (j + 0.5) * dLat;
+          const val = sum;
+          if (val < minV) minV = val;
+          if (val > maxV) maxV = val;
+          points.push({ lon: lonC, lat: latC, value: val, count: counts.get(key) || 1 });
+        }
+        if (!Number.isFinite(minV) || !Number.isFinite(maxV) || minV === maxV) {
+          minV = 0;
+          maxV = 1;
+        }
+        return { points, stats: { min: minV, max: maxV } };
+      }
+
+      self.onmessage = (e) => {
+        const msg = e.data;
+        if (!msg || !msg.type) return;
+        if (msg.type === 'init') {
+          lons = msg.lons ? new Float64Array(msg.lons) : null;
+          lats = msg.lats ? new Float64Array(msg.lats) : null;
+          values = msg.values ? new Float32Array(msg.values) : null;
+          self.postMessage({ type: 'ready' });
+          return;
+        }
+        if (msg.type === 'aggregate') {
+          const bbox = msg.bbox;
+          const cellMeters = msg.cellMeters;
+          const result = aggregate(bbox, cellMeters);
+          self.postMessage({ type: 'result', bbox, points: result.points, stats: result.stats });
+          return;
+        }
+      };
+    `;
+
+    const blob = new Blob([workerCode], { type: "application/javascript" });
+    const url = URL.createObjectURL(blob);
+    this.aggregateWorker = new Worker(url);
+    URL.revokeObjectURL(url);
+
+    this.aggregateWorker.onmessage = (e: MessageEvent) => {
+      const msg = e.data as any;
+      if (!msg || !msg.type) return;
+      if (msg.type === "ready") {
+        this.workerReady = true;
+        if (this.pendingUpdate) {
+          this.pendingUpdate = false;
+          this.requestAutoUpdate();
+        }
+        return;
+      }
+      if (msg.type === "result") {
+        if (!this.autoUpdateEnabled) return;
+        const bbox = msg.bbox as { west: number; south: number; east: number; north: number };
+        const points = (msg.points as HeatPoint[]) ?? [];
+        const rect = Cesium.Rectangle.fromDegrees(bbox.west, bbox.south, bbox.east, bbox.north);
+        this.rectangle = rect;
+        // 动态聚合：每次都按当前视域重新计算 min/max，不持久化到 options
+        this.renderHeatmap(points, rect, { persistMinMax: false });
+      }
+    };
+  }
+
+  private pushDataToWorker(): void {
+    if (!this.aggregateWorker) return;
+    if (this.data.length === 0) return;
+
+    // 将全量数据打包为 TypedArray，传给 worker（只在 setData 或启用 autoUpdate 时传一次）
+    const n = this.data.length;
+    const lons = new Float64Array(n);
+    const lats = new Float64Array(n);
+    const values = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const p = this.data[i];
+      lons[i] = p.lon;
+      lats[i] = p.lat;
+      values[i] = p.value;
+    }
+
+    this.workerReady = false;
+    this.aggregateWorker.postMessage(
+      {
+        type: "init",
+        lons: lons.buffer,
+        lats: lats.buffer,
+        values: values.buffer,
+      },
+      [lons.buffer, lats.buffer, values.buffer]
+    );
   }
 
   /**
@@ -215,20 +524,25 @@ export default class CesiumHeatmapLayer {
   /**
    * 在离屏 canvas 上绘制热力图，并更新到 Cesium 图层
    */
-  private renderHeatmap(): void {
-    if (!this.rectangle || this.data.length === 0) return;
+  private renderHeatmap(
+    points: HeatPoint[],
+    rectangle: Cesium.Rectangle,
+    opts: { persistMinMax: boolean }
+  ): void {
+    if (!rectangle || points.length === 0) return;
 
     const { width, height, radius } = this.options;
     const ctx = this.ctx;
     ctx.clearRect(0, 0, width, height);
 
     // 自动计算 min/max（如果调用方没指定）
+    const hasExplicitRange = !(this.options.minValue === 0 && this.options.maxValue === 1);
     let minV = this.options.minValue;
     let maxV = this.options.maxValue;
-    if (this.options.minValue === 0 && this.options.maxValue === 1) {
+    if (!hasExplicitRange) {
       minV = Number.POSITIVE_INFINITY;
       maxV = Number.NEGATIVE_INFINITY;
-      for (const p of this.data) {
+      for (const p of points) {
         if (!Number.isFinite(p.value)) continue;
         if (p.value < minV) minV = p.value;
         if (p.value > maxV) maxV = p.value;
@@ -237,18 +551,19 @@ export default class CesiumHeatmapLayer {
         minV = 0;
         maxV = 1;
       }
-      this.options.minValue = minV;
-      this.options.maxValue = maxV;
+      if (opts.persistMinMax) {
+        this.options.minValue = minV;
+        this.options.maxValue = maxV;
+      }
     }
 
-    const rect = this.rectangle;
-    const minLon = Cesium.Math.toDegrees(rect.west);
-    const maxLon = Cesium.Math.toDegrees(rect.east);
-    const minLat = Cesium.Math.toDegrees(rect.south);
-    const maxLat = Cesium.Math.toDegrees(rect.north);
+    const minLon = Cesium.Math.toDegrees(rectangle.west);
+    const maxLon = Cesium.Math.toDegrees(rectangle.east);
+    const minLat = Cesium.Math.toDegrees(rectangle.south);
+    const maxLat = Cesium.Math.toDegrees(rectangle.north);
 
     // 第一阶段：用黑白（alpha）累积强度
-    for (const p of this.data) {
+    for (const p of points) {
       if (!Number.isFinite(p.lon) || !Number.isFinite(p.lat)) continue;
       const t = (p.value - minV) / (maxV - minV || 1);
       if (t <= 0) continue;
@@ -284,14 +599,14 @@ export default class CesiumHeatmapLayer {
     }
     ctx.putImageData(img, 0, 0);
 
-    this.updateImageryLayer();
+    this.updateImageryLayer(rectangle);
   }
 
   /**
    * 将当前 canvas 映射为 Cesium 影像图层
    */
-  private updateImageryLayer(): void {
-    if (!this.rectangle) return;
+  private updateImageryLayer(rectangle: Cesium.Rectangle): void {
+    if (!rectangle) return;
 
     // 简单处理：每次重建 SingleTileImageryProvider
     if (this.imageryLayer) {
@@ -308,7 +623,7 @@ export default class CesiumHeatmapLayer {
     const dataUrl = this.canvas.toDataURL("image/png");
     const provider = new Cesium.SingleTileImageryProvider({
       url: dataUrl,
-      rectangle: this.rectangle,
+      rectangle,
       tileWidth: this.options.width,
       tileHeight: this.options.height,
     });

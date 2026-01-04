@@ -4,6 +4,7 @@ import CesiumHeatmapLayer, {
   type HeatPoint,
   type HeatmapOptions,
   type HeatmapGradient,
+  type HeatmapAutoUpdateOptions,
 } from "../libs/CesiumHeatmapLayer";
 
 /**
@@ -43,6 +44,16 @@ export function useHeatmapHelper(viewer: Ref<Cesium.Viewer | undefined>) {
     heatmapLayer.value.setGradient(gradient);
   };
 
+  const setHeatmapAutoUpdate = (options?: HeatmapAutoUpdateOptions) => {
+    if (!heatmapLayer.value) return;
+    heatmapLayer.value.setAutoUpdate(options ?? { enabled: true });
+  };
+
+  const stopHeatmapAutoUpdate = () => {
+    if (!heatmapLayer.value) return;
+    heatmapLayer.value.stopAutoUpdate();
+  };
+
   const destroyHeatmap = () => {
     if (heatmapLayer.value) {
       heatmapLayer.value.destroy();
@@ -62,6 +73,8 @@ export function useHeatmapHelper(viewer: Ref<Cesium.Viewer | undefined>) {
     setHeatmapVisible,
     setHeatmapOpacity,
     setHeatmapGradient,
+    setHeatmapAutoUpdate,
+    stopHeatmapAutoUpdate,
     destroyHeatmap,
   };
 }
