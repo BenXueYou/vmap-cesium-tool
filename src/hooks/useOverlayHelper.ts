@@ -420,13 +420,16 @@ export function useOverlayHelper(
     const ring = overlayService.value.addRing({
       position: [lon, lat, 0],
       radius: 150,
-      // MapRing 中：color = 发光颜色，lineColor = 实线颜色
-      color: Cesium.Color.RED.withAlpha(0.6),
-        lineColor: Cesium.Color.RED.withAlpha(0.8),
-        glowWidth: 14,
-        lineWidth: 6,
+      color: Cesium.Color.RED,
+      lineColor: Cesium.Color.BLUE,
+      lineStyle: 'dashed',
+      lineMaterialMode: 'stripe',
+      stripeRepeat: 40,
+      glowWidth: 14,
+      lineWidth: 6,
       glowPower: 0.35,
       clampToGround: true,
+      gapColor: Cesium.Color.BLUE.withAlpha(0.3),
       segments: 128,
       onClick: (entity) => {
         console.log('发光圆环被点击:', entity);
@@ -467,7 +470,7 @@ export function useOverlayHelper(
       //   [120.18965915933653, 29.950994372532026], 
       //   [120.1781605071513, 29.955780181296227], 
       // ],
-      positions: [[120.19619413234396,30.186834775221342],[120.19751133777739,30.186779919361378],[120.19641969581805,30.186125462043783],[120.19641969581805,30.186125462043783]],
+      positions: [[120.19619413234396, 30.186834775221342], [120.19751133777739, 30.186779919361378], [120.19641969581805, 30.186125462043783], [120.19641969581805, 30.186125462043783]],
       // 预期：填充为半透明橙色，边框为不透明橙色
       material: Cesium.Color.ORANGE.withAlpha(0.5),
       outline: true,

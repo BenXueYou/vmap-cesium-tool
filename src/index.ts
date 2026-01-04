@@ -25,9 +25,12 @@ import DrawHelper from './libs/CesiumMapDraw';
 import { initCesium } from './libs/CesiumMapLoader';
 
 export * from './libs/overlay/index';
+export type * from './libs/overlay/index';
 export * from './libs/drawHelper/index';
+export type * from './libs/drawHelper/index';
 import { CesiumOverlayService } from './libs/CesiumOverlayService';
 export { CesiumOverlayService } from './libs/CesiumOverlayService';
+export type * from './libs/CesiumOverlayService';
 
 export * from './libs/toolBar/CesiumMapController';
 export type * from './libs/toolBar/CesiumMapController';

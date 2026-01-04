@@ -262,6 +262,35 @@ export declare class CesiumMapToolbar {
 // 覆盖物位置类型（与 overlay/types.ts 保持一致）
 export type OverlayPosition = Cartesian3 | [number, number] | [number, number, number];
 
+// 覆盖物扩展实体类型（与 libs/overlay/types.ts 保持一致）
+export interface OverlayEntity extends Entity {
+  _onClick?: (entity: Entity) => void;
+  _overlayType?: string;
+  _infoWindow?: HTMLElement;
+  _borderEntity?: Entity;
+  _innerEntity?: Entity;
+  _isThickOutline?: boolean;
+  _outlineWidth?: number;
+  _isRing?: boolean;
+  _ringThickness?: number;
+  _ringSegments?: number;
+  _ringGlowPower?: number;
+  _ringLineColor?: Color | string;
+  _ringLineStyle?: 'solid' | 'dashed';
+  _ringLineMaterialMode?: 'stripe' | 'dash';
+  _ringStripeRepeat?: number;
+  _ringDashLength?: number;
+  _ringDashPattern?: number;
+  _ringGapColor?: Color | string;
+  _ringShowInnerLine?: boolean;
+  _fillMaterial?: Cesium.MaterialProperty | Color | string;
+  _ringHeightEpsilon?: number;
+  _centerCartographic?: Cesium.Cartographic;
+  _outerRadius?: number;
+  _innerRadius?: number;
+  _outerRectangle?: Cesium.Rectangle;
+}
+
 export type PositionOffset =
   | 'top'
   | 'bottom'
@@ -421,6 +450,46 @@ export interface CircleOptions {
   id?: string;
 }
 
+export interface RingOptions {
+  /** 中心点（经纬度/高度 或 Cartesian3） */
+  position: OverlayPosition;
+  /** 半径（米） */
+  radius: number;
+  /** 边缘发光颜色 */
+  color?: any | string;
+  /** 是否绘制内层线（默认 true）。关闭可去掉“白色芯子” */
+  showInnerLine?: boolean;
+  /** 内层线颜色 */
+  lineColor?: any | string;
+  /** 内层线型：实线/虚线（默认 solid） */
+  lineStyle?: 'solid' | 'dashed';
+  /** 虚线材质方案：stripe(默认) / dash */
+  lineMaterialMode?: 'stripe' | 'dash';
+  /** stripe 模式：条纹重复次数（默认 32） */
+  stripeRepeat?: number;
+  /** 虚线长度（像素，默认 16） */
+  dashLength?: number;
+  /** 虚线模式（16bit pattern，可选） */
+  dashPattern?: number;
+  /** 虚线间隙颜色（默认透明） */
+  gapColor?: any | string;
+  /** 线宽（像素） */
+  width?: number;
+  /** 外层发光线宽（像素）。优先于 width */
+  glowWidth?: number;
+  /** 内层线宽（像素）。不传则使用自动计算 */
+  lineWidth?: number;
+  /** 发光强度（0-1），越大越“亮/粗” */
+  glowPower?: number;
+  /** 是否贴地（默认 true） */
+  clampToGround?: boolean;
+  /** 圆环分段数（默认 128），越大越圆滑 */
+  segments?: number;
+  /** 覆盖物点击回调 */
+  onClick?: (entity: Entity) => void;
+  id?: string;
+}
+
 export declare class CesiumOverlayService {
   constructor(viewer: Viewer);
   addMarker(options: any): any; // 返回 Cesium.Entity
@@ -432,6 +501,7 @@ export declare class CesiumOverlayService {
   addPolygon(options: any): any; // 返回 Cesium.Entity
   addRectangle(options: any): any; // 返回 Cesium.Entity
   addCircle(options: any): any; // 返回 Cesium.Entity
+  addRing(options: RingOptions): any; // 返回 Cesium.Entity
   getOverlay(id: string): any | undefined; // 返回 Cesium.Entity | undefined
   removeOverlay(id: string): boolean;
   removeAllOverlays(): void;
@@ -512,6 +582,38 @@ export declare class MapCircle {
   updatePosition(entity: Entity, position: OverlayPosition): void;
   updateRadius(entity: Entity, radius: number): void;
   updateStyle(entity: Entity, options: Partial<Pick<CircleOptions, 'material' | 'outline' | 'outlineColor' | 'outlineWidth'>>): void;
+}
+
+export declare class MapRing {
+  constructor(viewer: Viewer);
+  add(options: RingOptions): Entity;
+  updatePosition(entity: Entity, position: OverlayPosition): void;
+  updateRadius(entity: Entity, radius: number): void;
+  updateStyle(
+    entity: Entity,
+    options: Partial<
+      Pick<
+        RingOptions,
+        | 'color'
+        | 'showInnerLine'
+        | 'lineColor'
+        | 'lineStyle'
+        | 'lineMaterialMode'
+        | 'stripeRepeat'
+        | 'dashLength'
+        | 'dashPattern'
+        | 'gapColor'
+        | 'width'
+        | 'glowWidth'
+        | 'lineWidth'
+        | 'glowPower'
+        | 'clampToGround'
+        | 'segments'
+      >
+    >
+  ): void;
+  setVisible(entity: Entity, visible: boolean): void;
+  remove(entityOrId: Entity | string): boolean;
 }
 
 // toolbar: 相机控制器及服务（与工具栏相关类保持一致）

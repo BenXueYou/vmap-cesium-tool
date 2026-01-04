@@ -12,8 +12,22 @@ export interface RingOptions {
   radius: number;
   /** 边缘发光颜色 */
   color?: Color | string;
+  /** 是否绘制内层线（默认 true）。关闭可去掉“白色芯子” */
+  showInnerLine?: boolean;
   /** 实线颜色 */
   lineColor?: Color | string;
+  /** 内层线型：实线/虚线（默认 solid） */
+  lineStyle?: "solid" | "dashed";
+  /** 虚线材质方案：stripe(默认) / dash */
+  lineMaterialMode?: "stripe" | "dash";
+  /** stripe 模式：条纹重复次数（默认 32） */
+  stripeRepeat?: number;
+  /** 虚线长度（像素，默认 16） */
+  dashLength?: number;
+  /** 虚线模式（16bit pattern，可选） */
+  dashPattern?: number;
+  /** 虚线间隙颜色（默认透明） */
+  gapColor?: Color | string;
   /** 线宽（像素） */
   width?: number;
   /** 外层发光线宽（像素）。优先于 width */
@@ -75,8 +89,42 @@ export class MapRing {
     }
   }
 
-  private resolveLineMaterial(lineColor?: Color | string): Cesium.MaterialProperty {
-    const c = lineColor ? this.resolveColor(lineColor) : Cesium.Color.WHITE;
+  private resolveLineMaterial(options: {
+    lineColor?: Color | string;
+    lineStyle?: "solid" | "dashed";
+    lineMaterialMode?: "stripe" | "dash";
+    stripeRepeat?: number;
+    dashLength?: number;
+    dashPattern?: number;
+    gapColor?: Color | string;
+  }): Cesium.MaterialProperty {
+    const lineStyle = options.lineStyle ?? "solid";
+    const c = options.lineColor ? this.resolveColor(options.lineColor) : Cesium.Color.WHITE;
+    if (lineStyle === "dashed") {
+      const mode = options.lineMaterialMode ?? "stripe";
+      const gap = options.gapColor !== undefined ? this.resolveColor(options.gapColor) : Cesium.Color.TRANSPARENT;
+      if (mode === "dash") {
+        const dashLength = options.dashLength ?? 16;
+        const materialOptions: any = {
+          color: c,
+          dashLength,
+          gapColor: gap,
+        };
+        if (options.dashPattern !== undefined) {
+          materialOptions.dashPattern = options.dashPattern;
+        }
+        return new Cesium.PolylineDashMaterialProperty(materialOptions);
+      }
+
+      const repeat = options.stripeRepeat ?? 32;
+      return new Cesium.StripeMaterialProperty({
+        // 让条纹沿 polyline 的长度方向变化（更像虚线）
+        orientation: Cesium.StripeOrientation.VERTICAL,
+        evenColor: c,
+        oddColor: gap,
+        repeat,
+      });
+    }
     return new Cesium.ColorMaterialProperty(c);
   }
 
@@ -92,6 +140,50 @@ export class MapRing {
   private getInnerWidth(outerWidth: number): number {
     // 内层实线略细，让外层 glow 能“露出来”
     return Math.max(1, Math.round(outerWidth - 2));
+  }
+
+  private addInnerEntity(params: {
+    outerId: string;
+    ringPositions: Cesium.Cartesian3[];
+    innerWidth: number;
+    lineMaterial: Cesium.MaterialProperty;
+    clampToGround: boolean;
+  }): Entity {
+    return this.entities.add({
+      id: `${params.outerId}__inner`,
+      polyline: {
+        positions: params.ringPositions,
+        width: params.innerWidth,
+        material: params.lineMaterial,
+        clampToGround: params.clampToGround,
+        // clampToGround=true 时生效：保证内层在上
+        zIndex: 1,
+      },
+    });
+  }
+
+  private removeInnerEntity(outerEntity: Entity): void {
+    const overlay = outerEntity as OverlayEntity;
+    if (!overlay._innerEntity) return;
+    const innerOverlay = overlay._innerEntity as OverlayEntity;
+    innerOverlay._onClick = undefined;
+    this.entities.remove(overlay._innerEntity);
+    overlay._innerEntity = undefined;
+  }
+
+  private rebuildRingPositions(entity: Entity, overlay: OverlayEntity, override?: { segments?: number; clampToGround?: boolean }): Cesium.Cartesian3[] | undefined {
+    const center = overlay._centerCartographic;
+    const radius = overlay._outerRadius;
+    if (!center || radius === undefined) return;
+
+    const nextSegments = override?.segments ?? overlay._ringSegments ?? 128;
+    const clampFromEntity =
+      (entity.polyline as any)?.clampToGround?.getValue?.(Cesium.JulianDate.now?.()) ?? (entity.polyline as any)?.clampToGround;
+    const currentClamp = typeof clampFromEntity === "boolean" ? clampFromEntity : true;
+    const isClamp = override?.clampToGround ?? currentClamp;
+    const heightMeters = isClamp ? 0 : (center.height ?? 0);
+
+    return this.generateCirclePositions(center, radius, heightMeters, nextSegments);
   }
 
   /**
@@ -136,6 +228,7 @@ export class MapRing {
     const width = options.glowWidth ?? options.width ?? 8;
     const segments = options.segments ?? 128;
     const clampToGround = options.clampToGround ?? true;
+    const showInnerLine = options.showInnerLine ?? true;
 
     const centerCartesian = this.convertPosition(options.position);
     const centerCarto = Cesium.Cartographic.fromCartesian(centerCartesian);
@@ -143,7 +236,15 @@ export class MapRing {
 
     const ringPositions = this.generateCirclePositions(centerCarto, options.radius, heightMeters, segments);
     const glowMaterial = this.resolveGlowMaterial(options.color, options.glowPower);
-    const lineMaterial = this.resolveLineMaterial(options.lineColor);
+    const lineMaterial = this.resolveLineMaterial({
+      lineColor: options.lineColor,
+      lineStyle: options.lineStyle,
+      lineMaterialMode: options.lineMaterialMode,
+      stripeRepeat: options.stripeRepeat,
+      dashLength: options.dashLength,
+      dashPattern: options.dashPattern,
+      gapColor: options.gapColor,
+    });
     const innerWidth = options.lineWidth ?? this.getInnerWidth(width);
 
     // 外层：发光
@@ -159,18 +260,16 @@ export class MapRing {
       },
     });
 
-    // 内层：实线（后添加，通常会绘制在上层）
-    const innerEntity = this.entities.add({
-      id: `${id}__inner`,
-      polyline: {
-        positions: ringPositions,
-        width: innerWidth,
-        material: lineMaterial,
-        clampToGround,
-        // clampToGround=true 时生效：保证内层在上
-        zIndex: 1,
-      },
-    });
+    // 内层：实线/虚线（可关闭，避免“白色芯子”）
+    const innerEntity = showInnerLine
+      ? this.addInnerEntity({
+          outerId: id,
+          ringPositions,
+          innerWidth,
+          lineMaterial,
+          clampToGround,
+        })
+      : undefined;
 
     const overlayEntity = entity as OverlayEntity;
     overlayEntity._overlayType = "ring";
@@ -178,13 +277,23 @@ export class MapRing {
     overlayEntity._outerRadius = options.radius;
     overlayEntity._ringSegments = segments;
     overlayEntity._ringGlowPower = Cesium.Math.clamp(options.glowPower ?? 0.25, 0.0, 1.0);
+    overlayEntity._ringLineColor = options.lineColor ?? Cesium.Color.WHITE;
+    overlayEntity._ringLineStyle = options.lineStyle ?? "solid";
+    overlayEntity._ringLineMaterialMode = options.lineMaterialMode ?? "stripe";
+    overlayEntity._ringStripeRepeat = options.stripeRepeat;
+    overlayEntity._ringDashLength = options.dashLength;
+    overlayEntity._ringDashPattern = options.dashPattern;
+    overlayEntity._ringGapColor = options.gapColor;
+    overlayEntity._ringShowInnerLine = showInnerLine;
     overlayEntity._innerEntity = innerEntity;
 
     if (options.onClick) {
       overlayEntity._onClick = options.onClick;
-      const innerOverlay = innerEntity as OverlayEntity;
-      // 点击内层也转发给外层，保证回调拿到的是“主实体”
-      innerOverlay._onClick = () => options.onClick?.(entity);
+      if (innerEntity) {
+        const innerOverlay = innerEntity as OverlayEntity;
+        // 点击内层也转发给外层，保证回调拿到的是“主实体”
+        innerOverlay._onClick = () => options.onClick?.(entity);
+      }
     }
 
     return entity;
@@ -239,10 +348,63 @@ export class MapRing {
    */
   public updateStyle(
     entity: Entity,
-    options: Partial<Pick<RingOptions, "color" | "lineColor" | "width" | "glowWidth" | "lineWidth" | "glowPower" | "clampToGround" | "segments">>
+    options: Partial<
+      Pick<
+        RingOptions,
+        "color" | "showInnerLine" | "lineColor" | "lineStyle" | "lineMaterialMode" | "stripeRepeat" | "dashLength" | "dashPattern" | "gapColor" | "width" | "glowWidth" | "lineWidth" | "glowPower" | "clampToGround" | "segments"
+      >
+    >
   ): void {
     if (!entity.polyline) return;
     const overlay = entity as OverlayEntity;
+
+    // 允许动态开关内层线
+    if (options.showInnerLine !== undefined) {
+      overlay._ringShowInnerLine = options.showInnerLine;
+      if (!options.showInnerLine) {
+        this.removeInnerEntity(entity);
+      } else if (!overlay._innerEntity) {
+        const ringPositions = this.rebuildRingPositions(entity, overlay, { clampToGround: options.clampToGround, segments: options.segments });
+        if (ringPositions) {
+          const clampToGround =
+            options.clampToGround ??
+            ((entity.polyline as any)?.clampToGround?.getValue?.(Cesium.JulianDate.now?.()) ?? (entity.polyline as any)?.clampToGround);
+          const isClamp = typeof clampToGround === "boolean" ? clampToGround : true;
+
+          const outerWidth =
+            (entity.polyline.width as any)?.getValue?.(Cesium.JulianDate.now?.()) ??
+            (entity.polyline.width as any) ??
+            (options.glowWidth ?? options.width ?? 8);
+          const computedOuterWidth = typeof outerWidth === "number" ? outerWidth : (options.glowWidth ?? options.width ?? 8);
+          const innerWidth = options.lineWidth ?? this.getInnerWidth(computedOuterWidth);
+
+          const lineMaterial = this.resolveLineMaterial({
+            lineColor: options.lineColor ?? overlay._ringLineColor,
+            lineStyle: options.lineStyle ?? overlay._ringLineStyle,
+            lineMaterialMode: options.lineMaterialMode ?? overlay._ringLineMaterialMode,
+            stripeRepeat: options.stripeRepeat ?? overlay._ringStripeRepeat,
+            dashLength: options.dashLength ?? overlay._ringDashLength,
+            dashPattern: options.dashPattern ?? overlay._ringDashPattern,
+            gapColor: options.gapColor ?? overlay._ringGapColor,
+          });
+
+          const innerEntity = this.addInnerEntity({
+            outerId: String(entity.id),
+            ringPositions,
+            innerWidth,
+            lineMaterial,
+            clampToGround: isClamp,
+          });
+          overlay._innerEntity = innerEntity;
+
+          // 如果外层有点击回调，内层也要转发
+          if (overlay._onClick) {
+            const innerOverlay = innerEntity as OverlayEntity;
+            innerOverlay._onClick = () => overlay._onClick?.(entity);
+          }
+        }
+      }
+    }
 
     const nextOuterWidth = options.glowWidth ?? options.width;
     if (nextOuterWidth !== undefined) {
@@ -263,10 +425,39 @@ export class MapRing {
       overlay._ringGlowPower = Cesium.Math.clamp(gp, 0.0, 1.0);
     }
 
-    if (options.lineColor !== undefined) {
-      if (overlay._innerEntity?.polyline) {
-        overlay._innerEntity.polyline.material = this.resolveLineMaterial(options.lineColor);
-      }
+    const lineStyleChanged =
+      options.lineColor !== undefined ||
+      options.lineStyle !== undefined ||
+      options.lineMaterialMode !== undefined ||
+      options.stripeRepeat !== undefined ||
+      options.dashLength !== undefined ||
+      options.dashPattern !== undefined ||
+      options.gapColor !== undefined;
+
+    if (lineStyleChanged && overlay._innerEntity?.polyline) {
+      const nextLineColor = options.lineColor ?? overlay._ringLineColor;
+      const nextLineStyle = options.lineStyle ?? overlay._ringLineStyle;
+      const nextLineMaterialMode = options.lineMaterialMode ?? overlay._ringLineMaterialMode;
+      const nextStripeRepeat = options.stripeRepeat ?? overlay._ringStripeRepeat;
+      const nextDashLength = options.dashLength ?? overlay._ringDashLength;
+      const nextDashPattern = options.dashPattern ?? overlay._ringDashPattern;
+      const nextGapColor = options.gapColor ?? overlay._ringGapColor;
+      overlay._innerEntity.polyline.material = this.resolveLineMaterial({
+        lineColor: nextLineColor,
+        lineStyle: nextLineStyle,
+        lineMaterialMode: nextLineMaterialMode,
+        stripeRepeat: nextStripeRepeat,
+        dashLength: nextDashLength,
+        dashPattern: nextDashPattern,
+        gapColor: nextGapColor,
+      });
+      overlay._ringLineColor = nextLineColor;
+      overlay._ringLineStyle = nextLineStyle;
+      overlay._ringLineMaterialMode = nextLineMaterialMode;
+      overlay._ringStripeRepeat = nextStripeRepeat;
+      overlay._ringDashLength = nextDashLength;
+      overlay._ringDashPattern = nextDashPattern;
+      overlay._ringGapColor = nextGapColor;
     }
 
     const center = overlay._centerCartographic;

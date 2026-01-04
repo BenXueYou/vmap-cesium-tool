@@ -30,6 +30,14 @@ export interface OverlayEntity extends Entity {
 	_ringThickness?: number;
 	_ringSegments?: number;
 	_ringGlowPower?: number;
+	_ringLineColor?: Color | string;
+	_ringLineStyle?: 'solid' | 'dashed';
+	_ringLineMaterialMode?: 'stripe' | 'dash';
+	_ringStripeRepeat?: number;
+	_ringDashLength?: number;
+	_ringDashPattern?: number;
+	_ringGapColor?: Color | string;
+	_ringShowInnerLine?: boolean;
 	_fillMaterial?: MaterialProperty | Color | string;
 	_ringHeightEpsilon?: number;
 	_centerCartographic?: Cartographic;
