@@ -53,6 +53,8 @@ export class MeasurementService {
   }
 
   public startAreaMeasurement(): void {
+    // 开启面积测量前，先取消上一次未完成的绘制，避免多个绘制事件同时存在
+    (this.drawHelper as any).cancelDrawing?.();
     this.currentMode = 'area';
     setTimeout(() => {
       this.drawHelper.startDrawingPolygon();
@@ -60,6 +62,8 @@ export class MeasurementService {
   }
 
   public startDistanceMeasurement(): void {
+    // 开启距离测量前，先取消上一次未完成的绘制，避免多个绘制事件同时存在
+    (this.drawHelper as any).cancelDrawing?.();
     this.currentMode = 'distance';
     setTimeout(() => {
       this.drawHelper.startDrawingLine();

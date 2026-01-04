@@ -22,6 +22,11 @@ class DrawHelper {
   private finishedPointEntities: Cesium.Entity[] = []; // 已完成的点实体
   private publicEntities: Cesium.Entity[] = []; // 通过公共方法创建的实体
   private _doubleClickPending: boolean = false; // 双击判断
+  // 最近一次鼠标移动位置，用于在右键删点后立即重绘预览
+  private lastPreviewPosition: Cesium.Cartesian3 | null = null;
+
+  // 静态：当前处于绘制状态的 DrawHelper，用于跨实例互斥
+  private static activeDrawingHelper: DrawHelper | null = null;
   
   // 绘制类实例
   private drawLine: DrawLine;
@@ -193,10 +198,19 @@ class DrawHelper {
    * @param mode 绘制模式
    */
   private startDrawing(mode: "line" | "polygon" | "rectangle" | "circle", options?: DrawOptions): void {
-    this.endDrawingInternal(false); // 结束任何正在进行的绘制，但不清空已完成的实体
+    // 若有其他 DrawHelper 实例正在绘制，先取消其绘制，避免多个实例的事件同时响应
+    const active = DrawHelper.activeDrawingHelper;
+    if (active && active !== this) {
+      active.cancelDrawing();
+    }
+
+    // 结束当前实例内部可能残留的绘制状态，但不清空已完成的实体
+    this.endDrawingInternal(false);
 
     this.drawMode = mode;
     this.isDrawing = true;
+    this.lastPreviewPosition = null;
+    DrawHelper.activeDrawingHelper = this;
     this.tempPositions = [];
     this.tempEntities = [];
     this._doubleClickPending = false;
@@ -376,6 +390,11 @@ class DrawHelper {
     this.tempPositions = this.currentDrawer.getTempPositions();
     this.tempEntities = this.currentDrawer.getTempEntities();
     this.tempLabelEntities = this.currentDrawer.getTempLabelEntities();
+
+    // 使用最近一次鼠标位置作为预览点，立即重绘线/面/圆预览
+    if (this.lastPreviewPosition && this.isDrawing) {
+      this.updateDrawingEntity(this.lastPreviewPosition);
+    }
   }
 
   /**
@@ -383,6 +402,8 @@ class DrawHelper {
    * @param currentMousePosition 当前鼠标位置世界坐标
    */
   private updatePreview(currentMousePosition: Cesium.Cartesian3): void {
+    // 记录最近一次预览点，便于右键删点后立即重绘
+    this.lastPreviewPosition = currentMousePosition.clone();
     this.updateDrawingEntity(currentMousePosition);
   }
 
@@ -443,8 +464,13 @@ class DrawHelper {
     // 完成绘制后，恢复绘图状态和事件
     this.drawMode = null;
     this.isDrawing = false;
+    this.lastPreviewPosition = null;
     this.currentDrawer = null;
     this.deactivateDrawingHandlers();
+
+    if (DrawHelper.activeDrawingHelper === this) {
+      DrawHelper.activeDrawingHelper = null;
+    }
   }
 
   /**
@@ -468,6 +494,7 @@ class DrawHelper {
     if (resetMode) {
       this.drawMode = null;
       this.isDrawing = false;
+      this.lastPreviewPosition = null;
       this.currentDrawer = null;
       this.deactivateDrawingHandlers();
       // 取消绘制时同样恢复地形深度测试开关
@@ -484,6 +511,10 @@ class DrawHelper {
       } catch (e) {
         // 安全忽略
       }
+
+      if (DrawHelper.activeDrawingHelper === this) {
+        DrawHelper.activeDrawingHelper = null;
+      }
     }
   }
 
@@ -495,6 +526,17 @@ class DrawHelper {
       this.finishDrawing();
     } else {
       // 如果没有在绘制，也执行一次清理
+      this.endDrawingInternal(true);
+    }
+  }
+
+  /**
+   * 公共方法：取消当前正在进行的绘制（不触发完成回调，不生成实体）
+   * 主要用于在外部开启新的绘制前，保证旧的未完成绘制被安全终止，
+   * 避免同时存在多个绘制事件处理器。
+   */
+  cancelDrawing(): void {
+    if (this.isDrawing) {
       this.endDrawingInternal(true);
     }
   }

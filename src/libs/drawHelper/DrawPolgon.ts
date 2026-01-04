@@ -92,6 +92,35 @@ export class DrawPolygon extends BaseDraw {
         : (this.drawOptions?.outlineColor ? this.resolveColor(this.drawOptions.outlineColor) : Cesium.Color.LIGHTGREEN);
       const strokeWidth = this.drawOptions?.strokeWidth ?? (this.drawOptions?.outlineWidth ?? 2);
 
+      // 防御：如果历史版本产生了多个重叠预览面/边框（重复创建未更新），这里清理重复项
+      const previewPolygons = this.tempEntities.filter((e) => !!(e as any)?.polygon);
+      const previewBorders = this.tempEntities.filter((e) => {
+        const anyE = e as any;
+        return !!anyE?.polyline && !anyE?.point && !anyE?.polygon;
+      });
+      if (previewPolygons.length > 1 || previewBorders.length > 1) {
+        [...previewPolygons, ...previewBorders].forEach((e) => {
+          this.entities.remove(e);
+        });
+        this.tempEntities = this.tempEntities.filter((e) => {
+          const anyE = e as any;
+          if (anyE?.point) return true;
+          if (anyE?.polygon) return false;
+          if (anyE?.polyline && !anyE?.polygon) return false;
+          return true;
+        });
+        this.currentPolygonEntity = null;
+        this.currentBorderEntity = null;
+      }
+
+      // 如果预览实体引用已失效（例如被 BaseDraw.clearTempEntities 清理过），重置引用，后续重新创建
+      if (this.currentPolygonEntity && this.tempEntities.indexOf(this.currentPolygonEntity) === -1) {
+        this.currentPolygonEntity = null;
+      }
+      if (this.currentBorderEntity && this.tempEntities.indexOf(this.currentBorderEntity) === -1) {
+        this.currentBorderEntity = null;
+      }
+
       // 先更新/创建填充面
       if (this.currentPolygonEntity) {
         this.currentPolygonEntity.polygon!.hierarchy = new Cesium.ConstantProperty(

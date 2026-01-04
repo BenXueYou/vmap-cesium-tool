@@ -195,6 +195,7 @@ export interface InitOptions {
   terrainExaggeration?: number;
   maximumScreenSpaceError?: number;
   maximumNumberOfLoadedTiles?: number;
+  requestRenderMode?: boolean;
   token?: string;
   cesiumToken?: string;
   success?: () => void;

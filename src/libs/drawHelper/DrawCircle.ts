@@ -91,6 +91,14 @@ export class DrawCircle extends BaseDraw {
     const outlineColor = this.drawOptions?.outlineColor ? this.resolveColor(this.drawOptions.outlineColor) : Cesium.Color.BLUE;
     const outlineWidth = this.drawOptions?.outlineWidth ?? 2;
 
+    // 如果预览圆实体或边框折线实体已从实体集合中移除，则重置引用，后续重新创建
+    if (this.currentCircleEntity && !this.entities.contains(this.currentCircleEntity)) {
+      this.currentCircleEntity = null;
+    }
+    if (this.currentBorderEntity && !this.entities.contains(this.currentBorderEntity)) {
+      this.currentBorderEntity = null;
+    }
+
     // 始终使用椭圆作为填充
     if (this.currentCircleEntity) {
       this.currentCircleEntity.ellipse!.semiMajorAxis = new Cesium.ConstantProperty(radius);

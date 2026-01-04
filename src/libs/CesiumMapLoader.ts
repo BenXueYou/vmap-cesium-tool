@@ -43,6 +43,7 @@ interface InitOptions {
   terrainExaggeration?: number // 地形夸张系数
   maximumScreenSpaceError?: number // 最大屏幕空间误差
   maximumNumberOfLoadedTiles?: number // 最大加载瓦片数量
+  requestRenderMode?: boolean // 请求渲染模式
   token?: string, // 访问令牌
   cesiumToken?: string // 访问令牌
   success?: () => void // flyTo动画完成回调

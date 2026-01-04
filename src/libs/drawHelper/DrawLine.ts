@@ -68,6 +68,12 @@ export class DrawLine extends BaseDraw {
     const strokeColor = this.drawOptions?.strokeColor ? this.resolveColor(this.drawOptions.strokeColor) : Cesium.Color.YELLOW;
     const strokeWidth = this.drawOptions?.strokeWidth ?? 5;
 
+    // 如果 currentLineEntity 已经被清理（不在临时实体列表中），则视为不存在，重新创建
+    if (this.currentLineEntity && this.tempEntities.indexOf(this.currentLineEntity) === -1) {
+      this.currentLineEntity = null;
+      this.currentLinePositions = [];
+    }
+
     if (this.currentLineEntity) {
       const positionsProperty = this.currentLineEntity.polyline!.positions;
       if (positionsProperty instanceof Cesium.CallbackProperty) {

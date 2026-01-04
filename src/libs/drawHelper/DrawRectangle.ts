@@ -63,6 +63,11 @@ export class DrawRectangle extends BaseDraw {
       : (this.drawOptions?.outlineColor ? this.resolveColor(this.drawOptions.outlineColor) : Cesium.Color.DARKGREEN);
     const outlineWidth = this.drawOptions?.strokeWidth ?? (this.drawOptions?.outlineWidth ?? 1);
 
+    // 如果预览矩形实体已从实体集合中移除，则重置引用，后续重新创建
+    if (this.currentRectangleEntity && !this.entities.contains(this.currentRectangleEntity)) {
+      this.currentRectangleEntity = null;
+    }
+
     if (this.currentRectangleEntity) {
       this.currentRectangleEntity.rectangle!.coordinates =
         new Cesium.ConstantProperty(rect);
