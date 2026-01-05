@@ -633,3 +633,6 @@ export default class CesiumHeatmapLayer {
     this.imageryLayer.show = true;
   }
 }
+
+// Add named export for CesiumHeatmapLayer
+export { CesiumHeatmapLayer };

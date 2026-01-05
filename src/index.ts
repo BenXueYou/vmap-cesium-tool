@@ -44,7 +44,8 @@ export * from './libs/toolBar/NotFlyZonesService';
 export type * from './libs/toolBar/NotFlyZonesService';
 
 // Heatmap functionality
-export { HeatmapLayer } from './libs/CesiumHeatmapLayer';
+import CesiumHeatmapLayer from './libs/CesiumHeatmapLayer';
+export { CesiumHeatmapLayer as HeatmapLayer };
 export type { HeatmapOptions } from './types/index';
 
 // 默认导出

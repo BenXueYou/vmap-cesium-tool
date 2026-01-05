@@ -290,12 +290,21 @@ class DrawHelper {
     this.viewer.cesiumWidget.screenSpaceEventHandler.removeInputAction(
       Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK
     );
-    // 绘图双击事件， 我需要添加校验，只有在点击地图时才触发，点击地图之外不触发
+    // 绘图双击事件，添加校验，只有在点击地图时才触发
     this.screenSpaceEventHandler.setInputAction(
       (dblClick: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
         if (!this.isDrawing) return;
+
+        // 校验是否点击在地图上
+        const cartesian = this.pickGlobePosition(dblClick.position);
+        if (!cartesian) {
+          console.warn('Double-click event ignored: not on the map.');
+          return;
+        }
+
         this._doubleClickPending = true;
         this.finishDrawing();
+
         // 恢复 Cesium 默认的双击行为（如果存在的话）
         if (mapDoubleClickAct) {
           this.viewer.cesiumWidget.screenSpaceEventHandler.setInputAction(
