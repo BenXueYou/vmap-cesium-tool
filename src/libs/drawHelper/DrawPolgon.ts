@@ -52,7 +52,13 @@ export class DrawPolygon extends BaseDraw {
     if (polygonSource.length >= 3) {
       // 先将源点转换为 Cartographic，并过滤掉经纬度为非有限数值的点
       const cartos = polygonSource
-        .map((pos) => Cesium.Cartographic.fromCartesian(pos))
+        .map((pos) => {
+          try {
+            return Cesium.Cartographic.fromCartesian(pos);
+          } catch {
+            return null;
+          }
+        })
         .filter((c) => c && Number.isFinite(c.longitude) && Number.isFinite(c.latitude)) as Cesium.Cartographic[];
 
       if (cartos.length < 3) {
@@ -193,7 +199,13 @@ export class DrawPolygon extends BaseDraw {
 
     // 转换为 Cartographic 并过滤掉经纬度为非有限数值的点，防止 NaN 传入地面几何
     const groundCartos = validPositions
-      .map((p) => Cesium.Cartographic.fromCartesian(p))
+      .map((p) => {
+        try {
+          return Cesium.Cartographic.fromCartesian(p);
+        } catch {
+          return null;
+        }
+      })
       .filter((c) => c && Number.isFinite(c.longitude) && Number.isFinite(c.latitude)) as Cesium.Cartographic[];
 
     if (groundCartos.length < 3) {

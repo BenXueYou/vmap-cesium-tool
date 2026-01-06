@@ -477,6 +477,13 @@ class DrawHelper {
   private pickGlobePosition(
     windowPosition: Cesium.Cartesian2
   ): Cesium.Cartesian3 | null {
+    // 防御：拖动相机/画布抖动时，偶发会收到非有限的屏幕坐标，直接忽略
+    const anyPos = windowPosition as any;
+    if (!anyPos || !Number.isFinite(anyPos.x) || !Number.isFinite(anyPos.y)) {
+      return null;
+    }
+
+    try {
     // 首先尝试从地形拾取
     const ray = this.viewer.camera.getPickRay(windowPosition);
     // 仅在地形瓦片已加载完成时才尝试 globe.pick，避免早期不稳定状态
@@ -489,7 +496,7 @@ class DrawHelper {
           Number.isFinite(position.y) &&
           Number.isFinite(position.z)
         ) {
-          return position;
+          return position.clone();
         }
       }
     }
@@ -504,10 +511,14 @@ class DrawHelper {
         Number.isFinite(ellipsoidPosition.y) &&
         Number.isFinite(ellipsoidPosition.z)
       ) {
-        return ellipsoidPosition;
+        return ellipsoidPosition.clone();
       }
     }
     return null;
+    } catch (e) {
+      // Cesium 内部有时会抛出 "cartesian has a NaN component"（多发生在相机拖动过程中），这里吞掉以避免弹窗
+      return null;
+    }
   }
 
   /**
