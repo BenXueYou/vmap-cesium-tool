@@ -25,6 +25,11 @@ class DrawHelper {
   // 最近一次鼠标移动位置，用于在右键删点后立即重绘预览
   private lastPreviewPosition: Cesium.Cartesian3 | null = null;
 
+  // 绘制步骤提示（跟随鼠标的提示 Label）
+  private drawHintEntity: Cesium.Entity | null = null;
+  private drawHintText: string = "";
+  private drawHintLastPosition: Cesium.Cartesian3 | null = null;
+
   // 静态：当前处于绘制状态的 DrawHelper，用于跨实例互斥
   private static activeDrawingHelper: DrawHelper | null = null;
   
@@ -152,6 +157,11 @@ class DrawHelper {
     if (oldOffsetHeight !== this.offsetHeight) {
       this.updateFinishedEntitiesForModeChange();
     }
+
+    // 若正在绘制且提示已显示，场景模式切换后同步提示高度
+    if (this.isDrawing && this.drawHintLastPosition) {
+      this.updateDrawHintPosition(this.drawHintLastPosition);
+    }
   }
 
   /**
@@ -163,6 +173,134 @@ class DrawHelper {
     } else {
       this.offsetHeight = 0; // 2D模式使用0米偏移，所有元素都贴近地面
     }
+  }
+
+  /**
+   * 计算提示文本（随绘制模式 + 点数量变化）
+   */
+  private getDrawHintText(): string {
+    if (!this.isDrawing || !this.drawMode) {
+      return "";
+    }
+
+    const pointCount = this.tempPositions.length;
+
+    switch (this.drawMode) {
+      case "circle": {
+        if (pointCount === 0) return "单击确定圆心";
+        if (pointCount === 1) return "移动鼠标确定半径，单击确定半径点，双击完成，右键撤销";
+        return "双击完成，右键撤销";
+      }
+      case "rectangle": {
+        if (pointCount === 0) return "单击确定起点";
+        if (pointCount === 1) return "移动鼠标确定终点，单击确定终点，双击完成，右键撤销";
+        return "双击完成，右键撤销";
+      }
+      case "polygon": {
+        if (pointCount === 0) return "单击开始绘制";
+        return "单击继续添加点，双击完成，右键删除最后一点";
+      }
+      case "line": {
+        if (pointCount === 0) return "单击开始绘制";
+        return "单击继续添加点，双击完成，右键删除最后一点";
+      }
+      default:
+        return "";
+    }
+  }
+
+  /**
+   * 将提示位置转换为显示位置（按当前模式做轻微抬高，避免被地形遮挡）
+   */
+  private toHintDisplayPosition(position: Cesium.Cartesian3): Cesium.Cartesian3 {
+    try {
+      const carto = Cesium.Cartographic.fromCartesian(position);
+      const baseHeight = carto.height || 0;
+      const extraHeight = this.offsetHeight > 0 ? this.offsetHeight : 0.1;
+      return Cesium.Cartesian3.fromRadians(
+        carto.longitude,
+        carto.latitude,
+        baseHeight + extraHeight
+      );
+    } catch {
+      return position;
+    }
+  }
+
+  /**
+   * 创建或更新提示实体的位置与文本
+   */
+  private updateDrawHintPosition(position: Cesium.Cartesian3): void {
+    if (!this.isDrawing) return;
+
+    const nextText = this.getDrawHintText();
+    if (!nextText) {
+      this.clearDrawHint();
+      return;
+    }
+
+    this.drawHintText = nextText;
+    this.drawHintLastPosition = position.clone();
+
+    const displayPos = this.toHintDisplayPosition(position);
+
+    if (!this.drawHintEntity) {
+      this.drawHintEntity = this.entities.add({
+        position: new Cesium.ConstantPositionProperty(displayPos),
+        label: {
+          text: this.drawHintText,
+          font: "14px 'Microsoft YaHei', 'PingFang SC', sans-serif",
+          showBackground: true,
+          backgroundColor: Cesium.Color.BLACK.withAlpha(0.75),
+          fillColor: Cesium.Color.WHITE,
+          outlineColor: Cesium.Color.BLACK,
+          outlineWidth: 2,
+          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+          pixelOffset: new Cesium.Cartesian2(12, -18),
+          horizontalOrigin: Cesium.HorizontalOrigin.LEFT,
+          verticalOrigin: Cesium.VerticalOrigin.TOP,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          heightReference: Cesium.HeightReference.NONE,
+          scaleByDistance: new Cesium.NearFarScalar(1.5e2, 1.0, 1.5e7, 0.6),
+        },
+      });
+    } else {
+      this.drawHintEntity.position = new Cesium.ConstantPositionProperty(displayPos);
+      if (this.drawHintEntity.label) {
+        this.drawHintEntity.label.text = new Cesium.ConstantProperty(this.drawHintText);
+      }
+    }
+  }
+
+  /**
+   * 更新提示文本（不改变位置；通常在点数变化时调用）
+   */
+  private refreshDrawHintTextOnly(): void {
+    const nextText = this.getDrawHintText();
+    this.drawHintText = nextText;
+    if (!nextText) {
+      this.clearDrawHint();
+      return;
+    }
+    if (this.drawHintEntity?.label) {
+      this.drawHintEntity.label.text = new Cesium.ConstantProperty(nextText);
+    }
+  }
+
+  /**
+   * 清除绘制提示实体
+   */
+  private clearDrawHint(): void {
+    if (this.drawHintEntity) {
+      try {
+        this.entities.remove(this.drawHintEntity);
+      } catch {
+        // ignore
+      }
+      this.drawHintEntity = null;
+    }
+    this.drawHintText = "";
+    this.drawHintLastPosition = null;
   }
 
   /**
@@ -207,6 +345,9 @@ class DrawHelper {
     // 结束当前实例内部可能残留的绘制状态，但不清空已完成的实体
     this.endDrawingInternal(false);
 
+    // 清理可能残留的提示
+    this.clearDrawHint();
+
     this.drawMode = mode;
     this.isDrawing = true;
     this.lastPreviewPosition = null;
@@ -235,6 +376,9 @@ class DrawHelper {
       this.currentDrawer.startDrawing(options);
     }
 
+    // 初始化提示文本（位置将在首次鼠标移动/点击时确定）
+    this.refreshDrawHintTextOnly();
+
     this.activateDrawingHandlers();
   }
 
@@ -258,6 +402,8 @@ class DrawHelper {
         }
         const cartesian = this.pickGlobePosition(click.position);
         if (cartesian) {
+          // 点击时同步提示位置（避免用户不移动鼠标看不到提示更新）
+          this.updateDrawHintPosition(cartesian);
           this.addPoint(cartesian);
         }
       },
@@ -273,10 +419,16 @@ class DrawHelper {
     // 鼠标移动更新预览
     this.screenSpaceEventHandler.setInputAction(
       (move: Cesium.ScreenSpaceEventHandler.MotionEvent) => {
-        if (!this.isDrawing || this.tempPositions.length === 0) return;
+        if (!this.isDrawing) return;
         const cartesian = this.pickGlobePosition(move.endPosition);
         if (cartesian) {
-          this.updatePreview(cartesian);
+          // 无论是否已落点，都更新提示位置
+          this.updateDrawHintPosition(cartesian);
+
+          // 已落点时才更新几何预览
+          if (this.tempPositions.length > 0) {
+            this.updatePreview(cartesian);
+          }
         }
       },
       Cesium.ScreenSpaceEventType.MOUSE_MOVE
@@ -377,6 +529,9 @@ class DrawHelper {
       this.tempPositions = this.currentDrawer.getTempPositions();
       this.tempEntities = this.currentDrawer.getTempEntities();
       this.updateDrawingEntity();
+
+      // 点数变化后刷新提示文案
+      this.refreshDrawHintTextOnly();
     }
   }
 
@@ -405,6 +560,9 @@ class DrawHelper {
     if (this.lastPreviewPosition && this.isDrawing) {
       this.updateDrawingEntity(this.lastPreviewPosition);
     }
+
+    // 点数变化后刷新提示文案
+    this.refreshDrawHintTextOnly();
   }
 
   /**
@@ -478,6 +636,9 @@ class DrawHelper {
     this.currentDrawer = null;
     this.deactivateDrawingHandlers();
 
+    // 清理提示
+    this.clearDrawHint();
+
     if (DrawHelper.activeDrawingHelper === this) {
       DrawHelper.activeDrawingHelper = null;
     }
@@ -507,6 +668,9 @@ class DrawHelper {
       this.lastPreviewPosition = null;
       this.currentDrawer = null;
       this.deactivateDrawingHandlers();
+
+      // 取消/结束绘制时清理提示
+      this.clearDrawHint();
       // 取消绘制时同样恢复地形深度测试开关
       if (this.originalDepthTestAgainstTerrain !== null) {
         this.scene.globe.depthTestAgainstTerrain = this.originalDepthTestAgainstTerrain;
