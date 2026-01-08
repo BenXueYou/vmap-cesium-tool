@@ -492,15 +492,15 @@ export interface RingOptions {
 
 export declare class CesiumOverlayService {
   constructor(viewer: Viewer);
-  addMarker(options: any): any; // 返回 Cesium.Entity
-  addLabel(options: any): any; // 返回 Cesium.Entity
-  addIcon(options: any): any; // 返回 Cesium.Entity
-  addSvg(options: any): any; // 返回 Cesium.Entity
+  addMarker(options: MarkerOptions): any; // 返回 Cesium.Entity
+  addLabel(options: LabelOptions): any; // 返回 Cesium.Entity
+  addIcon(options: IconOptions): any; // 返回 Cesium.Entity
+  addSvg(options: SvgOptions): any; // 返回 Cesium.Entity
   addInfoWindow(options: InfoWindowOptions): any; // 返回 Cesium.Entity
-  addPolyline(options: any): any; // 返回 Cesium.Entity
-  addPolygon(options: any): any; // 返回 Cesium.Entity
-  addRectangle(options: any): any; // 返回 Cesium.Entity
-  addCircle(options: any): any; // 返回 Cesium.Entity
+  addPolyline(options: PolylineOptions): any; // 返回 Cesium.Entity
+  addPolygon(options: PolygonOptions): any; // 返回 Cesium.Entity
+  addRectangle(options: RectangleOptions): any; // 返回 Cesium.Entity
+  addCircle(options: CircleOptions): any; // 返回 Cesium.Entity
   addRing(options: RingOptions): any; // 返回 Cesium.Entity
   getOverlay(id: string): any | undefined; // 返回 Cesium.Entity | undefined
   removeOverlay(id: string): boolean;
@@ -728,7 +728,28 @@ export interface DrawOptions {
     outlineColor?: Cesium.Color | string;
     outlineWidth?: number;
   };
+  /**
+   * 是否显示面积标签（适用于 polygon/rectangle/circle）。
+   * 默认 true；设为 false 可禁用绘制完成后自动创建的面积标签。
+   */
+  showAreaLabel?: boolean;
   onClick?: (entity: Entity, type?: 'line' | 'polygon' | 'rectangle' | 'circle', positions?: Cartesian3[]) => void;
+}
+
+/**
+ * 绘制模块扩展实体类型（用于在 Entity 上挂载绘图相关元数据）
+ */
+export interface DrawEntity extends Entity {
+  _drawType?: 'line' | 'polygon' | 'rectangle' | 'circle';
+  _drawOptions?: DrawOptions;
+  _groundPositions?: Cartesian3[];
+  _groundPosition?: Cartesian3;
+  _groundRectangle?: Cesium.Rectangle;
+  _radius?: number;
+  _borderEntity?: Entity;
+  /** 关联的测量/提示标签实体（例如面积标签） */
+  _labelEntities?: Entity[];
+  _onClick?: (entity: Entity, ...args: any[]) => void;
 }
 
 export declare class DrawHelper {
@@ -746,6 +767,8 @@ export declare class DrawHelper {
   clearAllPoints(): void;
   removeEntity(entity: Entity): void;
   getFinishedEntities(): Entity[];
+  /** 获取绘制实体关联的标签实体（例如面积标签） */
+  getEntityLabelEntities(entity: Entity): Entity[];
   // 事件回调注册
   onMeasureComplete(callback: (result: DrawResult) => void): void;
   onDrawStart(callback: () => void): void;

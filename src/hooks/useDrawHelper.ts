@@ -80,16 +80,49 @@ export function useDrawHelper(
       fillColor: Cesium.Color.YELLOW.withAlpha(0.5),
       outlineColor: Cesium.Color.YELLOW,
       outlineWidth: 2,
+      showAreaLabel: true,
       onClick: (entity: Cesium.Entity) => {
         console.log("矩形区域点击:", entity);
       },
     });
     message.value = "开始绘制矩形区域：左键确定起点，再次左键确定终点，双击完成";
 
-    drawHelper.value.onDrawEnd(() => {
+    drawHelper.value.onDrawEnd((entity) => {
       isDrawing.value = false;
       currentDrawMode.value = null;
       message.value = "矩形区域绘制完成";
+      if (entity) {
+        console.log("关联标签实体:", drawHelper.value?.getEntityLabelEntities(entity));
+      }
+      setTimeout(() => {
+        message.value = "";
+      }, 2000);
+    });
+  };
+
+  // 测试：绘制矩形但不显示面积标签
+  const addDrawAreaNoLabel = () => {
+    if (!drawHelper.value) return;
+    endDrawing();
+
+    currentDrawMode.value = "rectangle";
+    isDrawing.value = true;
+
+    drawHelper.value.startDrawingRectangle({
+      fillColor: Cesium.Color.YELLOW.withAlpha(0.5),
+      outlineColor: Cesium.Color.YELLOW,
+      outlineWidth: 2,
+      showAreaLabel: false,
+    });
+    message.value = "开始绘制矩形区域（不显示面积标签）：左键确定起点，再次左键确定终点，双击完成";
+
+    drawHelper.value.onDrawEnd((entity) => {
+      isDrawing.value = false;
+      currentDrawMode.value = null;
+      message.value = "矩形区域绘制完成（不显示面积标签）";
+      if (entity) {
+        console.log("关联标签实体:", drawHelper.value?.getEntityLabelEntities(entity));
+      }
       setTimeout(() => {
         message.value = "";
       }, 2000);
@@ -116,6 +149,7 @@ export function useDrawHelper(
       fillColor: Cesium.Color.GREEN.withAlpha(0.5),
       outlineColor: Cesium.Color.GREEN,
       outlineWidth: 6,
+      showAreaLabel: true,
     });
     message.value = "开始绘制圆形：左键确定圆心，再次左键确定半径，双击完成";
 
@@ -123,6 +157,35 @@ export function useDrawHelper(
       isDrawing.value = false;
       currentDrawMode.value = null;
       message.value = "圆形绘制完成";
+      setTimeout(() => {
+        message.value = "";
+      }, 2000);
+    });
+  };
+
+  // 测试：绘制圆形但不显示面积标签
+  const addDrawCircleNoLabel = () => {
+    if (!drawHelper.value) return;
+    endDrawing();
+
+    currentDrawMode.value = "circle";
+    isDrawing.value = true;
+
+    drawHelper.value.startDrawingCircle({
+      fillColor: Cesium.Color.GREEN.withAlpha(0.5),
+      outlineColor: Cesium.Color.GREEN,
+      outlineWidth: 6,
+      showAreaLabel: false,
+    });
+    message.value = "开始绘制圆形（不显示面积标签）：左键确定圆心，再次左键确定半径，双击完成";
+
+    drawHelper.value.onDrawEnd((entity) => {
+      isDrawing.value = false;
+      currentDrawMode.value = null;
+      message.value = "圆形绘制完成（不显示面积标签）";
+      if (entity) {
+        console.log("关联标签实体:", drawHelper.value?.getEntityLabelEntities(entity));
+      }
       setTimeout(() => {
         message.value = "";
       }, 2000);
@@ -149,6 +212,7 @@ export function useDrawHelper(
       strokeWidth: 4,
       strokeColor: Cesium.Color.YELLOW,
       fillColor: Cesium.Color.YELLOW.withAlpha(0.5),
+      showAreaLabel: true,
     });
     message.value = "开始绘制多边形：左键添加点，双击完成，右键删除最后一点";
 
@@ -160,6 +224,39 @@ export function useDrawHelper(
       setTimeout  (() => {
         message.value = "";
         console.log("多边形绘制完成:", (entity as any)._borderEntity);
+        if (entity) {
+          console.log("关联标签实体:", drawHelper.value?.getEntityLabelEntities(entity));
+        }
+      }, 2000);
+    });
+  };
+
+  // 测试：绘制多边形但不显示面积标签
+  const addDrawPolygonNoLabel = () => {
+    if (!drawHelper.value) return;
+    endDrawing();
+
+    currentDrawMode.value = "polygon";
+    isDrawing.value = true;
+
+    drawHelper.value.startDrawingPolygon({
+      strokeWidth: 4,
+      strokeColor: Cesium.Color.YELLOW,
+      fillColor: Cesium.Color.YELLOW.withAlpha(0.5),
+      showAreaLabel: false,
+    });
+    message.value = "开始绘制多边形（不显示面积标签）：左键添加点，双击完成，右键删除最后一点";
+
+    drawHelper.value.onDrawEnd((entity: Cesium.Entity | null) => {
+      console.log("多边形绘制完成(不显示面积标签):", entity);
+      isDrawing.value = false;
+      currentDrawMode.value = null;
+      message.value = "多边形绘制完成（不显示面积标签）";
+      if (entity) {
+        console.log("关联标签实体:", drawHelper.value?.getEntityLabelEntities(entity));
+      }
+      setTimeout(() => {
+        message.value = "";
       }, 2000);
     });
   };
@@ -180,8 +277,11 @@ export function useDrawHelper(
     endDrawing,
     addDrawLine,
     addDrawArea,
+    addDrawAreaNoLabel,
     addDrawCircle,
+    addDrawCircleNoLabel,
     addDrawPolygon,
+    addDrawPolygonNoLabel,
     destroyDrawHelper,
   };
 }

@@ -1,6 +1,6 @@
 import * as Cesium from "cesium";
 import type { Entity, Cartesian3 } from "cesium";
-import { BaseDraw, type DrawResult, type DrawOptions } from './BaseDraw';
+import { BaseDraw, type DrawResult, type DrawOptions, type DrawEntity } from './BaseDraw';
 import { isValidCartesian3, calculatePolygonArea, calculatePolygonCenter, formatArea } from '../../utils/calc';
 
 /**
@@ -305,9 +305,9 @@ export class DrawPolygon extends BaseDraw {
       }
     }
 
-    // 添加面积标签
+    // 添加面积标签（可通过 showAreaLabel 关闭）
     const area = calculatePolygonArea(groundPositions, this.scene.globe.ellipsoid);
-    if (area > 0) {
+    if (area > 0 && this.drawOptions?.showAreaLabel !== false) {
       const center = calculatePolygonCenter(groundPositions);
       const centerCarto = Cesium.Cartographic.fromCartesian(center);
       const groundCenter = Cesium.Cartesian3.fromRadians(
@@ -345,6 +345,10 @@ export class DrawPolygon extends BaseDraw {
         },
       });
       (areaLabelEntity as any)._groundPosition = groundCenter;
+      // 关联到主实体，便于外部删除时同步移除
+      (areaLabelEntity as any)._ownerEntityId = (finalEntity as any).id;
+      const drawEntity = finalEntity as DrawEntity;
+      drawEntity._labelEntities = [...(drawEntity._labelEntities || []), areaLabelEntity];
       this.tempLabelEntities.push(areaLabelEntity);
     }
 

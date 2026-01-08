@@ -839,6 +839,40 @@ class DrawHelper {
   removeEntity(entity: Cesium.Entity): void {
     const index = this.finishedEntities.indexOf(entity);
     if (index > -1) {
+      // 先移除关联的标签实体（例如面积标签）
+      const drawEntity = entity as DrawEntity;
+      const linkedLabels = (drawEntity as any)._labelEntities as Cesium.Entity[] | undefined;
+      if (linkedLabels && linkedLabels.length > 0) {
+        linkedLabels.forEach((lab) => {
+          try {
+            if (lab) {
+              this.entities.remove(lab);
+            }
+          } catch {
+            // ignore
+          }
+        });
+        // 从已完成标签数组中同步剔除
+        this.finishedLabelEntities = this.finishedLabelEntities.filter((lab) => !linkedLabels.includes(lab));
+        (drawEntity as any)._labelEntities = [];
+      } else {
+        // 兜底：按 owner id 查找并移除
+        const ownerId = (entity as any).id;
+        if (ownerId) {
+          const owned = this.finishedLabelEntities.filter((lab) => (lab as any)?._ownerEntityId === ownerId);
+          owned.forEach((lab) => {
+            try {
+              this.entities.remove(lab);
+            } catch {
+              // ignore
+            }
+          });
+          if (owned.length > 0) {
+            this.finishedLabelEntities = this.finishedLabelEntities.filter((lab) => (lab as any)?._ownerEntityId !== ownerId);
+          }
+        }
+      }
+
       const border = (entity as any)._borderEntity as Cesium.Entity | undefined;
       if (border) {
         this.entities.remove(border);
@@ -849,6 +883,14 @@ class DrawHelper {
         this.onEntityRemovedCallback(entity);
       }
     }
+  }
+
+  /**
+   * 获取某个绘制实体关联的标签实体（例如面积标签）
+   */
+  getEntityLabelEntities(entity: Cesium.Entity): Cesium.Entity[] {
+    const labels = ((entity as any)?._labelEntities as Cesium.Entity[] | undefined) || [];
+    return [...labels];
   }
 
   /**

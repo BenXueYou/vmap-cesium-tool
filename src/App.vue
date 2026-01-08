@@ -4,32 +4,40 @@
     <!-- 消息提示 -->
     <div v-if="message" class="message">{{ message }}</div>
     <div class="test-button-group">
-      <button @click="addDrawLine">绘制线条</button>
-      <button @click="addDrawArea">绘制区域</button>
-      <button @click="addDrawCircle">绘制圆形</button>
-      <button @click="addDrawPolygon">绘制多边形</button>
-      <br />
-      <button @click="addMarker">添加点位</button>
-      <button @click="addLine">添加线条</button>
-      <button @click="addArea">添加区域</button>
-      <button @click="addCircle">添加圆形</button>
-      <button @click="addPolygon">添加多边形</button>
-      <button @click="addPolyline">添加折线</button>
-      <button @click="addIcon">添加图标</button>
-      <button @click="addSvg">添加SVG</button>
-      <button @click="addMarkerWithLabel">添加点位带标签</button>
-      <button @click="addLabel">添加标签</button>
-      <button @click="addRectangle">添加矩形</button>
-      <button @click="addInfoWindow">添加窗口</button>
-      <button @click="addRing">添加圆环</button>
+      <div>
+        <button @click="addDrawLine">绘制线条</button>
+        <button @click="addDrawArea">绘制区域</button>
+        <button @click="addDrawAreaNoLabel">绘制区域(无面积)</button>
+        <button @click="addDrawCircle">绘制圆形</button>
+        <button @click="addDrawCircleNoLabel">绘制圆形(无面积)</button>
+        <button @click="addDrawPolygon">绘制多边形</button>
+        <button @click="addDrawPolygonNoLabel">绘制多边形(无面积)</button>
+      </div>
+      <div>
+        <button @click="addMarker">添加点位</button>
+        <button @click="addLine">添加线条</button>
+        <button @click="addArea">添加区域</button>
+        <button @click="addCircle">添加圆形</button>
+        <button @click="addPolygon">添加多边形</button>
+        <button @click="addPolyline">添加折线</button>
+        <button @click="addIcon">添加图标</button>
+        <button @click="addSvg">添加SVG</button>
+        <button @click="addMarkerWithLabel">添加点位带标签</button>
+        <button @click="addLabel">添加标签</button>
+        <button @click="addRectangle">添加矩形</button>
+        <button @click="addInfoWindow">添加窗口</button>
+        <button @click="addRing">添加圆环</button>
+        <button @click="addRingTest">测试添加圆环性能</button>
+      </div>
 
-      <br />
-      <button @click="addHeatMap">添加热力图</button>
-      <button @click="enableHeatmapAuto">开启热力图动态聚合</button>
-      <button @click="disableHeatmapAuto">关闭热力图动态聚合</button>
-      <button @click="setHeatmapLodCoarse">聚合档位：粗</button>
-      <button @click="setHeatmapLodMedium">聚合档位：中</button>
-      <button @click="setHeatmapLodFine">聚合档位：细</button>
+      <div>
+        <button @click="addHeatMap">添加热力图</button>
+        <button @click="enableHeatmapAuto">开启热力图动态聚合</button>
+        <button @click="disableHeatmapAuto">关闭热力图动态聚合</button>
+        <button @click="setHeatmapLodCoarse">聚合档位：粗</button>
+        <button @click="setHeatmapLodMedium">聚合档位：中</button>
+        <button @click="setHeatmapLodFine">聚合档位：细</button>
+      </div>
     </div>
   </div>
 </template>
@@ -61,8 +69,11 @@ const {
   endDrawing,
   addDrawLine,
   addDrawArea,
+  addDrawAreaNoLabel,
   addDrawCircle,
+  addDrawCircleNoLabel,
   addDrawPolygon,
+  addDrawPolygonNoLabel,
   destroyDrawHelper,
 } = useDrawHelper(viewer, message);
 
@@ -99,6 +110,32 @@ const {
   destroyHeatmap,
 } = useHeatmapHelper(viewer);
 
+
+// 测试添加大量圆环性能
+const addRingTest = () => {
+  const test1 = () => {
+    const totalRings = 50;
+    let arr = [];
+    for (let i = 0; i < totalRings; i++) {
+      arr.push(addRing(i + Math.random() * 10));
+    }
+    message.value = `已添加 ${totalRings} 个发光圆环`;
+    setTimeout(() => {
+      message.value = '';
+      console.log('开始移除圆环');
+      arr.forEach(ring => {
+        console.log('移除圆环', ring);
+        overlayService.value?.removeOverlay(ring?.id);
+      });
+    }, 3000);
+  }
+
+  setInterval(() => {
+    test1();
+  }, 100);
+}
+
+
 const addHeatMap = () => {
   if (!viewer.value) return;
 
@@ -118,15 +155,15 @@ const addHeatMap = () => {
 
   const frames: any[][] = isNestedFrames
     ? (rawItems as any[]).map((frame: any[]) =>
-        (frame || [])
-          .map(normalizePoint)
-          .filter((p) => Number.isFinite(p.lon) && Number.isFinite(p.lat))
-      )
+      (frame || [])
+        .map(normalizePoint)
+        .filter((p) => Number.isFinite(p.lon) && Number.isFinite(p.lat))
+    )
     : [
-        ((rawItems as any[]) || [])
-          .map(normalizePoint)
-          .filter((p) => Number.isFinite(p.lon) && Number.isFinite(p.lat)),
-      ];
+      ((rawItems as any[]) || [])
+        .map(normalizePoint)
+        .filter((p) => Number.isFinite(p.lon) && Number.isFinite(p.lat)),
+    ];
 
   const allPoints = frames.flat();
   if (allPoints.length === 0) {
@@ -169,7 +206,7 @@ const addHeatMap = () => {
   setHeatmapVisible(true);
   setHeatmapOpacity(0.9);
   setHeatmapGradient(gradient);
-  
+
 
   // 简单用所有点的平均值作为视角中心
   const avgLon =
@@ -413,6 +450,12 @@ onBeforeUnmount(() => {
   top: 10px;
   left: 10px;
   z-index: 1001;
+
+  div {
+    display: flex;
+    flex-direction: wrap;
+    gap: 6px;
+  }
 }
 
 .message {

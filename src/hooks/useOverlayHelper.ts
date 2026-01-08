@@ -410,18 +410,18 @@ export function useOverlayHelper(
   /**
    * 添加发光圆环（MapRing）
    */
-  const addRing = () => {
+  const addRing = (i?: number) => {
     if (!viewer.value || !overlayService.value) return;
 
     const center = viewer.value.camera.positionCartographic;
-    const lon = Cesium.Math.toDegrees(center.longitude);
-    const lat = Cesium.Math.toDegrees(center.latitude);
-
+    const lon = Cesium.Math.toDegrees(center.longitude) + (isNaN(i ?? 0) ? 0 : Number(i ?? 0)) * 0.0001;
+    const lat = Cesium.Math.toDegrees(center.latitude) + (isNaN(i ?? 0) ? 0 : Number(i ?? 0)) * 0.0001;
+    debugger;
     const ring = overlayService.value.addRing({
       position: [lon, lat, 0],
       radius: 150,
       color: Cesium.Color.RED,
-      lineColor: Cesium.Color.BLUE,
+      lineColor: Cesium.Color.RED.withAlpha(0.8),
       lineStyle: 'dashed',
       lineMaterialMode: 'stripe',
       stripeRepeat: 40,
@@ -446,6 +446,7 @@ export function useOverlayHelper(
     markerEntities.push(ring);
     message.value = '已添加发光圆环';
     setTimeout(() => (message.value = ''), 2000);
+    return ring;
   };
 
   /**

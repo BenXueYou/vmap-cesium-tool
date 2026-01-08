@@ -1,6 +1,6 @@
 import * as Cesium from "cesium";
 import type { Entity, Cartesian3 } from "cesium";
-import { BaseDraw, type DrawResult, type DrawOptions } from './BaseDraw';
+import { BaseDraw, type DrawResult, type DrawOptions, type DrawEntity } from './BaseDraw';
 import { calculateRectangle, calculateRectangleArea, formatArea, isValidCartesian3 } from '../../utils/calc';
 
 /**
@@ -169,9 +169,9 @@ export class DrawRectangle extends BaseDraw {
       }
     }
 
-    // 添加面积标签
+    // 添加面积标签（可通过 showAreaLabel 关闭）
     const area = calculateRectangleArea(rect);
-    if (area > 0) {
+    if (area > 0 && this.drawOptions?.showAreaLabel !== false) {
       const rectCenter = Cesium.Rectangle.center(rect);
       const rectCenterGround = Cesium.Cartesian3.fromRadians(
         rectCenter.longitude,
@@ -208,6 +208,9 @@ export class DrawRectangle extends BaseDraw {
         },
       });
       (rectAreaLabelEntity as any)._groundPosition = rectCenterGround;
+      (rectAreaLabelEntity as any)._ownerEntityId = (finalEntity as any).id;
+      const drawEntity = finalEntity as DrawEntity;
+      drawEntity._labelEntities = [...(drawEntity._labelEntities || []), rectAreaLabelEntity];
       this.tempLabelEntities.push(rectAreaLabelEntity);
     }
 

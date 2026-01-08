@@ -1,6 +1,6 @@
 import * as Cesium from "cesium";
 import type { Entity, Cartesian3 } from "cesium";
-import { BaseDraw, type DrawResult, type DrawOptions } from './BaseDraw';
+import { BaseDraw, type DrawResult, type DrawOptions, type DrawEntity } from './BaseDraw';
 import { formatArea } from '../../utils/calc';
 
 /**
@@ -272,8 +272,8 @@ export class DrawCircle extends BaseDraw {
     // 计算面积（π * r²）
     const areaKm2 = (Math.PI * radius * radius) / 1e6;
 
-    // 添加面积标签
-    if (areaKm2 > 0) {
+    // 添加面积标签（可通过 showAreaLabel 关闭）
+    if (areaKm2 > 0 && this.drawOptions?.showAreaLabel !== false) {
       const areaText = `面积: ${formatArea(areaKm2)}`;
       const areaImage = this.createTotalLengthBillboardImage(areaText);
 
@@ -294,6 +294,9 @@ export class DrawCircle extends BaseDraw {
         },
       });
       (areaLabelEntity as any)._groundPosition = centerGround;
+      (areaLabelEntity as any)._ownerEntityId = (finalEntity as any).id;
+      const drawEntity = finalEntity as DrawEntity;
+      drawEntity._labelEntities = [...(drawEntity._labelEntities || []), areaLabelEntity];
       this.tempLabelEntities.push(areaLabelEntity);
     }
 

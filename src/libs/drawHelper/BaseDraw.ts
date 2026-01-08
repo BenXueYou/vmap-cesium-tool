@@ -35,6 +35,8 @@ export type DrawEntity = Entity & {
   _groundRectangle?: Cesium.Rectangle;
   _radius?: number;
   _borderEntity?: Entity;
+  /** 关联的测量/提示标签实体（例如面积标签） */
+  _labelEntities?: Entity[];
   _onClick?: (entity: Entity, ...args: any[]) => void;
   _isSelected?: boolean;
   _originalStyle?: {
@@ -60,6 +62,8 @@ export interface DrawOptions {
     outlineColor?: Cesium.Color | string;
     outlineWidth?: number;
   };
+  /** 是否显示面积标签（多边形/矩形）。默认 true */
+  showAreaLabel?: boolean;
   onClick?: (entity: Entity, type?: "line" | "polygon" | "rectangle" | "circle", positions?: Cartesian3[]) => void;
 }
 
@@ -320,9 +324,36 @@ export abstract class BaseDraw {
    * 添加一个点到临时位置数组并创建点实体
    */
   protected addPoint(position: Cesium.Cartesian3): void {
-    this.tempPositions.push(position.clone());
+    // 防御：拖动相机/不稳定拾取时偶发会收到 NaN 坐标，避免 Cesium 抛出 "cartesian has a NaN component"
+    if (
+      !position ||
+      !Number.isFinite((position as any).x) ||
+      !Number.isFinite((position as any).y) ||
+      !Number.isFinite((position as any).z)
+    ) {
+      return;
+    }
 
-    const carto = Cesium.Cartographic.fromCartesian(position);
+    let safePosition: Cesium.Cartesian3;
+    try {
+      safePosition = position.clone();
+    } catch {
+      return;
+    }
+
+    let carto: Cesium.Cartographic;
+    try {
+      carto = Cesium.Cartographic.fromCartesian(safePosition);
+    } catch {
+      return;
+    }
+
+    if (!Number.isFinite(carto.longitude) || !Number.isFinite(carto.latitude)) {
+      return;
+    }
+
+    this.tempPositions.push(safePosition);
+
     const elevatedPosition = Cesium.Cartesian3.fromRadians(
       carto.longitude,
       carto.latitude,
