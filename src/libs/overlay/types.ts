@@ -24,6 +24,10 @@ export interface OverlayEntity extends Entity {
 	_innerEntity?: Entity;
 
 	/** 粗边框 / 环形等形状相关元数据 */
+	/** 是否贴地（粗边框/环形等复合形状用） */
+	_clampToGround?: boolean;
+	/** 复合形状的基准高度（米，clampToGround=false 时有效） */
+	_baseHeight?: number;
 	_isThickOutline?: boolean;
 	_outlineWidth?: number;
 	_isRing?: boolean;

@@ -418,6 +418,7 @@ export interface PolygonOptions {
   outline?: boolean;
   outlineColor?: any | string;
   outlineWidth?: number;
+  clampToGround?: boolean;
   heightReference?: any;
   extrudedHeight?: number;
   onClick?: (entity: Entity) => void;
@@ -430,8 +431,11 @@ export interface RectangleOptions {
   outline?: boolean;
   outlineColor?: any | string;
   outlineWidth?: number;
+  clampToGround?: boolean;
+  height?: number;
   heightReference?: any;
   extrudedHeight?: number;
+  heightEpsilon?: number;
   onClick?: (entity: Entity) => void;
   id?: string;
 }
@@ -443,6 +447,8 @@ export interface CircleOptions {
   outline?: boolean;
   outlineColor?: any | string;
   outlineWidth?: number;
+  segments?: number;
+  clampToGround?: boolean;
   heightReference?: any;
   extrudedHeight?: number;
   heightEpsilon?: number; // 高度容差，用于环形方案

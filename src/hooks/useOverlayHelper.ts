@@ -230,23 +230,41 @@ export function useOverlayHelper(
     const lon = Cesium.Math.toDegrees(center.longitude);
     const lat = Cesium.Math.toDegrees(center.latitude);
 
-    const rect = Cesium.Rectangle.fromDegrees(lon - 0.025, lat - 0.015, lon - 0.02, lat - 0.01);
-    const rectangle = overlayService.value.addRectangle({
-      coordinates: rect,
-      // material: Cesium.Color.ORANGE.withAlpha(0.5),
+    // Test A: 非粗边框默认贴地（outlineWidth=2 仍是普通 outline，不是粗边框方案）
+    const rectA = Cesium.Rectangle.fromDegrees(lon - 0.025, lat - 0.015, lon - 0.02, lat - 0.01);
+    const rectangleA = overlayService.value.addRectangle({
+      coordinates: rectA,
       material: Cesium.Color.RED.withAlpha(0.5),
       outline: true,
       outlineColor: Cesium.Color.RED,
       outlineWidth: 2,
+      // clampToGround 默认 true（这里不传，验证默认行为）
       onClick: () => {
-        console.log('示例矩形被点击');
-        message.value = '示例矩形被点击';
+        console.log('矩形 A(贴地) 被点击');
+        message.value = '矩形 A(贴地) 被点击';
         setTimeout(() => (message.value = ''), 2000);
       },
     });
 
-    markerEntities.push(rectangle);
-    message.value = '已添加矩形';
+    // Test B: 显式悬空（clampToGround=false + height）
+    const rectB = Cesium.Rectangle.fromDegrees(lon - 0.018, lat - 0.015, lon - 0.013, lat - 0.01);
+    const rectangleB = overlayService.value.addRectangle({
+      coordinates: rectB,
+      material: Cesium.Color.ORANGE.withAlpha(0.35),
+      outline: true,
+      outlineColor: Cesium.Color.ORANGE,
+      outlineWidth: 2,
+      clampToGround: false,
+      height: 500,
+      onClick: () => {
+        console.log('矩形 B(悬空) 被点击');
+        message.value = '矩形 B(悬空) 被点击';
+        setTimeout(() => (message.value = ''), 2000);
+      },
+    });
+
+    markerEntities.push(rectangleA, rectangleB);
+    message.value = '已添加矩形：A贴地(默认) / B悬空(clampToGround=false,height=500)';
     setTimeout(() => (message.value = ''), 2000);
   };
 
@@ -347,7 +365,8 @@ export function useOverlayHelper(
     const lon = Cesium.Math.toDegrees(center.longitude);
     const lat = Cesium.Math.toDegrees(center.latitude);
 
-    const polygon = overlayService.value.addPolygon({
+    // Test A: 非粗边框默认贴地（clampToGround 默认 true）
+    const polygonA = overlayService.value.addPolygon({
       positions: [
         [lon - 0.01, lat - 0.01],
         [lon + 0.01, lat - 0.01],
@@ -359,14 +378,34 @@ export function useOverlayHelper(
       outlineColor: Cesium.Color.BLUE,
       outlineWidth: 2,
       onClick: () => {
-        console.log('区域被点击');
-        message.value = '区域被点击';
+        console.log('区域 A(贴地) 被点击');
+        message.value = '区域 A(贴地) 被点击';
         setTimeout(() => (message.value = ''), 2000);
       },
     });
 
-    markerEntities.push(polygon);
-    message.value = '已添加区域';
+    // Test B: 显式悬空（clampToGround=false + positions 带高度）
+    const polygonB = overlayService.value.addPolygon({
+      positions: [
+        [lon + 0.02, lat - 0.01, 500],
+        [lon + 0.04, lat - 0.01, 500],
+        [lon + 0.045, lat + 0.005, 500],
+        [lon + 0.025, lat + 0.01, 500],
+      ],
+      material: Cesium.Color.CYAN.withAlpha(0.25),
+      outline: true,
+      outlineColor: Cesium.Color.CYAN,
+      outlineWidth: 2,
+      clampToGround: false,
+      onClick: () => {
+        console.log('区域 B(悬空) 被点击');
+        message.value = '区域 B(悬空) 被点击';
+        setTimeout(() => (message.value = ''), 2000);
+      },
+    });
+
+    markerEntities.push(polygonA, polygonB);
+    message.value = '已添加区域：A贴地(默认) / B悬空(clampToGround=false,height=500)';
     setTimeout(() => (message.value = ''), 2000);
   };
 
@@ -380,7 +419,7 @@ export function useOverlayHelper(
     const lon = Cesium.Math.toDegrees(center.longitude);
     const lat = Cesium.Math.toDegrees(center.latitude);
 
-    // 圆形 A：演示粗边框（双层椭圆环：outlineWidth>1 即触发）
+    // Test A: 粗边框默认贴地（outlineWidth>1 触发粗边框方案）
     const circleA = overlayService.value.addCircle({
       position: [120.09747987, 30.12573937],
       radius: 2635.9,
@@ -388,6 +427,8 @@ export function useOverlayHelper(
       outline: true,                                  // 开启边框（用于颜色）
       outlineColor: Cesium.Color.fromCssColorString('#d32f2f'),              // 边框颜色
       outlineWidth: 20,                               // >1 触发双层椭圆环（米为单位）
+      segments: 512,
+      // clampToGround 默认 true（这里不传，验证默认行为）
       onClick: () => {
         const circleOverlay = circleA as OverlayEntity;
         console.log('圆形 A 被点击=', circleOverlay);
@@ -402,8 +443,37 @@ export function useOverlayHelper(
       },
     });
 
-    markerEntities.push(circleA);
-    message.value = '已添加两个粗边框圆形（双层椭圆环效果）';
+    // Test B: 非粗边框默认贴地（outlineWidth=1）
+    const circleB = overlayService.value.addCircle({
+      position: [lon + 0.02, lat, 800], // 即便传高度，贴地默认会归零
+      radius: 1200,
+      material: Cesium.Color.YELLOW.withAlpha(0.25),
+      outline: true,
+      outlineColor: Cesium.Color.YELLOW,
+      outlineWidth: 1,
+      onClick: () => {
+        message.value = '圆形 B(贴地默认) 被点击';
+        setTimeout(() => (message.value = ''), 2000);
+      },
+    });
+
+    // Test C: 非粗边框显式悬空（clampToGround=false + position 带高度）
+    const circleC = overlayService.value.addCircle({
+      position: [lon - 0.02, lat, 1000],
+      radius: 1000,
+      material: Cesium.Color.LIME.withAlpha(0.25),
+      outline: true,
+      outlineColor: Cesium.Color.LIME,
+      outlineWidth: 1,
+      clampToGround: false,
+      onClick: () => {
+        message.value = '圆形 C(悬空) 被点击';
+        setTimeout(() => (message.value = ''), 2000);
+      },
+    });
+
+    markerEntities.push(circleA, circleB, circleC);
+    message.value = '已添加圆形：A粗边框贴地(默认) / B普通贴地(默认) / C普通悬空(clampToGround=false,height=1000)';
     setTimeout(() => (message.value = ''), 2200);
   };
 
@@ -459,7 +529,8 @@ export function useOverlayHelper(
     const lon = Cesium.Math.toDegrees(center.longitude);
     const lat = Cesium.Math.toDegrees(center.latitude);
 
-    const poly = overlayService.value.addPolygon({
+    // Test A: 粗边框默认贴地（outlineWidth>1）
+    const polyA = overlayService.value.addPolygon({
       // positions: [
       //   [lon - 0.015, lat - 0.01],
       //   [lon - 0.005, lat - 0.01],
@@ -478,14 +549,34 @@ export function useOverlayHelper(
       outlineColor: Cesium.Color.ORANGE,
       outlineWidth: 10,
       onClick: () => {
-        console.log('多边形被点击');
-        message.value = '多边形被点击';
+        console.log('多边形 A(粗边框贴地) 被点击');
+        message.value = '多边形 A(粗边框贴地) 被点击';
         setTimeout(() => (message.value = ''), 2000);
       },
     });
 
-    markerEntities.push(poly);
-    message.value = '已添加多边形';
+    // Test B: 粗边框显式悬空（clampToGround=false + positions 带高度）
+    const polyB = overlayService.value.addPolygon({
+      positions: [
+        [lon - 0.03, lat + 0.02, 500],
+        [lon - 0.015, lat + 0.02, 500],
+        [lon - 0.015, lat + 0.03, 500],
+        [lon - 0.03, lat + 0.03, 500],
+      ],
+      material: Cesium.Color.PURPLE.withAlpha(0.25),
+      outline: true,
+      outlineColor: Cesium.Color.PURPLE,
+      outlineWidth: 10,
+      clampToGround: false,
+      onClick: () => {
+        console.log('多边形 B(粗边框悬空) 被点击');
+        message.value = '多边形 B(粗边框悬空) 被点击';
+        setTimeout(() => (message.value = ''), 2000);
+      },
+    });
+
+    markerEntities.push(polyA, polyB);
+    message.value = '已添加多边形：A粗边框贴地(默认) / B粗边框悬空(clampToGround=false,height=500)';
     setTimeout(() => (message.value = ''), 2000);
   };
 

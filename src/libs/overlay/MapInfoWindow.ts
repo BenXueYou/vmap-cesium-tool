@@ -312,121 +312,112 @@ export class MapInfoWindow {
       transform = 'translate(0%, -100%)';
     }
 
-    // 边界检测与夹紧（不自动翻转）
-    const margin = 10; // 安全边距
-    if (!this.isCameraMoving) {
-      const clamp = (bounds: { left: number; right: number; top: number; bottom: number }) => {
-        if (bounds.left < margin) {
-          x += margin - bounds.left;
-        }
-        if (bounds.right > containerWidth - margin) {
-          x -= bounds.right - (containerWidth - margin);
-        }
-        if (bounds.top < margin) {
-          y += margin - bounds.top;
-        }
-        if (bounds.bottom > containerHeight - margin) {
-          y -= bounds.bottom - (containerHeight - margin);
-        }
-      };
+    // 不做边缘避让：只要超出视口就隐藏
+    const computeBounds = () => {
+      switch (side) {
+        case 'top':
+          return {
+            left: x - width / 2,
+            right: x + width / 2,
+            top: y - height,
+            bottom: y,
+          };
+        case 'bottom':
+          return {
+            left: x - width / 2,
+            right: x + width / 2,
+            top: y,
+            bottom: y + height,
+          };
+        case 'left':
+          return {
+            left: x - width,
+            right: x,
+            top: y - height / 2,
+            bottom: y + height / 2,
+          };
+        case 'right':
+          return {
+            left: x,
+            right: x + width,
+            top: y - height / 2,
+            bottom: y + height / 2,
+          };
+        case 'top-left':
+          return {
+            left: x - width,
+            right: x,
+            top: y - height,
+            bottom: y,
+          };
+        case 'top-right':
+          return {
+            left: x,
+            right: x + width,
+            top: y - height,
+            bottom: y,
+          };
+        case 'bottom-left':
+          return {
+            left: x - width,
+            right: x,
+            top: y,
+            bottom: y + height,
+          };
+        case 'bottom-right':
+          return {
+            left: x,
+            right: x + width,
+            top: y,
+            bottom: y + height,
+          };
+        case 'left-top':
+          return {
+            left: x - width,
+            right: x,
+            top: y,
+            bottom: y + height,
+          };
+        case 'left-bottom':
+          return {
+            left: x - width,
+            right: x,
+            top: y - height,
+            bottom: y,
+          };
+        case 'right-top':
+          return {
+            left: x,
+            right: x + width,
+            top: y,
+            bottom: y + height,
+          };
+        case 'right-bottom':
+          return {
+            left: x,
+            right: x + width,
+            top: y - height,
+            bottom: y,
+          };
+        default:
+          return {
+            left: x - width / 2,
+            right: x + width / 2,
+            top: y - height,
+            bottom: y,
+          };
+      }
+    };
 
-      const computeBounds = () => {
-        switch (side) {
-          case 'top':
-            return {
-              left: x - width / 2,
-              right: x + width / 2,
-              top: y - height,
-              bottom: y,
-            };
-          case 'bottom':
-            return {
-              left: x - width / 2,
-              right: x + width / 2,
-              top: y,
-              bottom: y + height,
-            };
-          case 'left':
-            return {
-              left: x - width,
-              right: x,
-              top: y - height / 2,
-              bottom: y + height / 2,
-            };
-          case 'right':
-            return {
-              left: x,
-              right: x + width,
-              top: y - height / 2,
-              bottom: y + height / 2,
-            };
-          case 'top-left':
-            return {
-              left: x - width,
-              right: x,
-              top: y - height,
-              bottom: y,
-            };
-          case 'top-right':
-            return {
-              left: x,
-              right: x + width,
-              top: y - height,
-              bottom: y,
-            };
-          case 'bottom-left':
-            return {
-              left: x - width,
-              right: x,
-              top: y,
-              bottom: y + height,
-            };
-          case 'bottom-right':
-            return {
-              left: x,
-              right: x + width,
-              top: y,
-              bottom: y + height,
-            };
-          case 'left-top':
-            return {
-              left: x - width,
-              right: x,
-              top: y,
-              bottom: y + height,
-            };
-          case 'left-bottom':
-            return {
-              left: x - width,
-              right: x,
-              top: y - height,
-              bottom: y,
-            };
-          case 'right-top':
-            return {
-              left: x,
-              right: x + width,
-              top: y,
-              bottom: y + height,
-            };
-          case 'right-bottom':
-            return {
-              left: x,
-              right: x + width,
-              top: y - height,
-              bottom: y,
-            };
-          default:
-            return {
-              left: x - width / 2,
-              right: x + width / 2,
-              top: y - height,
-              bottom: y,
-            };
-        }
-      };
-
-      clamp(computeBounds());
+    const bounds = computeBounds();
+    if (
+      bounds.left < 0 ||
+      bounds.top < 0 ||
+      bounds.right > containerWidth ||
+      bounds.bottom > containerHeight
+    ) {
+      domElement.style.display = 'none';
+      return;
     }
 
     // 设置最终位置

@@ -11,6 +11,12 @@ export interface PolygonOptions {
   outline?: boolean;
   outlineColor?: Color | string;
   outlineWidth?: number;
+  /**
+   * 是否贴地（默认：在粗边框模式下为 true）。
+   * - true：填充与边框都贴地（避免一贴地一悬空导致缝隙）。
+   * - false：填充与边框都在统一的 baseHeight 上悬空。
+   */
+  clampToGround?: boolean;
   heightReference?: HeightReference;
   extrudedHeight?: number;
   onClick?: (entity: Entity) => void;
@@ -176,21 +182,32 @@ export class MapPolygon {
 
     const ringThickness = (options.outlineWidth && options.outlineWidth > 1) ? options.outlineWidth : 0;
     if (ringThickness && ringThickness > 0) {
+      const clampToGround = options.clampToGround ?? true;
+      const baseHeight = clampToGround ? 0 : (Cesium.Cartographic.fromCartesian(positions[0])?.height ?? 0);
+      const heightReference = clampToGround
+        ? Cesium.HeightReference.CLAMP_TO_GROUND
+        : (options.heightReference ?? Cesium.HeightReference.NONE);
+
+      // 填充多边形：使用统一的 height/heightReference（不要和边框的 clampToGround 混用）
+      const surfacePositions = this.elevatePositions(positions, 0);
+
       // 方案改为：填充用 Polygon；粗边框用 Polyline（闭合折线），避免双层多边形叠加产生的视觉问题
       const fill = this.entities.add({
         id,
         polygon: {
-          hierarchy: positions,
+          hierarchy: surfacePositions,
           material: this.resolveMaterial(options.material ?? Cesium.Color.ORANGE.withAlpha(0.5)),
           outline: false,
-          heightReference: options.heightReference ?? Cesium.HeightReference.NONE,
+          heightReference,
+          ...(clampToGround ? {} : { height: baseHeight }),
           extrudedHeight: options.extrudedHeight,
         },
       });
 
       // 构造闭合边界路径
-      const borderPositions: Cesium.Cartesian3[] = positions.slice();
-      if (borderPositions.length >= 2) borderPositions.push(positions[0]);
+      const borderPositionsBase = this.elevatePositions(positions, baseHeight);
+      const borderPositions: Cesium.Cartesian3[] = borderPositionsBase.slice();
+      if (borderPositions.length >= 2) borderPositions.push(borderPositionsBase[0]);
 
       const border = this.entities.add({
         polyline: {
@@ -199,7 +216,8 @@ export class MapPolygon {
           material: new Cesium.ColorMaterialProperty(
             this.resolveColor(options.outlineColor ?? Cesium.Color.ORANGE)
           ),
-          clampToGround: true,
+          clampToGround,
+          ...(clampToGround ? { zIndex: 1 } : {}),
         },
       });
 
@@ -214,19 +232,27 @@ export class MapPolygon {
       fillEntity._borderEntity = border;
       fillEntity._isThickOutline = true;
       fillEntity._outlineWidth = ringThickness;
+      fillEntity._clampToGround = clampToGround;
+      fillEntity._baseHeight = baseHeight;
 
       return fill;
     }
 
+    // 非粗边框：默认贴地（可通过 clampToGround:false 或传入 heightReference 覆盖）
+    const clampToGround = options.clampToGround ?? true;
+    const heightReference =
+      options.heightReference ?? (clampToGround ? Cesium.HeightReference.CLAMP_TO_GROUND : Cesium.HeightReference.NONE);
+    const hierarchy = clampToGround ? this.elevatePositions(positions, 0) : positions;
+
     const entity = this.entities.add({
       id,
       polygon: {
-        hierarchy: positions,
+        hierarchy,
         material,
         outline: options.outline ?? true,
         outlineColor: options.outlineColor ? this.resolveColor(options.outlineColor) : Cesium.Color.BLACK,
         outlineWidth: options.outlineWidth ?? 1,
-        heightReference: options.heightReference ?? Cesium.HeightReference.NONE,
+        heightReference,
         extrudedHeight: options.extrudedHeight,
       },
     });
@@ -235,6 +261,8 @@ export class MapPolygon {
       const overlayEntity = entity as OverlayEntity;
       overlayEntity._onClick = options.onClick;
     }
+
+    (entity as OverlayEntity)._clampToGround = clampToGround;
 
     return entity;
   }
@@ -248,16 +276,32 @@ export class MapPolygon {
     const border = overlayEntity._borderEntity;
     const isThick = overlayEntity._isThickOutline;
     if (entity.polygon && border && isThick) {
-      // 更新填充
-      entity.polygon.hierarchy = new Cesium.ConstantProperty(new Cesium.PolygonHierarchy(newPositions));
+      const clampToGround = overlayEntity._clampToGround ?? true;
+      const baseHeight = clampToGround ? 0 : (Cesium.Cartographic.fromCartesian(newPositions[0])?.height ?? 0);
+      overlayEntity._baseHeight = baseHeight;
+
+      // 更新填充：保持与 add() 一致的 height 策略
+      const surfacePositions = this.elevatePositions(newPositions, 0);
+      entity.polygon.hierarchy = new Cesium.ConstantProperty(new Cesium.PolygonHierarchy(surfacePositions));
+      if (!clampToGround) {
+        (entity.polygon as any).height = new Cesium.ConstantProperty(baseHeight);
+      }
+
       // 更新边框折线（闭合）
-      const closed = newPositions.slice();
-      if (closed.length >= 2) closed.push(newPositions[0]);
+      const borderBase = this.elevatePositions(newPositions, baseHeight);
+      const closed = borderBase.slice();
+      if (closed.length >= 2) closed.push(borderBase[0]);
       if (border.polyline) {
         border.polyline.positions = new Cesium.ConstantProperty(closed);
+        (border.polyline as any).clampToGround = new Cesium.ConstantProperty(clampToGround);
       }
     } else if (entity.polygon) {
-      entity.polygon.hierarchy = new Cesium.ConstantProperty(new Cesium.PolygonHierarchy(newPositions));
+      const clampToGround = overlayEntity._clampToGround ?? false;
+      const hierarchy = clampToGround ? this.elevatePositions(newPositions, 0) : newPositions;
+      entity.polygon.hierarchy = new Cesium.ConstantProperty(new Cesium.PolygonHierarchy(hierarchy));
+      if (clampToGround) {
+        entity.polygon.heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.CLAMP_TO_GROUND);
+      }
     }
   }
 
