@@ -19,6 +19,8 @@ export interface RectangleOptions {
   extrudedHeight?: number;
   /** 高度容差（米）：用于避免共面深度冲突；会同时作用于边框与填充以保证一致 */
   heightEpsilon?: number;
+  /** 点击该覆盖物时是否高亮显示（默认 false）。支持传入自定义颜色等参数 */
+  clickHighlight?: boolean | { color?: Color | string; fillAlpha?: number };
   onClick?: (entity: Entity) => void;
   id?: string;
 }
@@ -146,6 +148,13 @@ export class MapRectangle {
       }
 
       const outerEntity = outer as OverlayEntity;
+      const innerEntity = inner as OverlayEntity;
+      const group = [outer, inner];
+      const clickHighlight = options.clickHighlight ?? false;
+      outerEntity._clickHighlight = clickHighlight;
+      innerEntity._clickHighlight = clickHighlight;
+      outerEntity._highlightEntities = group;
+      innerEntity._highlightEntities = group;
       outerEntity._innerEntity = inner;
       outerEntity._isRing = true;
       outerEntity._ringThickness = ringThickness;
@@ -180,6 +189,10 @@ export class MapRectangle {
       const overlayEntity = entity as OverlayEntity;
       overlayEntity._onClick = options.onClick;
     }
+
+    const overlayEntity = entity as OverlayEntity;
+    overlayEntity._clickHighlight = options.clickHighlight ?? false;
+    overlayEntity._highlightEntities = [entity];
 
     (entity as OverlayEntity)._clampToGround = clampToGround;
 

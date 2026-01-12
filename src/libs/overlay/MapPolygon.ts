@@ -19,6 +19,8 @@ export interface PolygonOptions {
   clampToGround?: boolean;
   heightReference?: HeightReference;
   extrudedHeight?: number;
+  /** 点击该覆盖物时是否高亮显示（默认 false）。支持传入自定义颜色等参数 */
+  clickHighlight?: boolean | { color?: Color | string; fillAlpha?: number };
   onClick?: (entity: Entity) => void;
   id?: string;
 }
@@ -229,6 +231,14 @@ export class MapPolygon {
       }
 
       const fillEntity = fill as OverlayEntity;
+      const borderEntity = border as OverlayEntity;
+      const group = [fill, border];
+      const clickHighlight = options.clickHighlight ?? false;
+      fillEntity._clickHighlight = clickHighlight;
+      borderEntity._clickHighlight = clickHighlight;
+      fillEntity._highlightEntities = group;
+      borderEntity._highlightEntities = group;
+
       fillEntity._borderEntity = border;
       fillEntity._isThickOutline = true;
       fillEntity._outlineWidth = ringThickness;
@@ -261,6 +271,10 @@ export class MapPolygon {
       const overlayEntity = entity as OverlayEntity;
       overlayEntity._onClick = options.onClick;
     }
+
+    const overlayEntity = entity as OverlayEntity;
+    overlayEntity._clickHighlight = options.clickHighlight ?? false;
+    overlayEntity._highlightEntities = [entity];
 
     (entity as OverlayEntity)._clampToGround = clampToGround;
 

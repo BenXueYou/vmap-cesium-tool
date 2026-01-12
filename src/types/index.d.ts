@@ -265,6 +265,9 @@ export type OverlayPosition = Cartesian3 | [number, number] | [number, number, n
 // 覆盖物扩展实体类型（与 libs/overlay/types.ts 保持一致）
 export interface OverlayEntity extends Entity {
   _onClick?: (entity: Entity) => void;
+  _clickHighlight?: boolean;
+  _highlightEntities?: Entity[];
+  _isHighlighted?: boolean;
   _overlayType?: string;
   _infoWindow?: HTMLElement;
   _borderEntity?: Entity;
@@ -341,6 +344,7 @@ export interface MarkerOptions {
   heightReference?: any;
   scaleByDistance?: Cesium.NearFarScalar;
   disableDepthTestDistance?: number;
+  clickHighlight?: boolean;
   onClick?: (entity: Entity) => void;
   id?: string;
 }
@@ -363,6 +367,7 @@ export interface LabelOptions {
   backgroundColor?: any | string;
   backgroundPadding?: Cesium.Cartesian2;
   disableDepthTestDistance?: number;
+  clickHighlight?: boolean;
   onClick?: (entity: Entity) => void;
   id?: string;
 }
@@ -381,6 +386,7 @@ export interface IconOptions {
   heightReference?: any;
   disableDepthTestDistance?: number;
   color?: any | string;
+  clickHighlight?: boolean | { color?: any | string; fillAlpha?: number };
   onClick?: (entity: Entity) => void;
   id?: string;
 }
@@ -399,6 +405,7 @@ export interface SvgOptions {
   heightReference?: any;
   disableDepthTestDistance?: number;
   color?: any | string;
+  clickHighlight?: boolean | { color?: any | string; fillAlpha?: number };
   onClick?: (entity: Entity) => void;
   id?: string;
 }
@@ -408,6 +415,7 @@ export interface PolylineOptions {
   width?: number;
   material?: Cesium.MaterialProperty | any | string;
   clampToGround?: boolean;
+  clickHighlight?: boolean | { color?: any | string; fillAlpha?: number };
   onClick?: (entity: Entity) => void;
   id?: string;
 }
@@ -421,6 +429,7 @@ export interface PolygonOptions {
   clampToGround?: boolean;
   heightReference?: any;
   extrudedHeight?: number;
+  clickHighlight?: boolean | { color?: any | string; fillAlpha?: number };
   onClick?: (entity: Entity) => void;
   id?: string;
 }
@@ -436,6 +445,7 @@ export interface RectangleOptions {
   heightReference?: any;
   extrudedHeight?: number;
   heightEpsilon?: number;
+  clickHighlight?: boolean | { color?: any | string; fillAlpha?: number };
   onClick?: (entity: Entity) => void;
   id?: string;
 }
@@ -452,6 +462,7 @@ export interface CircleOptions {
   heightReference?: any;
   extrudedHeight?: number;
   heightEpsilon?: number; // 高度容差，用于环形方案
+  clickHighlight?: boolean | { color?: any | string; fillAlpha?: number };
   onClick?: (entity: Entity) => void;
   id?: string;
 }
@@ -491,6 +502,7 @@ export interface RingOptions {
   clampToGround?: boolean;
   /** 圆环分段数（默认 128），越大越圆滑 */
   segments?: number;
+  clickHighlight?: boolean | { color?: any | string; fillAlpha?: number };
   /** 覆盖物点击回调 */
   onClick?: (entity: Entity) => void;
   id?: string;

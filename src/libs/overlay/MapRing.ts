@@ -42,6 +42,8 @@ export interface RingOptions {
   segments?: number;
   /** 覆盖物点击回调 */
   onClick?: (entity: Entity) => void;
+  /** 点击该覆盖物时是否高亮显示（默认 false）。支持传入自定义颜色等参数 */
+  clickHighlight?: boolean | { color?: Color | string; fillAlpha?: number };
   id?: string;
 }
 
@@ -294,6 +296,16 @@ export class MapRing {
         // 点击内层也转发给外层，保证回调拿到的是“主实体”
         innerOverlay._onClick = () => options.onClick?.(entity);
       }
+    }
+
+    const clickHighlight = options.clickHighlight ?? false;
+    const group = innerEntity ? [entity, innerEntity] : [entity];
+    overlayEntity._clickHighlight = clickHighlight;
+    overlayEntity._highlightEntities = group;
+    if (innerEntity) {
+      const innerOverlay = innerEntity as OverlayEntity;
+      innerOverlay._clickHighlight = clickHighlight;
+      innerOverlay._highlightEntities = group;
     }
 
     return entity;

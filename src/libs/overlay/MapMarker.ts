@@ -14,6 +14,8 @@ export interface MarkerOptions {
   heightReference?: HeightReference;
   scaleByDistance?: Cesium.NearFarScalar;
   disableDepthTestDistance?: number;
+  /** 点击该覆盖物时是否高亮显示（默认 false）。支持传入自定义颜色等参数 */
+  clickHighlight?: boolean | { color?: Color | string; fillAlpha?: number };
   onClick?: (entity: Entity) => void;
   id?: string;
 }
@@ -86,6 +88,10 @@ export class MapMarker {
       const overlayEntity = entity as OverlayEntity;
       overlayEntity._onClick = options.onClick;
     }
+
+    const overlayEntity = entity as OverlayEntity;
+    overlayEntity._clickHighlight = options.clickHighlight ?? false;
+    overlayEntity._highlightEntities = [entity];
 
     return entity;
   }

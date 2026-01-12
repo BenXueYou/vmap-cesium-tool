@@ -26,6 +26,8 @@ export interface CircleOptions {
   heightReference?: HeightReference;
   extrudedHeight?: number;
   heightEpsilon?: number; // 高度容差，用于环形方案
+  /** 点击该覆盖物时是否高亮显示（默认 false）。支持传入自定义颜色等参数 */
+  clickHighlight?: boolean | { color?: Color | string; fillAlpha?: number };
   onClick?: (entity: Entity) => void;
   id?: string;
 }
@@ -156,8 +158,16 @@ export class MapCircle {
         innerEntity._onClick = options.onClick;
       }
 
-      // 记录元数据，便于更新/移除
       const outerEntity = outer as OverlayEntity;
+      const innerEntity = inner as OverlayEntity;
+      const group = [outer, inner];
+      const clickHighlight = options.clickHighlight ?? false;
+      outerEntity._clickHighlight = clickHighlight;
+      innerEntity._clickHighlight = clickHighlight;
+      outerEntity._highlightEntities = group;
+      innerEntity._highlightEntities = group;
+
+      // 记录元数据，便于更新/移除
       outerEntity._innerEntity = inner;
       outerEntity._isRing = true;
       outerEntity._ringThickness = ringThickness;
@@ -203,6 +213,10 @@ export class MapCircle {
         const overlayEntity = entity as OverlayEntity;
         overlayEntity._onClick = options.onClick;
       }
+
+      const overlayEntity = entity as OverlayEntity;
+      overlayEntity._clickHighlight = options.clickHighlight ?? false;
+      overlayEntity._highlightEntities = [entity];
 
       (entity as OverlayEntity)._clampToGround = clampToGround;
       (entity as OverlayEntity)._baseHeight = heightMeters;

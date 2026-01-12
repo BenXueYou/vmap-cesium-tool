@@ -5,6 +5,54 @@ import type { Cartesian3, Entity, Color, MaterialProperty, Rectangle, Cartograph
  */
 export type OverlayPosition = Cartesian3 | [number, number] | [number, number, number];
 
+export interface OverlayHighlightOriginalStyle {
+	point?: {
+		pixelSize?: any;
+		color?: any;
+		outlineColor?: any;
+		outlineWidth?: any;
+	};
+	label?: {
+		fillColor?: any;
+		outlineColor?: any;
+		outlineWidth?: any;
+		scale?: any;
+	};
+	billboard?: {
+		scale?: any;
+		color?: any;
+	};
+	polyline?: {
+		width?: any;
+		material?: any;
+	};
+	polygon?: {
+		outline?: any;
+		outlineColor?: any;
+		outlineWidth?: any;
+		material?: any;
+	};
+	rectangle?: {
+		outline?: any;
+		outlineColor?: any;
+		outlineWidth?: any;
+		material?: any;
+	};
+	ellipse?: {
+		outline?: any;
+		outlineColor?: any;
+		outlineWidth?: any;
+		material?: any;
+	};
+}
+
+export interface OverlayClickHighlightOptions {
+	/** 高亮主颜色（默认 yellow） */
+	color?: Color | string;
+	/** 面填充透明度（默认 0.35） */
+	fillAlpha?: number;
+}
+
 /**
  * 覆盖物扩展实体类型
  * 用于在 Cesium.Entity 上挂载覆盖物相关的元数据
@@ -12,6 +60,15 @@ export type OverlayPosition = Cartesian3 | [number, number] | [number, number, n
 export interface OverlayEntity extends Entity {
 	/** 覆盖物点击回调（由各 Map* 工具类设置） */
 	_onClick?: (entity: Entity) => void;
+
+	/** 点击覆盖物时是否启用高亮（由各 Map* 工具类设置） */
+	_clickHighlight?: boolean | OverlayClickHighlightOptions;
+	/** 高亮联动的实体集合（复合覆盖物：边框/填充等一起切换） */
+	_highlightEntities?: Entity[];
+	/** 当前是否处于高亮状态 */
+	_isHighlighted?: boolean;
+	/** 用于还原高亮前的原始样式 */
+	_highlightOriginalStyle?: OverlayHighlightOriginalStyle;
 
 	/** 覆盖物类型标识（用于 CesiumOverlayService 做差异化更新/删除） */
 	_overlayType?: string;

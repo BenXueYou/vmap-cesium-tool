@@ -24,6 +24,9 @@ export class CesiumOverlayService {
   private overlayMap: Map<string, Entity> = new Map(); // 通过ID管理覆盖物
   private infoWindowContainer: HTMLElement | null = null;
 
+  private static readonly DEFAULT_HIGHLIGHT_COLOR = Cesium.Color.YELLOW;
+  private static readonly DEFAULT_HIGHLIGHT_FILL_ALPHA = 0.35;
+
   // 各种覆盖物工具类实例
   public readonly marker: MapMarker;
   public readonly label: MapLabel;
@@ -87,12 +90,286 @@ export class CesiumOverlayService {
         if (entity._drawType !== undefined) {
           return;
         }
+
+        // 覆盖物点击高亮（可按每个覆盖物选项开启/关闭）
+        if (entity._clickHighlight) {
+          this.toggleOverlayHighlight(entity);
+        }
+
         const onClick = entity._onClick as ((entity: Entity) => void) | undefined;
         if (onClick) {
           onClick(entity);
         }
       }
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+  }
+
+  private getPropertyValue<T>(prop: any, fallback: T): T {
+    try {
+      if (prop && typeof prop.getValue === 'function') {
+        return prop.getValue(Cesium.JulianDate.now()) as T;
+      }
+      if (prop !== undefined) {
+        return prop as T;
+      }
+      return fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  private getNumberProperty(prop: any, fallback: number): number {
+    const v = this.getPropertyValue<any>(prop, fallback);
+    const n = typeof v === 'number' ? v : Number(v);
+    return Number.isFinite(n) ? n : fallback;
+  }
+
+  private toggleOverlayHighlight(entity: OverlayEntity): void {
+    const targets = (entity._highlightEntities && entity._highlightEntities.length > 0)
+      ? entity._highlightEntities
+      : [entity];
+    const shouldHighlight = !targets.some((e) => (e as OverlayEntity)._isHighlighted);
+
+    for (const e of targets) {
+      const oe = e as OverlayEntity;
+      if (shouldHighlight) {
+        this.applyOverlayHighlightStyle(oe);
+      } else {
+        this.restoreOverlayHighlightStyle(oe);
+      }
+    }
+  }
+
+  private resolveHighlightOptions(entity: OverlayEntity): { color: Cesium.Color; fillAlpha: number } {
+    const raw = entity._clickHighlight;
+    const fillAlphaRaw = (typeof raw === 'object' && raw) ? (raw as any).fillAlpha : undefined;
+    const fillAlpha =
+      typeof fillAlphaRaw === 'number'
+        ? Cesium.Math.clamp(fillAlphaRaw, 0.0, 1.0)
+        : CesiumOverlayService.DEFAULT_HIGHLIGHT_FILL_ALPHA;
+
+    const colorRaw = (typeof raw === 'object' && raw) ? (raw as any).color : undefined;
+    const resolveColor = (input?: Cesium.Color | string): Cesium.Color => {
+      try {
+        if (!input) return CesiumOverlayService.DEFAULT_HIGHLIGHT_COLOR;
+        if (input instanceof Cesium.Color) return input;
+        return Cesium.Color.fromCssColorString(String(input));
+      } catch {
+        return CesiumOverlayService.DEFAULT_HIGHLIGHT_COLOR;
+      }
+    };
+    const color = resolveColor(colorRaw);
+    return { color, fillAlpha };
+  }
+
+  private applyOverlayHighlightStyle(entity: OverlayEntity): void {
+    if (entity._isHighlighted) return;
+    if (!entity._highlightOriginalStyle) entity._highlightOriginalStyle = {};
+
+    const { color: hl, fillAlpha } = this.resolveHighlightOptions(entity);
+
+    // 点
+    if (entity.point) {
+      const p = entity.point;
+      if (!entity._highlightOriginalStyle.point) {
+        entity._highlightOriginalStyle.point = {
+          pixelSize: p.pixelSize,
+          color: p.color,
+          outlineColor: p.outlineColor,
+          outlineWidth: p.outlineWidth,
+        };
+      }
+      const pixelSize = this.getNumberProperty(p.pixelSize, 10);
+      const outlineWidth = this.getNumberProperty(p.outlineWidth, 2);
+      p.pixelSize = new Cesium.ConstantProperty(pixelSize + 3);
+      p.color = new Cesium.ConstantProperty(hl.withAlpha(0.9));
+      p.outlineColor = new Cesium.ConstantProperty(hl);
+      p.outlineWidth = new Cesium.ConstantProperty(Math.max(3, outlineWidth + 1));
+    }
+
+    // 文本
+    if (entity.label) {
+      const l = entity.label;
+      if (!entity._highlightOriginalStyle.label) {
+        entity._highlightOriginalStyle.label = {
+          fillColor: l.fillColor,
+          outlineColor: l.outlineColor,
+          outlineWidth: l.outlineWidth,
+          scale: l.scale,
+        };
+      }
+      const scale = this.getNumberProperty(l.scale, 1);
+      const outlineWidth = this.getNumberProperty(l.outlineWidth, 2);
+      l.fillColor = new Cesium.ConstantProperty(hl);
+      l.outlineColor = new Cesium.ConstantProperty(Cesium.Color.BLACK);
+      l.outlineWidth = new Cesium.ConstantProperty(Math.max(2, outlineWidth));
+      l.scale = new Cesium.ConstantProperty(scale * 1.08);
+    }
+
+    // Billboard（Icon/SVG）
+    if (entity.billboard) {
+      const b = entity.billboard;
+      if (!entity._highlightOriginalStyle.billboard) {
+        entity._highlightOriginalStyle.billboard = {
+          scale: b.scale,
+          color: b.color,
+        };
+      }
+      const scale = this.getNumberProperty(b.scale, 1);
+      b.scale = new Cesium.ConstantProperty(scale * 1.08);
+      b.color = new Cesium.ConstantProperty(hl);
+    }
+
+    // 折线
+    if (entity.polyline) {
+      const pl = entity.polyline;
+      if (!entity._highlightOriginalStyle.polyline) {
+        entity._highlightOriginalStyle.polyline = {
+          width: pl.width,
+          material: pl.material,
+        };
+      }
+      const width = this.getNumberProperty(pl.width, 2);
+      pl.width = new Cesium.ConstantProperty(width + 2);
+
+      // 尽量保留材质语义：
+      // - ColorMaterialProperty：直接替换颜色
+      // - PolylineGlowMaterialProperty：复制一份新的 glow 材质并替换颜色（不改原对象，方便还原）
+      if (pl.material instanceof Cesium.ColorMaterialProperty) {
+        pl.material = new Cesium.ColorMaterialProperty(hl);
+      } else if (pl.material instanceof Cesium.PolylineGlowMaterialProperty) {
+        const glowPower = (pl.material as any).glowPower;
+        pl.material = new Cesium.PolylineGlowMaterialProperty({
+          color: hl,
+          glowPower: typeof glowPower === 'number' ? glowPower : 0.25,
+        });
+      }
+    }
+
+    // 面（Polygon）
+    if (entity.polygon) {
+      const pg = entity.polygon;
+      if (!entity._highlightOriginalStyle.polygon) {
+        entity._highlightOriginalStyle.polygon = {
+          outline: (pg as any).outline,
+          outlineColor: pg.outlineColor,
+          outlineWidth: pg.outlineWidth,
+          material: pg.material,
+        };
+      }
+      const outlineWidth = this.getNumberProperty(pg.outlineWidth, 1);
+      (pg as any).outline = new Cesium.ConstantProperty(true);
+      pg.outlineColor = new Cesium.ConstantProperty(hl);
+      pg.outlineWidth = new Cesium.ConstantProperty(Math.max(2, outlineWidth + 2));
+
+      // NOTE: 贴地多边形的 outline 很可能不可见或宽度无效，因此用“改材质”保证高亮可见
+      pg.material = new Cesium.ColorMaterialProperty(hl.withAlpha(fillAlpha));
+    }
+
+    // 矩形
+    if (entity.rectangle) {
+      const r = entity.rectangle;
+      if (!entity._highlightOriginalStyle.rectangle) {
+        entity._highlightOriginalStyle.rectangle = {
+          outline: (r as any).outline,
+          outlineColor: r.outlineColor,
+          outlineWidth: r.outlineWidth,
+          material: r.material,
+        };
+      }
+      const outlineWidth = this.getNumberProperty(r.outlineWidth, 1);
+      (r as any).outline = new Cesium.ConstantProperty(true);
+      r.outlineColor = new Cesium.ConstantProperty(hl);
+      r.outlineWidth = new Cesium.ConstantProperty(Math.max(2, outlineWidth + 2));
+
+      // 同 polygon：用材质保证贴地高亮可见
+      r.material = new Cesium.ColorMaterialProperty(hl.withAlpha(fillAlpha));
+    }
+
+    // 圆/椭圆
+    if (entity.ellipse) {
+      const el = entity.ellipse;
+      if (!entity._highlightOriginalStyle.ellipse) {
+        entity._highlightOriginalStyle.ellipse = {
+          outline: (el as any).outline,
+          outlineColor: el.outlineColor,
+          outlineWidth: el.outlineWidth,
+          material: el.material,
+        };
+      }
+      const outlineWidth = this.getNumberProperty(el.outlineWidth, 1);
+      (el as any).outline = new Cesium.ConstantProperty(true);
+      el.outlineColor = new Cesium.ConstantProperty(hl);
+      el.outlineWidth = new Cesium.ConstantProperty(Math.max(2, outlineWidth + 2));
+
+      // NOTE: 贴地 ellipse 的 outline 也可能不可见，因此改材质兜底
+      el.material = new Cesium.ColorMaterialProperty(hl.withAlpha(fillAlpha));
+    }
+
+    entity._isHighlighted = true;
+  }
+
+  private restoreOverlayHighlightStyle(entity: OverlayEntity): void {
+    if (!entity._isHighlighted) return;
+    const orig = entity._highlightOriginalStyle;
+    if (!orig) {
+      entity._isHighlighted = false;
+      return;
+    }
+
+    if (entity.point && orig.point) {
+      const p = entity.point;
+      p.pixelSize = orig.point.pixelSize;
+      p.color = orig.point.color;
+      p.outlineColor = orig.point.outlineColor;
+      p.outlineWidth = orig.point.outlineWidth;
+    }
+
+    if (entity.label && orig.label) {
+      const l = entity.label;
+      l.fillColor = orig.label.fillColor;
+      l.outlineColor = orig.label.outlineColor;
+      l.outlineWidth = orig.label.outlineWidth;
+      l.scale = orig.label.scale;
+    }
+
+    if (entity.billboard && orig.billboard) {
+      const b = entity.billboard;
+      b.scale = orig.billboard.scale;
+      b.color = orig.billboard.color;
+    }
+
+    if (entity.polyline && orig.polyline) {
+      const pl = entity.polyline;
+      pl.width = orig.polyline.width;
+      pl.material = orig.polyline.material;
+    }
+
+    if (entity.polygon && orig.polygon) {
+      const pg = entity.polygon;
+      (pg as any).outline = orig.polygon.outline;
+      pg.outlineColor = orig.polygon.outlineColor;
+      pg.outlineWidth = orig.polygon.outlineWidth;
+      pg.material = orig.polygon.material;
+    }
+
+    if (entity.rectangle && orig.rectangle) {
+      const r = entity.rectangle;
+      (r as any).outline = orig.rectangle.outline;
+      r.outlineColor = orig.rectangle.outlineColor;
+      r.outlineWidth = orig.rectangle.outlineWidth;
+      r.material = orig.rectangle.material;
+    }
+
+    if (entity.ellipse && orig.ellipse) {
+      const el = entity.ellipse;
+      (el as any).outline = orig.ellipse.outline;
+      el.outlineColor = orig.ellipse.outlineColor;
+      el.outlineWidth = orig.ellipse.outlineWidth;
+      el.material = orig.ellipse.material;
+    }
+
+    entity._isHighlighted = false;
   }
 
   /**

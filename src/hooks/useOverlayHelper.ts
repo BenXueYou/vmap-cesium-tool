@@ -135,18 +135,19 @@ export function useOverlayHelper(
   /**
    * 添加图标
    */
-  const addIcon = () => {
+  const addIcon = ({ longitude, latitude }: { longitude: number; latitude: number }) => {
     if (!viewer.value || !overlayService.value) return;
     const center = viewer.value.camera.positionCartographic;
-    const lon = Cesium.Math.toDegrees(center.longitude);
-    const lat = Cesium.Math.toDegrees(center.latitude);
+    const lon = longitude || Cesium.Math.toDegrees(center.longitude);
+    const lat = latitude || Cesium.Math.toDegrees(center.latitude);
     const icon = overlayService.value.addIcon({
-      position: [lon - 0.01, lat + 0.01, 200],
+      position: [lon, lat, 200],
       image:
         'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMTYiIGN5PSIxNiIgcj0iMTQiIGZpbGw9IiNGRjAwMDAiLz4KPHN2ZyB4PSI4IiB5PSI4IiB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSI+CjxwYXRoIGQ9Ik04IDJMMTAuNSA2SDEzLjVMOS41IDEwTDEwLjUgMTRMOCAxMkw1LjUgMTRMNi41IDEwTDMgNkg1LjVMOCAyWiIgZmlsbD0iI0ZGRiIvPgo8L3N2Zz4KPC9zdmc+',
       width: 32,
       height: 32,
       scale: 1.0,
+      disableDepthTestDistance: 100, // 禁用深度测试距离
       onClick: () => {
         console.log('示例图标被点击');
         message.value = '示例图标被点击';
@@ -162,12 +163,11 @@ export function useOverlayHelper(
   /**
    * 添加 SVG 图标
    */
-  const addSvg = () => {
+  const addSvg = ({ longitude, latitude }: { longitude: number; latitude: number }) => {
     if (!viewer.value || !overlayService.value) return;
     const center = viewer.value.camera.positionCartographic;
-    const lon = Cesium.Math.toDegrees(center.longitude);
-    const lat = Cesium.Math.toDegrees(center.latitude);
-
+    const lon = longitude || Cesium.Math.toDegrees(center.longitude);
+    const lat = latitude || Cesium.Math.toDegrees(center.latitude);
     const svg = overlayService.value.addSvg({
       position: [lon, lat + 0.02],
       svg: `
@@ -428,6 +428,7 @@ export function useOverlayHelper(
       outlineColor: Cesium.Color.fromCssColorString('#d32f2f'),              // 边框颜色
       outlineWidth: 20,                               // >1 触发双层椭圆环（米为单位）
       segments: 512,
+      clickHighlight: true,
       // clampToGround 默认 true（这里不传，验证默认行为）
       onClick: () => {
         const circleOverlay = circleA as OverlayEntity;
@@ -443,6 +444,8 @@ export function useOverlayHelper(
       },
     });
 
+    addIcon({ longitude: 120.09747987, latitude: 30.12573937 });
+
     // Test B: 非粗边框默认贴地（outlineWidth=1）
     const circleB = overlayService.value.addCircle({
       position: [lon + 0.02, lat, 800], // 即便传高度，贴地默认会归零
@@ -451,11 +454,14 @@ export function useOverlayHelper(
       outline: true,
       outlineColor: Cesium.Color.YELLOW,
       outlineWidth: 1,
+      clickHighlight: true,
       onClick: () => {
         message.value = '圆形 B(贴地默认) 被点击';
         setTimeout(() => (message.value = ''), 2000);
       },
     });
+
+    addIcon({ longitude: lon + 0.02, latitude: lat });
 
     // Test C: 非粗边框显式悬空（clampToGround=false + position 带高度）
     const circleC = overlayService.value.addCircle({
@@ -466,11 +472,13 @@ export function useOverlayHelper(
       outlineColor: Cesium.Color.LIME,
       outlineWidth: 1,
       clampToGround: false,
+      clickHighlight: true,
       onClick: () => {
         message.value = '圆形 C(悬空) 被点击';
         setTimeout(() => (message.value = ''), 2000);
       },
     });
+    addIcon({ longitude: lon - 0.02, latitude: lat });
 
     markerEntities.push(circleA, circleB, circleC);
     message.value = '已添加圆形：A粗边框贴地(默认) / B普通贴地(默认) / C普通悬空(clampToGround=false,height=1000)';
