@@ -11,6 +11,8 @@
         <button @click="addDrawCircle">绘制圆形</button>
         <button @click="addDrawCircleNoLabel">绘制圆形(无面积)</button>
         <button @click="addDrawPolygon">绘制多边形</button>
+        <button @click="addDrawPolygon_PointIntercept">绘制多边形(点截取)</button>
+        <button @click="addDrawPolygon_FinishFallback">绘制多边形(完成回退)</button>
         <button @click="addDrawPolygonNoLabel">绘制多边形(无面积)</button>
       </div>
       <div>
@@ -20,13 +22,13 @@
         <button @click="addCircle">添加圆形</button>
         <button @click="addPolygon">添加多边形</button>
         <button @click="addPolyline">添加折线</button>
-        <button @click="addIcon">添加图标</button>
-        <button @click="addSvg">添加SVG</button>
+        <button @click="() => addIcon()">添加图标</button>
+        <button @click="() => addSvg()">添加SVG</button>
         <button @click="addMarkerWithLabel">添加点位带标签</button>
         <button @click="addLabel">添加标签</button>
         <button @click="addRectangle">添加矩形</button>
         <button @click="addInfoWindow">添加窗口</button>
-        <button @click="addRing">添加圆环</button>
+        <button @click="() => addRing()">添加圆环</button>
         <button @click="addRingTest">测试添加圆环性能</button>
       </div>
 
@@ -73,6 +75,8 @@ const {
   addDrawCircle,
   addDrawCircleNoLabel,
   addDrawPolygon,
+  addDrawPolygon_PointIntercept,
+  addDrawPolygon_FinishFallback,
   addDrawPolygonNoLabel,
   destroyDrawHelper,
 } = useDrawHelper(viewer, message);

@@ -135,7 +135,8 @@ export function useOverlayHelper(
   /**
    * 添加图标
    */
-  const addIcon = ({ longitude, latitude }: { longitude: number; latitude: number }) => {
+  const addIcon = (coords?: { longitude: number; latitude: number }) => {
+    const { longitude, latitude } = coords || {};
     if (!viewer.value || !overlayService.value) return;
     const center = viewer.value.camera.positionCartographic;
     const lon = longitude || Cesium.Math.toDegrees(center.longitude);
@@ -163,7 +164,8 @@ export function useOverlayHelper(
   /**
    * 添加 SVG 图标
    */
-  const addSvg = ({ longitude, latitude }: { longitude: number; latitude: number }) => {
+  const addSvg = (coords?: { longitude: number; latitude: number }) => {
+    const { longitude, latitude } = coords || {};
     if (!viewer.value || !overlayService.value) return;
     const center = viewer.value.camera.positionCartographic;
     const lon = longitude || Cesium.Math.toDegrees(center.longitude);
@@ -454,7 +456,10 @@ export function useOverlayHelper(
       outline: true,
       outlineColor: Cesium.Color.YELLOW,
       outlineWidth: 1,
-      clickHighlight: true,
+      clickHighlight: {
+        color: Cesium.Color.ORANGE,
+        fillAlpha: 0.5,
+      },
       onClick: () => {
         message.value = '圆形 B(贴地默认) 被点击';
         setTimeout(() => (message.value = ''), 2000);

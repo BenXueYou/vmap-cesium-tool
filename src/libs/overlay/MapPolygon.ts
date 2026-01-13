@@ -42,13 +42,34 @@ export class MapPolygon {
    */
   private convertPosition(position: OverlayPosition): Cartesian3 {
     if (position instanceof Cesium.Cartesian3) {
-      return position;
+      if (
+        Number.isFinite((position as any).x) &&
+        Number.isFinite((position as any).y) &&
+        Number.isFinite((position as any).z)
+      ) {
+        return position;
+      }
+      throw new Error('Invalid position: Cartesian3 has NaN/Infinity components');
     }
     if (Array.isArray(position)) {
-      if (position.length === 2) {
-        return Cesium.Cartesian3.fromDegrees(position[0], position[1]);
-      } else if (position.length === 3) {
-        return Cesium.Cartesian3.fromDegrees(position[0], position[1], position[2]);
+      if (position.length === 2 || position.length === 3) {
+        const lon = Number((position as any)[0]);
+        const lat = Number((position as any)[1]);
+        const height = position.length === 3 ? Number((position as any)[2]) : undefined;
+
+        if (!Number.isFinite(lon) || !Number.isFinite(lat) || (height !== undefined && !Number.isFinite(height))) {
+          throw new Error('Invalid position: lon/lat/height must be finite numbers');
+        }
+
+        const cart = position.length === 3
+          ? Cesium.Cartesian3.fromDegrees(lon, lat, height as number)
+          : Cesium.Cartesian3.fromDegrees(lon, lat);
+
+        if (!Number.isFinite((cart as any).x) || !Number.isFinite((cart as any).y) || !Number.isFinite((cart as any).z)) {
+          throw new Error('Invalid position: converted Cartesian3 has NaN/Infinity components');
+        }
+
+        return cart;
       }
     }
     throw new Error('Invalid position format');

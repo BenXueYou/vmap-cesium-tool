@@ -136,10 +136,33 @@ export class MapInfoWindow {
   }
 
   private convertPosition(position: OverlayPosition): Cartesian3 {
-    if (position instanceof Cesium.Cartesian3) return position;
+    if (position instanceof Cesium.Cartesian3) {
+      if (
+        Number.isFinite((position as any).x) &&
+        Number.isFinite((position as any).y) &&
+        Number.isFinite((position as any).z)
+      ) {
+        return position;
+      }
+      throw new Error('Invalid position: Cartesian3 has NaN/Infinity components');
+    }
     if (Array.isArray(position)) {
-      const [lon, lat, height = 0] = position;
-      return Cesium.Cartesian3.fromDegrees(lon, lat, height);
+      if (position.length !== 2 && position.length !== 3) {
+        throw new Error('Invalid position: expected [lon, lat] or [lon, lat, height]');
+      }
+      const lon = Number((position as any)[0]);
+      const lat = Number((position as any)[1]);
+      const height = position.length === 3 ? Number((position as any)[2]) : 0;
+
+      if (!Number.isFinite(lon) || !Number.isFinite(lat) || !Number.isFinite(height)) {
+        throw new Error('Invalid position: lon/lat/height must be finite numbers');
+      }
+
+      const cart = Cesium.Cartesian3.fromDegrees(lon, lat, height);
+      if (!Number.isFinite((cart as any).x) || !Number.isFinite((cart as any).y) || !Number.isFinite((cart as any).z)) {
+        throw new Error('Invalid position: converted Cartesian3 has NaN/Infinity components');
+      }
+      return cart;
     }
     throw new Error('Invalid position: expected [lon, lat] or [lon, lat, height] or Cartesian3');
   }

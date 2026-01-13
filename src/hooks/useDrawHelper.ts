@@ -231,6 +231,87 @@ export function useDrawHelper(
     });
   };
 
+  /**
+   * 测试 1：落点前拦截
+   * - 期望：当即将新增的边与历史非相邻边相交/擦边（由配置决定）时，本次点击不会落点（不会新增红点）。
+   */
+  const addDrawPolygon_PointIntercept = () => {
+    if (!drawHelper.value) return;
+    endDrawing();
+
+    currentDrawMode.value = "polygon";
+    isDrawing.value = true;
+
+    drawHelper.value.onMeasureComplete((result: {
+      type: "line" | "polygon" | "rectangle" | "circle";
+      positions: Cesium.Cartesian3[];
+      distance?: number;
+      areaKm2?: number;
+    }) => {
+      if (result.type === "polygon") {
+        console.log("[PointIntercept] 多边形绘制完成，点信息:", result.positions);
+      }
+    });
+
+    drawHelper.value.startDrawingPolygon({
+      strokeWidth: 4,
+      strokeColor: Cesium.Color.ORANGE,
+      fillColor: Cesium.Color.ORANGE.withAlpha(0.35),
+      showAreaLabel: true,
+      // 严格：不允许擦边、不允许继续（即：检测到就拒绝落点/拒绝完成）
+      selfIntersectionAllowTouch: false,
+      selfIntersectionAllowContinue: false,
+    });
+
+    message.value =
+      "测试-落点前拦截：尝试让“最新一条边”穿过/擦到第一条边；被拦截时不会新增红点（控制台会有 warn）。";
+
+    drawHelper.value.onDrawEnd((entity: Cesium.Entity | null) => {
+      isDrawing.value = false;
+      currentDrawMode.value = null;
+      message.value = entity ? "[PointIntercept] 多边形绘制完成" : "[PointIntercept] 多边形绘制结束（可能被拦截/点数不足）";
+      setTimeout(() => {
+        message.value = "";
+      }, 2000);
+    });
+  };
+
+  /**
+   * 测试 2：完成前兜底
+   * - 目标：构造一种“落点阶段不相交，但闭合边（最后点->首点）会与中间边相交”的形状。
+   * - 期望：双击完成时被兜底拦截，不会生成最终面（onDrawEnd 会收到 null）。
+   */
+  const addDrawPolygon_FinishFallback = () => {
+    if (!drawHelper.value) return;
+    endDrawing();
+
+    currentDrawMode.value = "polygon";
+    isDrawing.value = true;
+
+    drawHelper.value.startDrawingPolygon({
+      strokeWidth: 4,
+      strokeColor: Cesium.Color.CYAN,
+      fillColor: Cesium.Color.CYAN.withAlpha(0.35),
+      showAreaLabel: true,
+      // 严格：不允许擦边、不允许继续（兜底拦截将阻止完成）
+      selfIntersectionAllowTouch: false,
+      selfIntersectionAllowContinue: false,
+    });
+
+    message.value =
+      "测试-完成前兜底：先依次点 4 个点，保证第4点落下时不相交；但让“最后点->第1点”的闭合边穿过第2-第3条边。然后双击完成。";
+
+    drawHelper.value.onDrawEnd((entity: Cesium.Entity | null) => {
+      console.log("[FinishFallback] onDrawEnd entity:", entity);
+      isDrawing.value = false;
+      currentDrawMode.value = null;
+      message.value = entity ? "[FinishFallback] 多边形绘制完成" : "[FinishFallback] 完成被兜底拦截（自相交）";
+      setTimeout(() => {
+        message.value = "";
+      }, 2500);
+    });
+  };
+
   // 测试：绘制多边形但不显示面积标签
   const addDrawPolygonNoLabel = () => {
     if (!drawHelper.value) return;
@@ -282,6 +363,8 @@ export function useDrawHelper(
     addDrawCircleNoLabel,
     addDrawPolygon,
     addDrawPolygonNoLabel,
+    addDrawPolygon_PointIntercept,
+    addDrawPolygon_FinishFallback,
     destroyDrawHelper,
   };
 }

@@ -64,6 +64,21 @@ export interface DrawOptions {
   };
   /** 是否显示面积标签（多边形/矩形）。默认 true */
   showAreaLabel?: boolean;
+
+  /**
+   * 多边形自相交校验：是否允许“擦边/顶点落在旧边上”等仅接触（touch）情况。
+   * - false/未设置：touch 也视为不合法
+   * - true：允许 touch，但仍不允许重叠（overlap）与真正穿越（cross）
+   */
+  selfIntersectionAllowTouch?: boolean;
+
+  /**
+   * 多边形自相交校验：当即将产生自相交时，是否仍允许继续绘制/完成绘制。
+   * - false/未设置：检测到自相交则阻止落点/阻止完成
+   * - true：检测到自相交不拦截（由业务自行承担后续面积/中心等偏差风险）
+   */
+  selfIntersectionAllowContinue?: boolean;
+
   onClick?: (entity: Entity, type?: "line" | "polygon" | "rectangle" | "circle", positions?: Cartesian3[]) => void;
 }
 

@@ -2,6 +2,7 @@ import * as Cesium from "cesium";
 import type { Entity, Cartesian3 } from "cesium";
 import { BaseDraw, type DrawResult, type DrawOptions, type DrawEntity } from './BaseDraw';
 import { isValidCartesian3, calculatePolygonArea, calculatePolygonCenter, formatArea } from '../../utils/calc';
+import { isClosedPolygonSelfIntersecting } from '../../utils/selfIntersection';
 
 /**
  * 画多边形绘制类
@@ -216,6 +217,15 @@ export class DrawPolygon extends BaseDraw {
     const groundPositions = groundCartos.map((carto) =>
       Cesium.Cartesian3.fromRadians(carto.longitude, carto.latitude, carto.height || 0)
     );
+
+    // 自相交校验（闭合边也纳入检测）：不允许则阻止完成
+    const allowTouch = !!this.drawOptions?.selfIntersectionAllowTouch;
+    const allowContinue = !!this.drawOptions?.selfIntersectionAllowContinue;
+    const selfIntersecting = isClosedPolygonSelfIntersecting(groundPositions, { allowTouch });
+    if (selfIntersecting && !allowContinue) {
+      this.restoreRequestRenderModeIfNeeded();
+      return null;
+    }
 
     let finalEntity: Entity | null = null;
     let finalBorder: Entity | null = null;

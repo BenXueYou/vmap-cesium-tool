@@ -1,6 +1,7 @@
 import * as Cesium from "cesium";
 import type { Primitive } from "cesium";
 import { BaseDraw, DrawLine, DrawPolygon, DrawRectangle, DrawCircle, type DrawCallbacks, type DrawOptions, type DrawEntity, toggleSelectedStyle } from './drawHelper';
+import { wouldCreatePolygonSelfIntersection } from '../utils/selfIntersection';
 /**
  * Cesium 绘图辅助工具类
  * 支持绘制点、线、多边形、矩形，并提供编辑和删除功能
@@ -10,7 +11,7 @@ class DrawHelper {
   private viewer: Cesium.Viewer;
   private scene: Cesium.Scene;
   private entities: Cesium.EntityCollection;
-  
+
   // 绘图状态和数据
   private drawMode: "line" | "polygon" | "rectangle" | "circle" | null = null;
   private isDrawing: boolean = false;
@@ -32,7 +33,7 @@ class DrawHelper {
 
   // 静态：当前处于绘制状态的 DrawHelper，用于跨实例互斥
   private static activeDrawingHelper: DrawHelper | null = null;
-  
+
   // 绘制类实例
   private drawLine: DrawLine;
   private drawPolygon: DrawPolygon;
@@ -56,6 +57,8 @@ class DrawHelper {
     areaKm2?: number;
   }) => void) | null = null;
   private offsetHeight: number = 2;
+  /** 当前绘制配置（用于调度器侧做快速校验/提示） */
+  private currentDrawOptions?: DrawOptions;
   // 记录绘制前地形深度测试开关，用于绘制结束或取消时恢复
   private originalDepthTestAgainstTerrain: boolean | null = null;
 
@@ -74,7 +77,7 @@ class DrawHelper {
 
     // 根据地图模式设置偏移高度
     this.updateOffsetHeight();
-    
+
     // 确保启用地形深度测试以获得正确的高度
     // this.scene.globe.depthTestAgainstTerrain = true;
 
@@ -355,6 +358,7 @@ class DrawHelper {
     this.tempPositions = [];
     this.tempEntities = [];
     this._doubleClickPending = false;
+    this.currentDrawOptions = options;
 
     // 选择对应的绘制类
     switch (mode) {
@@ -484,37 +488,37 @@ class DrawHelper {
     }
 
     try {
-    // 首先尝试从地形拾取
-    const ray = this.viewer.camera.getPickRay(windowPosition);
-    // 仅在地形瓦片已加载完成时才尝试 globe.pick，避免早期不稳定状态
-    if (ray && this.scene.mode === Cesium.SceneMode.SCENE3D && this.scene.globe.tilesLoaded) {
-      const position = this.scene.globe.pick(ray, this.scene) as Cesium.Cartesian3 | undefined;
-      if (Cesium.defined(position)) {
-        // 防御性检查：确保拾取到的位置不包含 NaN/Infinity
-        if (
-          Number.isFinite(position.x) &&
-          Number.isFinite(position.y) &&
-          Number.isFinite(position.z)
-        ) {
-          return position.clone();
+      // 首先尝试从地形拾取
+      const ray = this.viewer.camera.getPickRay(windowPosition);
+      // 仅在地形瓦片已加载完成时才尝试 globe.pick，避免早期不稳定状态
+      if (ray && this.scene.mode === Cesium.SceneMode.SCENE3D && this.scene.globe.tilesLoaded) {
+        const position = this.scene.globe.pick(ray, this.scene) as Cesium.Cartesian3 | undefined;
+        if (Cesium.defined(position)) {
+          // 防御性检查：确保拾取到的位置不包含 NaN/Infinity
+          if (
+            Number.isFinite(position.x) &&
+            Number.isFinite(position.y) &&
+            Number.isFinite(position.z)
+          ) {
+            return position.clone();
+          }
         }
       }
-    }
-    // 如果地形拾取失败，回退到椭球体拾取
-    const ellipsoidPosition = this.viewer.camera.pickEllipsoid(
-      windowPosition,
-      this.scene.globe.ellipsoid
-    ) as Cesium.Cartesian3 | undefined;
-    if (ellipsoidPosition) {
-      if (
-        Number.isFinite(ellipsoidPosition.x) &&
-        Number.isFinite(ellipsoidPosition.y) &&
-        Number.isFinite(ellipsoidPosition.z)
-      ) {
-        return ellipsoidPosition.clone();
+      // 如果地形拾取失败，回退到椭球体拾取
+      const ellipsoidPosition = this.viewer.camera.pickEllipsoid(
+        windowPosition,
+        this.scene.globe.ellipsoid
+      ) as Cesium.Cartesian3 | undefined;
+      if (ellipsoidPosition) {
+        if (
+          Number.isFinite(ellipsoidPosition.x) &&
+          Number.isFinite(ellipsoidPosition.y) &&
+          Number.isFinite(ellipsoidPosition.z)
+        ) {
+          return ellipsoidPosition.clone();
+        }
       }
-    }
-    return null;
+      return null;
     } catch (e) {
       // Cesium 内部有时会抛出 "cartesian has a NaN component"（多发生在相机拖动过程中），这里吞掉以避免弹窗
       return null;
@@ -526,6 +530,15 @@ class DrawHelper {
    * @param position 世界坐标
    */
   private addPoint(position: Cesium.Cartesian3): void {
+    if (
+      !position ||
+      !Number.isFinite(position.x) ||
+      !Number.isFinite(position.y) ||
+      !Number.isFinite(position.z)
+    ) {
+      console.warn("Invalid Cartesian3 detected in addPoint. Point ignored.", position);
+      return;
+    }
     // 在 3D 模式下，若地形尚未加载完成且当前为测面模式，则忽略点击，避免早期不稳定坐标
     if (
       this.drawMode === "polygon" &&
@@ -534,8 +547,24 @@ class DrawHelper {
     ) {
       return;
     }
-    
+
     if (this.currentDrawer) {
+      // 多边形：在落点前进行自相交校验（可通过 DrawOptions 控制行为）
+      if (this.drawMode === "polygon") {
+        const allowTouch = !!this.currentDrawOptions?.selfIntersectionAllowTouch;
+        const allowContinue = !!this.currentDrawOptions?.selfIntersectionAllowContinue;
+
+        const existing = this.currentDrawer.getTempPositions();
+        if (existing && existing.length >= 2) {
+          const willSelfIntersect = wouldCreatePolygonSelfIntersection(existing, position, { allowTouch });
+          if (willSelfIntersect && !allowContinue) {
+            // 阻止落点，但保持绘制状态，用户可继续选择其他点
+            console.warn('Polygon self-intersection detected; point rejected.');
+            return;
+          }
+        }
+      }
+
       this.currentDrawer.addPointForHelper(position);
       this.tempPositions = this.currentDrawer.getTempPositions();
       this.tempEntities = this.currentDrawer.getTempEntities();
@@ -615,6 +644,18 @@ class DrawHelper {
 
     const result = this.currentDrawer.finishDrawing();
 
+    // 若绘制类返回 null（例如点数不足/自相交被拦截），它通常不会触发 onDrawEnd 回调。
+    // 这里补触发一次，便于外部 UI 能正确收尾。
+    if (!result) {
+      try {
+        if (this.onDrawEndCallback) {
+          this.onDrawEndCallback(null);
+        }
+      } catch {
+        // ignore
+      }
+    }
+
     // 确保绘制类在 finish 后恢复 requestRenderMode（如果它自己未恢复）
     try {
       if ((this.currentDrawer as any).restoreRequestRenderModeIfNeeded) {
@@ -623,7 +664,7 @@ class DrawHelper {
     } catch (e) {
       // 安全忽略
     }
-    
+
     if (result && result.entity) {
       this.finishedEntities.push(result.entity);
     }
@@ -645,6 +686,7 @@ class DrawHelper {
     this.isDrawing = false;
     this.lastPreviewPosition = null;
     this.currentDrawer = null;
+    this.currentDrawOptions = undefined;
     this.deactivateDrawingHandlers();
 
     // 清理提示
@@ -821,7 +863,7 @@ class DrawHelper {
       this.currentDrawer.clearTempPointEntitiesForHelper();
       this.tempEntities = this.currentDrawer.getTempEntities();
     }
-    
+
     // 清除所有可能的点实体（通过实体名称查找）
     const allEntities = this.entities.values;
     for (let i = allEntities.length - 1; i >= 0; i--) {
@@ -942,11 +984,11 @@ class DrawHelper {
    */
   private updateFinishedEntitiesForModeChange(): void {
     const is3DMode = this.offsetHeight > 0;
-    
+
     // 更新已完成的主要实体（线、多边形、矩形）
     this.finishedEntities.forEach((entity) => {
       if (!entity) return;
-      
+
       if (entity.polyline) {
         // 更新线条：使用保存的原始地面位置
         const rawGroundPositions = (entity as any)._groundPositions as Cesium.Cartesian3[] | undefined;
@@ -1024,7 +1066,7 @@ class DrawHelper {
         }
       }
     });
-    
+
     // 更新标签实体（面积 label + 距离 billboard）
     this.finishedLabelEntities.forEach((entity) => {
       if (!entity) return;
@@ -1068,11 +1110,11 @@ class DrawHelper {
         }
       }
     });
-    
+
     // 更新点实体（点实体在绘制过程中创建，需要从当前位置推断原始位置）
     this.finishedPointEntities.forEach((entity) => {
       if (!entity || !entity.point) return;
-      
+
       const position = entity.position?.getValue(Cesium.JulianDate.now()) as Cesium.Cartesian3;
       if (position) {
         const carto = Cesium.Cartographic.fromCartesian(position);
