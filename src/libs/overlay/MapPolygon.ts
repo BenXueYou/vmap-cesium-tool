@@ -21,6 +21,8 @@ export interface PolygonOptions {
   extrudedHeight?: number;
   /** 点击该覆盖物时是否高亮显示（默认 false）。支持传入自定义颜色等参数 */
   clickHighlight?: boolean | { color?: Color | string; fillAlpha?: number };
+  /** 鼠标移入该覆盖物时是否高亮显示（默认 false）。支持传入自定义颜色等参数 */
+  hoverHighlight?: boolean | { color?: Color | string; fillAlpha?: number };
   onClick?: (entity: Entity) => void;
   id?: string;
 }
@@ -255,8 +257,11 @@ export class MapPolygon {
       const borderEntity = border as OverlayEntity;
       const group = [fill, border];
       const clickHighlight = options.clickHighlight ?? false;
+      const hoverHighlight = options.hoverHighlight ?? false;
       fillEntity._clickHighlight = clickHighlight;
       borderEntity._clickHighlight = clickHighlight;
+      fillEntity._hoverHighlight = hoverHighlight;
+      borderEntity._hoverHighlight = hoverHighlight;
       fillEntity._highlightEntities = group;
       borderEntity._highlightEntities = group;
 
@@ -295,6 +300,7 @@ export class MapPolygon {
 
     const overlayEntity = entity as OverlayEntity;
     overlayEntity._clickHighlight = options.clickHighlight ?? false;
+    overlayEntity._hoverHighlight = options.hoverHighlight ?? false;
     overlayEntity._highlightEntities = [entity];
 
     (entity as OverlayEntity)._clampToGround = clampToGround;

@@ -73,6 +73,7 @@ export function useOverlayHelper(
           color: Cesium.Color.RED,
           outlineColor: Cesium.Color.WHITE,
           outlineWidth: 2,
+          hoverHighlight: true,
           onClick: (entity) => {
             console.log("标记点被点击:", entity);
             message.value = `标记点位置: ${longitude.toFixed(6)}, ${latitude.toFixed(6)}`;
@@ -111,6 +112,7 @@ export function useOverlayHelper(
       color: Cesium.Color.BLUE,
       outlineColor: Cesium.Color.WHITE,
       outlineWidth: 2,
+      hoverHighlight: true,
       onClick: () => console.log('示例标记点被点击'),
     });
 
@@ -123,6 +125,7 @@ export function useOverlayHelper(
       outlineWidth: 2,
       pixelOffset: new Cesium.Cartesian2(0, -30),
       showBackground: true,
+      hoverHighlight: true,
       backgroundColor: Cesium.Color.BLUE.withAlpha(0.7),
       backgroundPadding: new Cesium.Cartesian2(8, 4),
     });
@@ -148,6 +151,7 @@ export function useOverlayHelper(
       width: 32,
       height: 32,
       scale: 1.0,
+      hoverHighlight: true,
       disableDepthTestDistance: 100, // 禁用深度测试距离
       onClick: () => {
         console.log('示例图标被点击');
@@ -180,6 +184,7 @@ export function useOverlayHelper(
       `,
       width: 40,
       height: 40,
+      hoverHighlight: true,
       onClick: () => {
         console.log('示例SVG被点击');
         message.value = '示例SVG被点击';
@@ -240,6 +245,7 @@ export function useOverlayHelper(
       outline: true,
       outlineColor: Cesium.Color.RED,
       outlineWidth: 2,
+      hoverHighlight: true,
       // clampToGround 默认 true（这里不传，验证默认行为）
       onClick: () => {
         console.log('矩形 A(贴地) 被点击');
@@ -377,6 +383,7 @@ export function useOverlayHelper(
       ],
       material: Cesium.Color.BLUE.withAlpha(0.4),
       outline: true,
+      hoverHighlight: true,
       outlineColor: Cesium.Color.BLUE,
       outlineWidth: 2,
       onClick: () => {
@@ -398,6 +405,7 @@ export function useOverlayHelper(
       outline: true,
       outlineColor: Cesium.Color.CYAN,
       outlineWidth: 2,
+      hoverHighlight: true,
       clampToGround: false,
       onClick: () => {
         console.log('区域 B(悬空) 被点击');
@@ -431,6 +439,7 @@ export function useOverlayHelper(
       outlineWidth: 20,                               // >1 触发双层椭圆环（米为单位）
       segments: 512,
       clickHighlight: true,
+      hoverHighlight: true,
       // clampToGround 默认 true（这里不传，验证默认行为）
       onClick: () => {
         const circleOverlay = circleA as OverlayEntity;
@@ -456,6 +465,7 @@ export function useOverlayHelper(
       outline: true,
       outlineColor: Cesium.Color.YELLOW,
       outlineWidth: 1,
+      hoverHighlight: true,
       clickHighlight: {
         color: Cesium.Color.ORANGE,
         fillAlpha: 0.5,
@@ -559,6 +569,7 @@ export function useOverlayHelper(
       // 预期：填充为半透明橙色，边框为不透明橙色
       material: Cesium.Color.ORANGE.withAlpha(0.5),
       outline: true,
+      hoverHighlight: true,
       outlineColor: Cesium.Color.ORANGE,
       outlineWidth: 10,
       onClick: () => {
@@ -581,6 +592,7 @@ export function useOverlayHelper(
       outlineColor: Cesium.Color.PURPLE,
       outlineWidth: 10,
       clampToGround: false,
+      hoverHighlight: true,
       onClick: () => {
         console.log('多边形 B(粗边框悬空) 被点击');
         message.value = '多边形 B(粗边框悬空) 被点击';

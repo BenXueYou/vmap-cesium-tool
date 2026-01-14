@@ -24,6 +24,10 @@ export class CesiumOverlayService {
   private overlayMap: Map<string, Entity> = new Map(); // 通过ID管理覆盖物
   private infoWindowContainer: HTMLElement | null = null;
 
+  private lastHoverTargets: Entity[] | null = null;
+  private hoverPickRAF: number | null = null;
+  private hoverPickPos: Cesium.Cartesian2 | null = null;
+
   private static readonly DEFAULT_HIGHLIGHT_COLOR = Cesium.Color.YELLOW;
   private static readonly DEFAULT_HIGHLIGHT_FILL_ALPHA = 0.35;
 
@@ -44,6 +48,7 @@ export class CesiumOverlayService {
     this.entities = viewer.entities;
     this.initInfoWindowContainer();
     this.setupEntityClickHandler();
+    this.setupEntityHoverHandler();
 
     // 初始化各种覆盖物工具类
     this.marker = new MapMarker(viewer);
@@ -119,6 +124,96 @@ export class CesiumOverlayService {
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
   }
 
+  /**
+   * 设置实体 hover 高亮处理器（鼠标移入高亮，移出取消）
+   */
+  private setupEntityHoverHandler(): void {
+    const canvas = this.viewer.scene?.canvas;
+
+    const clearHover = (): void => {
+      if (this.lastHoverTargets && this.lastHoverTargets.length > 0) {
+        this.setOverlayHighlightReason(this.lastHoverTargets, 'hover', false);
+      }
+      this.lastHoverTargets = null;
+    };
+
+    // 鼠标移出画布时，清除 hover 高亮
+    if (canvas) {
+      canvas.addEventListener('mouseleave', () => {
+        clearHover();
+      });
+    }
+
+    // 鼠标移动时 pick 覆盖物（用 RAF 合并高频事件）
+    this.viewer.cesiumWidget.screenSpaceEventHandler.setInputAction(
+      (movement: Cesium.ScreenSpaceEventHandler.MotionEvent) => {
+        const anyViewer: any = this.viewer as any;
+        if (anyViewer.__vmapDrawHelperIsDrawing) {
+          clearHover();
+          return;
+        }
+
+        const blockUntil = Number(anyViewer.__vmapDrawHelperBlockPickUntil) || 0;
+        if (Date.now() < blockUntil) {
+          clearHover();
+          return;
+        }
+
+        const pos: any = (movement as any).endPosition;
+        if (!pos || !Number.isFinite(pos.x) || !Number.isFinite(pos.y)) {
+          clearHover();
+          return;
+        }
+
+        this.hoverPickPos = movement.endPosition;
+        if (this.hoverPickRAF !== null) return;
+
+        this.hoverPickRAF = window.requestAnimationFrame(() => {
+          this.hoverPickRAF = null;
+          const pickPos = this.hoverPickPos;
+          if (!pickPos) {
+            clearHover();
+            return;
+          }
+
+          const pickedObject = this.viewer.scene.pick(pickPos);
+          let pickedEntity: (DrawEntity & OverlayEntity) | null = null;
+          if (pickedObject && Cesium.defined((pickedObject as any).id) && (pickedObject as any).id instanceof Cesium.Entity) {
+            pickedEntity = (pickedObject as any).id as DrawEntity & OverlayEntity;
+          }
+
+          // 不是覆盖物 / 或来自绘制模块：取消 hover
+          if (!pickedEntity || pickedEntity._drawType !== undefined) {
+            clearHover();
+            return;
+          }
+
+          // 没开 hoverHighlight：也要清除旧的 hover
+          if (!pickedEntity._hoverHighlight) {
+            clearHover();
+            return;
+          }
+
+          const targets = (pickedEntity._highlightEntities && pickedEntity._highlightEntities.length > 0)
+            ? pickedEntity._highlightEntities
+            : [pickedEntity];
+
+          const sameTargets =
+            this.lastHoverTargets &&
+            this.lastHoverTargets.length === targets.length &&
+            this.lastHoverTargets.every((e, idx) => e === targets[idx]);
+
+          if (!sameTargets) {
+            clearHover();
+            this.lastHoverTargets = targets;
+            this.setOverlayHighlightReason(targets, 'hover', true);
+          }
+        });
+      },
+      Cesium.ScreenSpaceEventType.MOUSE_MOVE
+    );
+  }
+
   private getPropertyValue<T>(prop: any, fallback: T): T {
     try {
       if (prop && typeof prop.getValue === 'function') {
@@ -139,8 +234,7 @@ export class CesiumOverlayService {
     return Number.isFinite(n) ? n : fallback;
   }
 
-  private resolveHighlightOptions(entity: OverlayEntity): { color: Cesium.Color; fillAlpha: number } {
-    const raw = entity._clickHighlight;
+  private resolveHighlightOptions(raw: any): { color: Cesium.Color; fillAlpha: number } {
     const fillAlphaRaw = (typeof raw === 'object' && raw) ? (raw as any).fillAlpha : undefined;
     const fillAlpha =
       typeof fillAlphaRaw === 'number'
@@ -161,11 +255,33 @@ export class CesiumOverlayService {
     return { color, fillAlpha };
   }
 
+  private getActiveHighlightOptions(entity: OverlayEntity): { color: Cesium.Color; fillAlpha: number } {
+    const state = entity._highlightState;
+    // click 优先显示，其次 hover
+    const raw = state?.click ? entity._clickHighlight : (state?.hover ? entity._hoverHighlight : undefined);
+    return this.resolveHighlightOptions(raw);
+  }
+
+  private setOverlayHighlightReason(targets: Entity[], reason: 'click' | 'hover', enabled: boolean): void {
+    for (const e of targets) {
+      const oe = e as OverlayEntity;
+      if (!oe._highlightState) oe._highlightState = {};
+      (oe._highlightState as any)[reason] = enabled;
+
+      const hasAny = !!(oe._highlightState.click || oe._highlightState.hover);
+      if (!hasAny) {
+        this.restoreOverlayHighlightStyle(oe);
+      } else {
+        // 若已高亮但原因发生变化（例如 hover -> click），重新按优先级应用一次样式
+        this.applyOverlayHighlightStyle(oe);
+      }
+    }
+  }
+
   private applyOverlayHighlightStyle(entity: OverlayEntity): void {
-    if (entity._isHighlighted) return;
     if (!entity._highlightOriginalStyle) entity._highlightOriginalStyle = {};
 
-    const { color: hl, fillAlpha } = this.resolveHighlightOptions(entity);
+    const { color: hl, fillAlpha } = this.getActiveHighlightOptions(entity);
 
     // 点
     if (entity.point) {
@@ -384,16 +500,9 @@ export class CesiumOverlayService {
     const targets = (entity._highlightEntities && entity._highlightEntities.length > 0)
       ? entity._highlightEntities
       : [entity];
-    const shouldHighlight = !targets.some((e) => (e as OverlayEntity)._isHighlighted);
 
-    for (const e of targets) {
-      const oe = e as OverlayEntity;
-      if (shouldHighlight) {
-        this.applyOverlayHighlightStyle(oe);
-      } else {
-        this.restoreOverlayHighlightStyle(oe);
-      }
-    }
+    const shouldEnable = !targets.some((e) => !!(e as OverlayEntity)._highlightState?.click);
+    this.setOverlayHighlightReason(targets, 'click', shouldEnable);
   }
 
   /**

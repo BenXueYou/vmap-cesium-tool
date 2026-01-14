@@ -53,6 +53,9 @@ export interface OverlayClickHighlightOptions {
 	fillAlpha?: number;
 }
 
+/** 与 clickHighlight 使用同样的参数结构（颜色 + 面填充透明度） */
+export type OverlayHoverHighlightOptions = OverlayClickHighlightOptions;
+
 /**
  * 覆盖物扩展实体类型
  * 用于在 Cesium.Entity 上挂载覆盖物相关的元数据
@@ -63,10 +66,14 @@ export interface OverlayEntity extends Entity {
 
 	/** 点击覆盖物时是否启用高亮（由各 Map* 工具类设置） */
 	_clickHighlight?: boolean | OverlayClickHighlightOptions;
+	/** 鼠标移入覆盖物时是否启用高亮（由各 Map* 工具类设置） */
+	_hoverHighlight?: boolean | OverlayHoverHighlightOptions;
 	/** 高亮联动的实体集合（复合覆盖物：边框/填充等一起切换） */
 	_highlightEntities?: Entity[];
 	/** 当前是否处于高亮状态 */
 	_isHighlighted?: boolean;
+	/** 当前高亮原因（click/hover 可叠加；click 优先显示） */
+	_highlightState?: { click?: boolean; hover?: boolean };
 	/** 用于还原高亮前的原始样式 */
 	_highlightOriginalStyle?: OverlayHighlightOriginalStyle;
 

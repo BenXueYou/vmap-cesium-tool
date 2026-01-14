@@ -21,6 +21,8 @@ export interface SvgOptions {
   color?: Color | string;
   /** 点击该覆盖物时是否高亮显示（默认 false）。支持传入自定义颜色等参数 */
   clickHighlight?: boolean | { color?: Color | string; fillAlpha?: number };
+  /** 鼠标移入该覆盖物时是否高亮显示（默认 false）。支持传入自定义颜色等参数 */
+  hoverHighlight?: boolean | { color?: Color | string; fillAlpha?: number };
   onClick?: (entity: Entity) => void;
   id?: string;
 }
@@ -132,6 +134,7 @@ export class MapSVG {
 
     const overlayEntity = entity as OverlayEntity;
     overlayEntity._clickHighlight = options.clickHighlight ?? false;
+    overlayEntity._hoverHighlight = options.hoverHighlight ?? false;
     overlayEntity._highlightEntities = [entity];
 
     return entity;
