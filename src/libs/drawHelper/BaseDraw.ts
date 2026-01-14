@@ -369,11 +369,17 @@ export abstract class BaseDraw {
 
     this.tempPositions.push(safePosition);
 
-    const elevatedPosition = Cesium.Cartesian3.fromRadians(
+    // 注意：fromRadians 传入 NaN/Infinity 不会 throw，但会返回 NaN Cartesian3
+    const baseHeight = Number.isFinite(carto.height) ? (carto.height as number) : 0;
+    let elevatedPosition = Cesium.Cartesian3.fromRadians(
       carto.longitude,
       carto.latitude,
-      (carto.height || 0) + this.offsetHeight
+      baseHeight + this.offsetHeight
     );
+    if (!isValidCartesian3(elevatedPosition)) {
+      // 兜底：使用原始拾取点，避免创建 NaN 实体导致 Cesium 渲染停止
+      elevatedPosition = safePosition;
+    }
 
     const pointEntity = this.entities.add({
       position: elevatedPosition,

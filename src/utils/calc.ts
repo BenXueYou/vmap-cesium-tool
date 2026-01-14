@@ -156,3 +156,23 @@ export function calculatePolygonCenter(
   );
 }
 
+/**
+ * 计算折线总长度
+ * @param positions 折线顶点坐标数组
+ * @returns 总长度（米）
+ */
+export function calculatePolylineDistance(positions: Cartesian3[]): number {
+  if (!positions || positions.length < 2) return 0;
+
+  let totalDistance = 0;
+  for (let i = 1; i < positions.length; i++) {
+    const prev = positions[i - 1];
+    const curr = positions[i];
+    if (isValidCartesian3(prev) && isValidCartesian3(curr)) {
+      totalDistance += Cesium.Cartesian3.distance(prev, curr);
+    }
+  }
+
+  return totalDistance;
+}
+

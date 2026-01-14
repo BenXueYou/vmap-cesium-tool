@@ -38,10 +38,12 @@ export class DrawPolygon extends BaseDraw {
    * 更新绘制实体（预览）
    */
   public updateDrawingEntity(previewPoint?: Cartesian3): void {
-    // 在 3D 模式下如果地形尚未加载完成，不创建多边形预览
-    if (this.scene.mode === Cesium.SceneMode.SCENE3D && !this.scene.globe.tilesLoaded) {
-      return;
+    if (previewPoint && !isValidCartesian3(previewPoint)) {
+      console.error("[DrawPolygon] Invalid preview point detected:", previewPoint);
+      return; // 中断流程，避免无效点导致后续错误
     }
+
+    // 不因 tilesLoaded 停止预览：地形未就绪时用椭球拾取点预览，后续再做采样修正
 
     const committedPositions = this.tempPositions.filter((p) => isValidCartesian3(p));
     const sourceBase = committedPositions;
@@ -80,14 +82,20 @@ export class DrawPolygon extends BaseDraw {
       }
 
       const polygonPositions = cartos.map((carto) => {
-        const baseHeight = carto.height || 0;
+        const baseHeight = Number.isFinite(carto.height) ? (carto.height as number) : 0;
         const extraHeight = this.offsetHeight > 0 ? this.offsetHeight : 0.1;
-        return Cesium.Cartesian3.fromRadians(
+        const p = Cesium.Cartesian3.fromRadians(
           carto.longitude,
           carto.latitude,
           baseHeight + extraHeight
         );
+        return p;
       });
+      // 过滤掉 fromRadians 产生的非有限坐标（fromRadians 不会抛异常，但可能返回 NaN）
+      const safePolygonPositions = polygonPositions.filter((p) => isValidCartesian3(p));
+      if (safePolygonPositions.length < 3) {
+        return;
+      }
       const heightReference = Cesium.HeightReference.NONE;
 
       // 使用输入参数：填充色、描边颜色与宽度
@@ -131,26 +139,28 @@ export class DrawPolygon extends BaseDraw {
       // 先更新/创建填充面
       if (this.currentPolygonEntity) {
         this.currentPolygonEntity.polygon!.hierarchy = new Cesium.ConstantProperty(
-          new Cesium.PolygonHierarchy(polygonPositions)
+          new Cesium.PolygonHierarchy(safePolygonPositions)
         );
         this.currentPolygonEntity.polygon!.heightReference = new Cesium.ConstantProperty(heightReference);
+        (this.currentPolygonEntity.polygon as any).perPositionHeight = new Cesium.ConstantProperty(true);
         this.currentPolygonEntity.polygon!.material = new Cesium.ColorMaterialProperty(fillColor);
         this.currentPolygonEntity.polygon!.outline = new Cesium.ConstantProperty(false);
       } else {
         this.currentPolygonEntity = this.entities.add({
           polygon: {
-            hierarchy: new Cesium.ConstantProperty(new Cesium.PolygonHierarchy(polygonPositions)),
+            hierarchy: new Cesium.ConstantProperty(new Cesium.PolygonHierarchy(safePolygonPositions)),
             material: new Cesium.ColorMaterialProperty(fillColor),
             outline: false,
             heightReference,
+            perPositionHeight: true,
           },
         });
         this.tempEntities.push(this.currentPolygonEntity);
       }
 
       // 再更新/创建边框折线（闭合）
-      const closedPositions = polygonPositions.slice();
-      if (closedPositions.length >= 2) closedPositions.push(polygonPositions[0]);
+      const closedPositions = safePolygonPositions.slice();
+      if (closedPositions.length >= 2) closedPositions.push(safePolygonPositions[0]);
 
       if (this.currentBorderEntity && this.currentBorderEntity.polyline) {
         this.currentBorderEntity.polyline.positions = new Cesium.ConstantProperty(closedPositions);
@@ -194,7 +204,18 @@ export class DrawPolygon extends BaseDraw {
   public finishDrawing(): DrawResult | null {
     const validPositions = this.tempPositions.filter((p) => isValidCartesian3(p));
     if (validPositions.length < 3) {
+      console.warn("[DrawPolygon] Not enough valid positions to finish drawing:", validPositions);
       this.restoreRequestRenderModeIfNeeded();
+      // 清除掉红色的球体实体
+      this.tempEntities.forEach((entity) => {
+        if (entity) {
+          this.entities.remove(entity);
+        }
+      });
+      this.tempEntities.length = 0;
+      this.tempPositions = [];
+      this.currentPolygonEntity = null;
+      this.currentBorderEntity = null;
       return null;
     }
 
@@ -215,13 +236,24 @@ export class DrawPolygon extends BaseDraw {
     }
 
     const groundPositions = groundCartos.map((carto) =>
-      Cesium.Cartesian3.fromRadians(carto.longitude, carto.latitude, carto.height || 0)
+      Cesium.Cartesian3.fromRadians(
+        carto.longitude,
+        carto.latitude,
+        Number.isFinite(carto.height) ? (carto.height as number) : 0
+      )
     );
+
+    const safeGroundPositions = groundPositions.filter((p) => isValidCartesian3(p));
+    if (safeGroundPositions.length < 3) {
+      console.warn("[DrawPolygon] Not enough valid ground positions to finish drawing:", safeGroundPositions);
+      this.restoreRequestRenderModeIfNeeded();
+      return null;
+    }
 
     // 自相交校验（闭合边也纳入检测）：不允许则阻止完成
     const allowTouch = !!this.drawOptions?.selfIntersectionAllowTouch;
     const allowContinue = !!this.drawOptions?.selfIntersectionAllowContinue;
-    const selfIntersecting = isClosedPolygonSelfIntersecting(groundPositions, { allowTouch });
+    const selfIntersecting = isClosedPolygonSelfIntersecting(safeGroundPositions, { allowTouch });
     if (selfIntersecting && !allowContinue) {
       this.restoreRequestRenderModeIfNeeded();
       return null;
@@ -239,14 +271,28 @@ export class DrawPolygon extends BaseDraw {
       : (this.drawOptions?.outlineColor ? this.resolveColor(this.drawOptions.outlineColor) : Cesium.Color.LIGHTGREEN);
     const strokeWidth = this.drawOptions?.strokeWidth ?? (this.drawOptions?.outlineWidth ?? 2);
     if (this.offsetHeight > 0) {
-      const elevatedPositions = groundPositions.map(pos => {
-        const carto = Cesium.Cartographic.fromCartesian(pos);
-        return Cesium.Cartesian3.fromRadians(
-          carto.longitude,
-          carto.latitude,
-          (carto.height || 0) + this.offsetHeight
-        );
-      });
+      const elevatedPositions = safeGroundPositions
+        .map((pos) => {
+          try {
+            const carto = Cesium.Cartographic.fromCartesian(pos);
+            if (!Number.isFinite(carto.longitude) || !Number.isFinite(carto.latitude)) return null;
+            const baseHeight = Number.isFinite(carto.height) ? (carto.height as number) : 0;
+            const p = Cesium.Cartesian3.fromRadians(
+              carto.longitude,
+              carto.latitude,
+              baseHeight + this.offsetHeight
+            );
+            return isValidCartesian3(p) ? p : null;
+          } catch {
+            return null;
+          }
+        })
+        .filter((p): p is Cesium.Cartesian3 => !!p);
+
+      if (elevatedPositions.length < 3) {
+        // 兜底：若抬高转换失败，直接使用地面点（仍可完成绘制）
+        elevatedPositions.splice(0, elevatedPositions.length, ...safeGroundPositions);
+      }
 
       finalEntity = this.entities.add({
         name: "绘制的多边形区域",
@@ -255,6 +301,7 @@ export class DrawPolygon extends BaseDraw {
           material: new Cesium.ColorMaterialProperty(fillColor),
           outline: false,
           heightReference: Cesium.HeightReference.NONE,
+          perPositionHeight: true,
         },
       });
       // 边框（不贴地，随高度提升）
@@ -268,11 +315,13 @@ export class DrawPolygon extends BaseDraw {
           clampToGround: false,
         },
       });
-      (finalEntity as any)._groundPositions = groundPositions;
+      (finalEntity as any)._groundPositions = safeGroundPositions;
 
       if (finalEntity) {
         (finalEntity as any)._drawOptions = this.drawOptions;
         (finalEntity as any)._drawType = this.getDrawType();
+        // 两阶段策略：先以 NONE 方式落地，待地形稳定后再由调度器进行采样/切换
+        (finalEntity as any)._pendingTerrainRefine = true;
         if (this.drawOptions?.onClick) {
           (finalEntity as any)._onClick = this.drawOptions.onClick;
         }
@@ -284,28 +333,31 @@ export class DrawPolygon extends BaseDraw {
       finalEntity = this.entities.add({
         name: "绘制的多边形区域",
         polygon: {
-          hierarchy: new Cesium.PolygonHierarchy(groundPositions),
+          hierarchy: new Cesium.PolygonHierarchy(safeGroundPositions),
           material: new Cesium.ColorMaterialProperty(fillColor),
           outline: false,
           heightReference: Cesium.HeightReference.NONE,
+          perPositionHeight: true,
         },
       });
       // 边框（贴地）
-      const closedGround = groundPositions.slice();
-      if (closedGround.length >= 2) closedGround.push(groundPositions[0]);
+      const closedGround = safeGroundPositions.slice();
+      if (closedGround.length >= 2) closedGround.push(safeGroundPositions[0]);
       finalBorder = this.entities.add({
         polyline: {
           positions: closedGround,
           width: strokeWidth,
           material: new Cesium.ColorMaterialProperty(strokeColor),
-          clampToGround: true,
+          // 非 3D 模式下 ground polyline 会走 worker/ground pipeline，易触发 DataCloneError/NaN，改为普通折线。
+          clampToGround: false,
         },
       });
-      (finalEntity as any)._groundPositions = groundPositions;
+      (finalEntity as any)._groundPositions = safeGroundPositions;
 
       if (finalEntity) {
         (finalEntity as any)._drawOptions = this.drawOptions;
         (finalEntity as any)._drawType = this.getDrawType();
+        (finalEntity as any)._pendingTerrainRefine = false;
         if (this.drawOptions?.onClick) {
           (finalEntity as any)._onClick = this.drawOptions.onClick;
         }
@@ -316,50 +368,69 @@ export class DrawPolygon extends BaseDraw {
     }
 
     // 添加面积标签（可通过 showAreaLabel 关闭）
-    const area = calculatePolygonArea(groundPositions, this.scene.globe.ellipsoid);
+    const area = calculatePolygonArea(safeGroundPositions, this.scene.globe.ellipsoid);
     if (area > 0 && this.drawOptions?.showAreaLabel !== false) {
-      const center = calculatePolygonCenter(groundPositions);
-      const centerCarto = Cesium.Cartographic.fromCartesian(center);
-      const groundCenter = Cesium.Cartesian3.fromRadians(
-        centerCarto.longitude,
-        centerCarto.latitude,
-        centerCarto.height || 0
-      );
-
-      let displayCenter = groundCenter;
-      if (this.offsetHeight > 0) {
-        displayCenter = Cesium.Cartesian3.fromRadians(
+      const center = calculatePolygonCenter(safeGroundPositions);
+      let centerCarto: Cesium.Cartographic | null = null;
+      try {
+        centerCarto = Cesium.Cartographic.fromCartesian(center);
+      } catch {
+        centerCarto = null;
+      }
+      if (!centerCarto || !Number.isFinite(centerCarto.longitude) || !Number.isFinite(centerCarto.latitude)) {
+        // center 可能落在椭球内部或接近原点，cartesianToCartographic 会失败；跳过面积 label
+        this.restoreRequestRenderModeIfNeeded();
+        // 不直接 return：主体实体已创建
+      } else {
+        const groundCenter = Cesium.Cartesian3.fromRadians(
           centerCarto.longitude,
           centerCarto.latitude,
-          (centerCarto.height || 0) + this.offsetHeight
+          Number.isFinite(centerCarto.height) ? (centerCarto.height as number) : 0
         );
+
+        if (!isValidCartesian3(groundCenter)) {
+          this.restoreRequestRenderModeIfNeeded();
+        } else {
+
+          let displayCenter = groundCenter;
+          if (this.offsetHeight > 0) {
+            const elevated = Cesium.Cartesian3.fromRadians(
+              centerCarto.longitude,
+              centerCarto.latitude,
+              (Number.isFinite(centerCarto.height) ? (centerCarto.height as number) : 0) + this.offsetHeight
+            );
+            if (isValidCartesian3(elevated)) {
+              displayCenter = elevated;
+            }
+          }
+
+          const areaText = `面积: ${formatArea(area)}`;
+          const areaImage = this.createTotalLengthBillboardImage(areaText);
+
+          const areaLabelEntity = this.entities.add({
+            position: displayCenter,
+            billboard: {
+              image: areaImage,
+              pixelOffset: new Cesium.ConstantProperty(new Cesium.Cartesian2(0, -25)),
+              // 两阶段策略：先用 NONE，避免 TerrainOffsetProperty 在临界时刻产生 NaN；
+              // 地形稳定后由 DrawHelper 进行采样并可切换为 RELATIVE_TO_GROUND。
+              heightReference: new Cesium.ConstantProperty(Cesium.HeightReference.NONE),
+              verticalOrigin: new Cesium.ConstantProperty(Cesium.VerticalOrigin.BOTTOM),
+              horizontalOrigin: new Cesium.ConstantProperty(Cesium.HorizontalOrigin.CENTER),
+              scale: new Cesium.ConstantProperty(1.0),
+              disableDepthTestDistance: new Cesium.ConstantProperty(Number.POSITIVE_INFINITY),
+            },
+          });
+          (areaLabelEntity as any)._groundPosition = groundCenter;
+          (areaLabelEntity as any)._preferRelativeToGround = this.offsetHeight > 0;
+          (areaLabelEntity as any)._pendingTerrainRefine = this.offsetHeight > 0;
+          // 关联到主实体，便于外部删除时同步移除
+          (areaLabelEntity as any)._ownerEntityId = (finalEntity as any).id;
+          const drawEntity = finalEntity as DrawEntity;
+          drawEntity._labelEntities = [...(drawEntity._labelEntities || []), areaLabelEntity];
+          this.tempLabelEntities.push(areaLabelEntity);
+        }
       }
-
-      const areaText = `面积: ${formatArea(area)}`;
-      const areaImage = this.createTotalLengthBillboardImage(areaText);
-
-      const areaLabelEntity = this.entities.add({
-        position: displayCenter,
-        billboard: {
-          image: areaImage,
-          pixelOffset: new Cesium.ConstantProperty(new Cesium.Cartesian2(0, -25)),
-          heightReference: new Cesium.ConstantProperty(
-            this.offsetHeight > 0
-              ? Cesium.HeightReference.RELATIVE_TO_GROUND
-              : Cesium.HeightReference.NONE
-          ),
-          verticalOrigin: new Cesium.ConstantProperty(Cesium.VerticalOrigin.BOTTOM),
-          horizontalOrigin: new Cesium.ConstantProperty(Cesium.HorizontalOrigin.CENTER),
-          scale: new Cesium.ConstantProperty(1.0),
-          disableDepthTestDistance: new Cesium.ConstantProperty(Number.POSITIVE_INFINITY),
-        },
-      });
-      (areaLabelEntity as any)._groundPosition = groundCenter;
-      // 关联到主实体，便于外部删除时同步移除
-      (areaLabelEntity as any)._ownerEntityId = (finalEntity as any).id;
-      const drawEntity = finalEntity as DrawEntity;
-      drawEntity._labelEntities = [...(drawEntity._labelEntities || []), areaLabelEntity];
-      this.tempLabelEntities.push(areaLabelEntity);
     }
 
     // 结束绘制后移除所有红色点实体（不保留）
@@ -382,8 +453,8 @@ export class DrawPolygon extends BaseDraw {
     const result: DrawResult = {
       entity: finalEntity,
       type: "polygon",
-      positions: groundPositions,
-      areaKm2: calculatePolygonArea(groundPositions, this.scene.globe.ellipsoid),
+      positions: safeGroundPositions,
+      areaKm2: calculatePolygonArea(safeGroundPositions, this.scene.globe.ellipsoid),
     };
 
     if (this.callbacks.onMeasureComplete) {
@@ -431,6 +502,20 @@ export class DrawPolygon extends BaseDraw {
    */
   public getDrawType(): "line" | "polygon" | "rectangle" | "circle" {
     return "polygon";
+  }
+
+  // 增强点击事件的防御逻辑
+  public addPoint(position: Cartesian3): void {
+    if (!isValidCartesian3(position)) {
+      console.error("[DrawPolygon] Invalid Cartesian3 position detected:", position);
+      return; // 中断流程，避免无效点导致后续错误
+    }
+
+    // 关键：交给 BaseDraw.addPoint 统一处理（clone/cartographic 校验/创建红点实体/偏移高度等）
+    super.addPoint(position);
+
+    // 追加点后刷新预览
+    this.updateDrawingEntity();
   }
 }
 

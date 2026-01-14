@@ -223,9 +223,11 @@ export function useDrawHelper(
       message.value = "多边形绘制完成";
       setTimeout  (() => {
         message.value = "";
-        console.log("多边形绘制完成:", (entity as any)._borderEntity);
         if (entity) {
+          console.log("多边形绘制完成:", (entity as any)._borderEntity);
           console.log("关联标签实体:", drawHelper.value?.getEntityLabelEntities(entity));
+        } else {
+          console.log("多边形绘制完成: entity is null (可能点数不足/被拦截)");
         }
       }, 2000);
     });

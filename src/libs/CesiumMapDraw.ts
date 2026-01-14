@@ -31,6 +31,20 @@ class DrawHelper {
   private drawHintText: string = "";
   private drawHintLastPosition: Cesium.Cartesian3 | null = null;
 
+  // 提示文案临时覆盖（用于“多边形不能交叉”等即时反馈）
+  private drawHintOverrideText: string | null = null;
+  private drawHintOverrideUntil = 0;
+
+  // 最近一次左键点击上下文（用于 renderError 定位）
+  private lastLeftClickDebug: {
+    time: number;
+    mode: string | null;
+    isDrawing: boolean;
+    pickedCartesian?: { x: number; y: number; z: number } | null;
+    tempPositionsCount: number;
+    tempEntitiesCount: number;
+  } | null = null;
+
   // 静态：当前处于绘制状态的 DrawHelper，用于跨实例互斥
   private static activeDrawingHelper: DrawHelper | null = null;
 
@@ -45,6 +59,16 @@ class DrawHelper {
   private screenSpaceEventHandler: Cesium.ScreenSpaceEventHandler | null = null;
   // 实体点击处理器（用于触发绘制完成实体的点击回调与选中样式）
   private entityClickHandler: Cesium.ScreenSpaceEventHandler | null = null;
+
+  // --- 两阶段地形适配（先 NONE，tilesLoaded 后采样/切换） ---
+  private terrainRefineQueue: Set<Cesium.Entity> = new Set();
+  private terrainRefineInFlight: Set<string> = new Set();
+  private terrainRefineLastTick: number = 0;
+  private terrainRefineListener: ((scene: Cesium.Scene, time: Cesium.JulianDate) => void) | null = null;
+
+  // --- 绘制期间实体注入防御（拦截其他模块 add 贴地实体导致 TerrainOffsetProperty NaN） ---
+  private originalEntityCollectionAdd: ((...args: any[]) => any) | null = null;
+  private entityCollectionAddHookInstalled = false;
 
   // 回调函数
   private onDrawStartCallback: (() => void) | null = null;
@@ -62,6 +86,251 @@ class DrawHelper {
   // 记录绘制前地形深度测试开关，用于绘制结束或取消时恢复
   private originalDepthTestAgainstTerrain: boolean | null = null;
 
+  private isFiniteCartesian3(pos: any): pos is Cesium.Cartesian3 {
+    return (
+      !!pos &&
+      Number.isFinite((pos as any).x) &&
+      Number.isFinite((pos as any).y) &&
+      Number.isFinite((pos as any).z)
+    );
+  }
+
+  private findEntityById(id: string):
+    | { entity: Cesium.Entity; source: string; collection: Cesium.EntityCollection }
+    | null {
+    try {
+      const direct = this.viewer.entities.getById(id);
+      if (direct) {
+        return { entity: direct, source: 'viewer.entities', collection: this.viewer.entities };
+      }
+
+      const dsCollection: any = (this.viewer as any).dataSources;
+      if (dsCollection && typeof dsCollection.length === 'number' && typeof dsCollection.get === 'function') {
+        for (let i = 0; i < dsCollection.length; i++) {
+          const ds = dsCollection.get(i);
+          const ents = ds?.entities as Cesium.EntityCollection | undefined;
+          if (!ents) continue;
+          const hit = ents.getById(id);
+          if (hit) {
+            return { entity: hit, source: `dataSource[${i}]`, collection: ents };
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  }
+
+  private removeEntityById(id: string): boolean {
+    try {
+      const found = this.findEntityById(id);
+      if (!found) return false;
+      try {
+        return found.collection.remove(found.entity);
+      } catch {
+        return false;
+      }
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * 在绘制/结束绘制的临界时刻短暂屏蔽 scene.pick 等交互，避免同一点击事件链中
+   * 其它模块（如覆盖物服务）继续触发 pick，引发 ground/worker 相关异常。
+   */
+  private setPickCooldown(ms: number = 800, reason?: string): void {
+    try {
+      const anyViewer: any = this.viewer as any;
+      const until = Date.now() + Math.max(0, ms);
+      const cur = Number(anyViewer.__vmapDrawHelperBlockPickUntil) || 0;
+      if (until > cur) {
+        anyViewer.__vmapDrawHelperBlockPickUntil = until;
+      }
+      if (reason) {
+        anyViewer.__vmapDrawHelperBlockPickReason = reason;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  private isPickBlocked(): boolean {
+    try {
+      const anyViewer: any = this.viewer as any;
+      const until = Number(anyViewer.__vmapDrawHelperBlockPickUntil) || 0;
+      return Date.now() < until;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * 在实体被加入场景后、渲染循环更新前做一次快速校验。
+   * 避免某些极端情况下（例如 height 为 Infinity 等）构造出 NaN Cartesian3，导致下一帧渲染直接停止。
+   */
+  private validateEntityPositionsOrRemove(entity: Cesium.Entity): void {
+    try {
+      const now = Cesium.JulianDate.now();
+      const id = String((entity as any)?.id ?? '');
+
+      // polygon
+      if (entity.polygon?.hierarchy) {
+        const hierarchy: any = (entity.polygon.hierarchy as any).getValue
+          ? (entity.polygon.hierarchy as any).getValue(now)
+          : entity.polygon.hierarchy;
+        const positions: Cesium.Cartesian3[] | undefined = hierarchy?.positions ?? hierarchy;
+        if (Array.isArray(positions) && positions.length > 0) {
+          const bad = positions.find((p) => !this.isFiniteCartesian3(p));
+          if (bad) {
+            console.warn('Removed newly-created invalid polygon entity:', entity.id, bad);
+            if (!this.entities.remove(entity) && id) {
+              this.removeEntityById(id);
+            }
+            return;
+          }
+        }
+      }
+
+      // polyline
+      if (entity.polyline?.positions) {
+        const positions: any = (entity.polyline.positions as any).getValue
+          ? (entity.polyline.positions as any).getValue(now)
+          : entity.polyline.positions;
+        if (Array.isArray(positions) && positions.length > 0) {
+          const bad = positions.find((p) => !this.isFiniteCartesian3(p));
+          if (bad) {
+            console.warn('Removed newly-created invalid polyline entity:', entity.id, bad);
+            if (!this.entities.remove(entity) && id) {
+              this.removeEntityById(id);
+            }
+            return;
+          }
+        }
+      }
+
+      // position (point/label/billboard)
+      if (entity.position) {
+        const pos = (entity.position as any).getValue ? (entity.position as any).getValue(now) : entity.position;
+        if (pos && !this.isFiniteCartesian3(pos)) {
+          console.warn('Removed newly-created invalid positioned entity:', entity.id, pos);
+          if (!this.entities.remove(entity) && id) {
+            this.removeEntityById(id);
+          }
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('validateEntityPositionsOrRemove failed', (entity as any)?.id, e);
+    }
+  }
+
+  /**
+   * 防御性清理：移除包含 NaN/Infinity 坐标的实体。
+   * 这类实体会在 Cesium 的 GeometryUpdater/TerrainOffsetProperty 更新阶段持续抛错，
+   * 即使后续代码已修复输入，也会因旧实体仍存在而反复报错。
+   */
+  private removeEntitiesWithInvalidPositions(): void {
+    try {
+      const now = Cesium.JulianDate.now();
+
+      const scanAndRemove = (collection: Cesium.EntityCollection) => {
+        const all = collection.values.slice();
+        for (const entity of all) {
+          if (!entity) continue;
+
+          // polygon
+          if (entity.polygon?.hierarchy) {
+            try {
+              const hierarchy: any = (entity.polygon.hierarchy as any).getValue
+                ? (entity.polygon.hierarchy as any).getValue(now)
+                : entity.polygon.hierarchy;
+              const positions: Cesium.Cartesian3[] | undefined = hierarchy?.positions ?? hierarchy;
+              if (Array.isArray(positions) && positions.length > 0) {
+                const bad = positions.find(
+                  (p) =>
+                    !p ||
+                    !Number.isFinite((p as any).x) ||
+                    !Number.isFinite((p as any).y) ||
+                    !Number.isFinite((p as any).z)
+                );
+                if (bad) {
+                  console.warn('Removed invalid polygon entity (NaN positions):', entity.id, bad);
+                  collection.remove(entity);
+                  continue;
+                }
+              }
+            } catch {
+              // 若获取层级失败，也移除以避免持续报错
+              console.warn('Removed invalid polygon entity (hierarchy unreadable):', entity.id);
+              collection.remove(entity);
+              continue;
+            }
+          }
+
+          // polyline
+          if (entity.polyline?.positions) {
+            try {
+              const positions: any = (entity.polyline.positions as any).getValue
+                ? (entity.polyline.positions as any).getValue(now)
+                : entity.polyline.positions;
+              if (Array.isArray(positions) && positions.length > 0) {
+                const bad = positions.find(
+                  (p) =>
+                    !p ||
+                    !Number.isFinite((p as any).x) ||
+                    !Number.isFinite((p as any).y) ||
+                    !Number.isFinite((p as any).z)
+                );
+                if (bad) {
+                  console.warn('Removed invalid polyline entity (NaN positions):', entity.id, bad);
+                  collection.remove(entity);
+                  continue;
+                }
+              }
+            } catch {
+              console.warn('Removed invalid polyline entity (positions unreadable):', entity.id);
+              collection.remove(entity);
+              continue;
+            }
+          }
+
+          // position (point/label/billboard)
+          if (entity.position) {
+            try {
+              const pos: any = (entity.position as any).getValue ? (entity.position as any).getValue(now) : entity.position;
+              if (pos && (!Number.isFinite(pos.x) || !Number.isFinite(pos.y) || !Number.isFinite(pos.z))) {
+                console.warn('Removed invalid positioned entity (NaN position):', entity.id, pos);
+                collection.remove(entity);
+                continue;
+              }
+            } catch {
+              // 避免误删：某些临时实体在创建/更新的瞬间 position 可能短暂不可读（或被外部 Proxy 包装）。
+              // 这里选择跳过而不是移除，防止绘制时红色点位球体“点了就没”。
+              console.warn('Skipped positioned entity (position unreadable):', entity.id);
+            }
+          }
+        }
+      };
+
+      // viewer.entities
+      scanAndRemove(this.entities);
+
+      // viewer.dataSources (some code paths create entities in CustomDataSource)
+      const dsCollection: any = (this.viewer as any).dataSources;
+      if (dsCollection && typeof dsCollection.length === 'number' && typeof dsCollection.get === 'function') {
+        for (let i = 0; i < dsCollection.length; i++) {
+          const ds = dsCollection.get(i);
+          const ents = ds?.entities as Cesium.EntityCollection | undefined;
+          if (ents) scanAndRemove(ents);
+        }
+      }
+    } catch (e) {
+      console.warn('removeEntitiesWithInvalidPositions failed', e);
+    }
+  }
+
   /**
    * 构造函数
    * @param viewer Cesium Viewer 实例
@@ -74,6 +343,16 @@ class DrawHelper {
     this.viewer = viewer;
     this.scene = viewer.scene;
     this.entities = viewer.entities;
+
+    // 兜底触发统计：用于确认 NaN 恢复逻辑是否曾经触发过
+    try {
+      const anyViewer: any = this.viewer as any;
+      if (typeof anyViewer.__vmapDrawHelperNaNRecoveredCount !== 'number') {
+        anyViewer.__vmapDrawHelperNaNRecoveredCount = 0;
+      }
+    } catch {
+      // ignore
+    }
 
     // 根据地图模式设置偏移高度
     this.updateOffsetHeight();
@@ -110,14 +389,237 @@ class DrawHelper {
     this.drawRectangle = new DrawRectangle(viewer, callbacks);
     this.drawCircle = new DrawCircle(viewer, callbacks);
 
+    // 兜底定位：NaN 偶发时常发生在 GroundGeometryUpdater 内部构造 TerrainOffsetProperty。
+    // 在抛错前抓取触发的 entity 快照，便于直接锁定来源。
+    this.installGroundGeometryUpdaterDebugHook();
+
+    // showErrorPanel：有些 NaN 会直接走 CesiumWidget.showErrorPanel 而不触发 scene.renderError
+    // 这里安装兜底钩子，确保能输出诊断并尽量清理脏实体。
+    try {
+      const anyViewer: any = this.viewer as any;
+      if (!anyViewer.__vmapDrawHelperShowErrorPanelHookInstalled) {
+        anyViewer.__vmapDrawHelperShowErrorPanelHookInstalled = true;
+        const widget: any = this.viewer.cesiumWidget as any;
+        if (widget && typeof widget.showErrorPanel === 'function') {
+          const original = widget.showErrorPanel.bind(widget);
+          widget.showErrorPanel = (title: any, message: any, error: any) => {
+            try {
+              console.error('[DrawHelper] CesiumWidget.showErrorPanel:', { title, message, error });
+              try {
+                const dbg = (this.viewer as any).__vmapDrawHelperLastLeftClickDebug;
+                if (dbg) console.warn('[DrawHelper] lastLeftClickDebug:', dbg);
+              } catch {
+                // ignore
+              }
+
+              try {
+                const groundDbg = (this.viewer as any).__vmapDrawHelperLastGroundUpdaterThrow;
+                if (groundDbg) console.warn('[DrawHelper] lastGroundUpdaterThrow:', groundDbg);
+
+                try {
+                  const anyViewer: any = this.viewer as any;
+                  console.warn('[DrawHelper] NaNRecoveredCount:', anyViewer.__vmapDrawHelperNaNRecoveredCount || 0);
+                } catch {
+                  // ignore
+                }
+
+                const entityId = groundDbg?.entityId ? String(groundDbg.entityId) : '';
+                if (entityId) {
+                  const found = this.findEntityById(entityId);
+                  if (found) {
+                    const anyEnt: any = found.entity as any;
+                    console.warn('[DrawHelper] lastGroundUpdaterThrow entity found:', {
+                      id: entityId,
+                      source: found.source,
+                      name: (found.entity as any).name,
+                      drawType: anyEnt?._drawType,
+                      overlayType: anyEnt?._overlayType,
+                      hasPolygon: !!anyEnt?.polygon,
+                      hasRectangle: !!anyEnt?.rectangle,
+                      hasEllipse: !!anyEnt?.ellipse,
+                      hasPolyline: !!anyEnt?.polyline,
+                    });
+                  } else {
+                    console.warn('[DrawHelper] lastGroundUpdaterThrow entity NOT found:', entityId);
+                  }
+                }
+              } catch {
+                // ignore
+              }
+
+              // 扫描并输出当前可疑实体（贴地/相对地面 + NaN/Infinity 位置）
+              const report = this.dumpPotentialClampingEntities('showErrorPanel');
+              try {
+                (this.viewer as any).__vmapDrawHelperLastNaNReport = report;
+              } catch {
+                // ignore
+              }
+              this.removeEntitiesWithInvalidPositions();
+            } catch (e) {
+              console.warn('[DrawHelper] showErrorPanel diagnostic failed', e);
+            }
+            return original(title, message, error);
+          };
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    // renderError：当 Cesium 渲染停止时，输出诊断信息，帮助定位是哪类实体触发 clamping NaN
+    try {
+      const anyViewer: any = this.viewer as any;
+      if (!anyViewer.__vmapDrawHelperRenderErrorInstalled) {
+        anyViewer.__vmapDrawHelperRenderErrorInstalled = true;
+        this.scene.renderError.addEventListener((_scene: Cesium.Scene, error: any) => {
+          try {
+            console.error('[DrawHelper] scene.renderError:', error);
+            const dbg = (anyViewer.__vmapDrawHelperLastLeftClickDebug || null) as any;
+            if (dbg) {
+              console.error('[DrawHelper] lastLeftClickDebug:', dbg);
+            }
+
+            // 扫描当前场景中所有 polygon/polyline（含 dataSources），打印非 NONE/贴地项
+            const now = Cesium.JulianDate.now();
+            const scan = (collection: Cesium.EntityCollection, tag: string) => {
+              const all = collection.values.slice();
+              for (const entity of all) {
+                if (!entity) continue;
+                try {
+                  if (entity.polygon) {
+                    const hrAny: any = (entity.polygon as any).heightReference;
+                    const hr = hrAny?.getValue ? hrAny.getValue(now) : hrAny;
+                    const hierarchyAny: any = (entity.polygon as any).hierarchy;
+                    const hierarchy = hierarchyAny?.getValue ? hierarchyAny.getValue(now) : hierarchyAny;
+                    const positions: any = hierarchy?.positions ?? hierarchy;
+                    const bad = Array.isArray(positions)
+                      ? positions.find((p) => !p || !Number.isFinite(p.x) || !Number.isFinite(p.y) || !Number.isFinite(p.z))
+                      : null;
+                    if (bad) {
+                      console.error(`[DrawHelper] BAD polygon positions (${tag})`, entity.id, bad, 'heightReference=', hr);
+                    } else if (hr && hr !== Cesium.HeightReference.NONE) {
+                      console.warn(`[DrawHelper] polygon heightReference!=NONE (${tag})`, entity.id, hr);
+                    }
+                  }
+                  if (entity.polyline) {
+                    const clampAny: any = (entity.polyline as any).clampToGround;
+                    const clamp = clampAny?.getValue ? clampAny.getValue(now) : clampAny;
+                    const posAny: any = (entity.polyline as any).positions;
+                    const positions = posAny?.getValue ? posAny.getValue(now) : posAny;
+                    const bad = Array.isArray(positions)
+                      ? positions.find((p) => !p || !Number.isFinite(p.x) || !Number.isFinite(p.y) || !Number.isFinite(p.z))
+                      : null;
+                    if (bad) {
+                      console.error(`[DrawHelper] BAD polyline positions (${tag})`, entity.id, bad, 'clampToGround=', clamp);
+                    } else if (clamp === true) {
+                      console.warn(`[DrawHelper] polyline clampToGround=true (${tag})`, entity.id);
+                    }
+                  }
+
+                  // point/label/billboard：位置与 heightReference 也可能触发 TerrainOffsetProperty NaN
+                  if (entity.position) {
+                    const posAny: any = entity.position as any;
+                    const pos = posAny?.getValue ? posAny.getValue(now) : posAny;
+                    if (pos && (!Number.isFinite(pos.x) || !Number.isFinite(pos.y) || !Number.isFinite(pos.z))) {
+                      console.error(`[DrawHelper] BAD entity.position (${tag})`, entity.id, pos, {
+                        hasPoint: !!(entity as any).point,
+                        hasLabel: !!(entity as any).label,
+                        hasBillboard: !!(entity as any).billboard,
+                      });
+                    }
+                  }
+                  if (entity.point) {
+                    const hrAny: any = (entity.point as any).heightReference;
+                    const hr = hrAny?.getValue ? hrAny.getValue(now) : hrAny;
+                    if (hr && hr !== Cesium.HeightReference.NONE) {
+                      console.warn(`[DrawHelper] point heightReference!=NONE (${tag})`, entity.id, hr);
+                    }
+                  }
+                  if (entity.label) {
+                    const hrAny: any = (entity.label as any).heightReference;
+                    const hr = hrAny?.getValue ? hrAny.getValue(now) : hrAny;
+                    if (hr && hr !== Cesium.HeightReference.NONE) {
+                      console.warn(`[DrawHelper] label heightReference!=NONE (${tag})`, entity.id, hr);
+                    }
+                  }
+                  if (entity.billboard) {
+                    const hrAny: any = (entity.billboard as any).heightReference;
+                    const hr = hrAny?.getValue ? hrAny.getValue(now) : hrAny;
+                    if (hr && hr !== Cesium.HeightReference.NONE) {
+                      console.warn(`[DrawHelper] billboard heightReference!=NONE (${tag})`, entity.id, hr);
+                    }
+                  }
+                } catch {
+                  // ignore
+                }
+              }
+            };
+
+            scan(this.viewer.entities, 'viewer.entities');
+            const dsCollection: any = (this.viewer as any).dataSources;
+            if (dsCollection && typeof dsCollection.length === 'number' && typeof dsCollection.get === 'function') {
+              for (let i = 0; i < dsCollection.length; i++) {
+                const ds = dsCollection.get(i);
+                const ents = ds?.entities as Cesium.EntityCollection | undefined;
+                if (ents) scan(ents, `dataSources[${i}]`);
+              }
+            }
+          } catch (e) {
+            console.warn('[DrawHelper] renderError diagnostic failed', e);
+          }
+        });
+      }
+    } catch {
+      // ignore
+    }
+
+    // 安装“两阶段地形适配”监听：tilesLoaded 后异步采样并更新实体。
+    // 注意：同一 viewer 可能因 HMR/多实例重复创建 DrawHelper，这里会替换旧监听。
+    try {
+      const anyViewer: any = this.viewer as any;
+      const prev = anyViewer.__vmapDrawHelperTerrainRefineListener as
+        | ((scene: Cesium.Scene, time: Cesium.JulianDate) => void)
+        | undefined;
+      if (prev) {
+        try {
+          this.scene.postRender.removeEventListener(prev);
+        } catch {
+          // ignore
+        }
+      }
+      this.terrainRefineListener = () => {
+        this.processTerrainRefineQueue();
+      };
+      anyViewer.__vmapDrawHelperTerrainRefineListener = this.terrainRefineListener;
+      this.scene.postRender.addEventListener(this.terrainRefineListener);
+    } catch {
+      // ignore
+    }
+
     // 实体点击处理（用于触发绘制完成实体的点击回调和选中样式）
     try {
+      // 防 HMR/多实例：如果同一个 viewer 上已经存在旧的 handler，先销毁
+      const anyViewer: any = this.viewer as any;
+      const prev = anyViewer.__vmapDrawHelperEntityClickHandler as Cesium.ScreenSpaceEventHandler | undefined;
+      if (prev && typeof (prev as any).destroy === 'function') {
+        try { prev.destroy(); } catch { /* ignore */ }
+      }
+
       this.entityClickHandler = new Cesium.ScreenSpaceEventHandler(this.scene.canvas);
+      anyViewer.__vmapDrawHelperEntityClickHandler = this.entityClickHandler;
+
       this.entityClickHandler.setInputAction((click: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
+        // 只要“任何实例”处于绘制状态，就全局禁用实体点击逻辑，避免多实例 handler 交叉触发
+        if (DrawHelper.activeDrawingHelper) return;
         if (this.isDrawing) return; // 绘制时忽略实体点击
+        // 绘制刚结束/切换状态的短窗口内，禁用 pick，避免与 OverlayService 等其它 handler 争用
+        if (this.isPickBlocked()) return;
+        console.log('--------------111111-------------');
         const picked = this.scene.pick(click.position as any);
+        console.log('--------------222222-------------', picked);
         const entity = picked && (picked as any).id as Cesium.Entity | undefined;
         if (!entity) return;
+        console.log('--------------333333-------------');
 
         const drawEntity = entity as DrawEntity;
 
@@ -149,6 +651,482 @@ class DrawHelper {
       // 安全忽略初始化错误
       console.warn('entity click handler init failed', e);
     }
+  }
+
+  private dumpPotentialClampingEntities(tag: string): {
+    time: number;
+    tag: string;
+    suspects: Array<{ source: string; id: string; kind: string; value?: any }>;
+    invalidPositions: Array<{ source: string; id: string; kind: string }>;
+    scanned: { viewerEntities: number; dataSources: number };
+  } {
+    const report = {
+      time: Date.now(),
+      tag,
+      suspects: [] as Array<{ source: string; id: string; kind: string; value?: any }>,
+      invalidPositions: [] as Array<{ source: string; id: string; kind: string }>,
+      scanned: { viewerEntities: 0, dataSources: 0 },
+    };
+    try {
+      const now = Cesium.JulianDate.now();
+      const scanCollection = (collection: Cesium.EntityCollection, source: string) => {
+        const all = collection.values.slice();
+        if (source === 'viewer.entities') report.scanned.viewerEntities = all.length;
+        for (const entity of all) {
+          if (!entity) continue;
+
+          // polygon heightReference
+          if (entity.polygon && (entity.polygon as any).heightReference) {
+            const hrProp: any = (entity.polygon as any).heightReference;
+            const hr = hrProp?.getValue ? hrProp.getValue(now) : hrProp;
+            if (hr === Cesium.HeightReference.CLAMP_TO_GROUND || hr === Cesium.HeightReference.RELATIVE_TO_GROUND) {
+              report.suspects.push({ source, id: String(entity.id), kind: 'polygon.heightReference', value: hr });
+            }
+          }
+
+          // polygon extrudedHeightReference
+          if (entity.polygon && (entity.polygon as any).extrudedHeightReference) {
+            const ehrProp: any = (entity.polygon as any).extrudedHeightReference;
+            const ehr = ehrProp?.getValue ? ehrProp.getValue(now) : ehrProp;
+            if (ehr === Cesium.HeightReference.CLAMP_TO_GROUND || ehr === Cesium.HeightReference.RELATIVE_TO_GROUND) {
+              report.suspects.push({ source, id: String(entity.id), kind: 'polygon.extrudedHeightReference', value: ehr });
+            }
+          }
+
+          // polygon classificationType (可能走 ground pipeline)
+          if (entity.polygon && (entity.polygon as any).classificationType) {
+            const ctProp: any = (entity.polygon as any).classificationType;
+            const ct = ctProp?.getValue ? ctProp.getValue(now) : ctProp;
+            if (ct === (Cesium as any).ClassificationType?.TERRAIN) {
+              report.suspects.push({ source, id: String(entity.id), kind: 'polygon.classificationType=TERRAIN', value: ct });
+            }
+          }
+
+          if (entity.rectangle && (entity.rectangle as any).heightReference) {
+            const hrProp: any = (entity.rectangle as any).heightReference;
+            const hr = hrProp?.getValue ? hrProp.getValue(now) : hrProp;
+            if (hr === Cesium.HeightReference.CLAMP_TO_GROUND || hr === Cesium.HeightReference.RELATIVE_TO_GROUND) {
+              report.suspects.push({ source, id: String(entity.id), kind: 'rectangle.heightReference', value: hr });
+            }
+          }
+
+          if (entity.rectangle && (entity.rectangle as any).extrudedHeightReference) {
+            const ehrProp: any = (entity.rectangle as any).extrudedHeightReference;
+            const ehr = ehrProp?.getValue ? ehrProp.getValue(now) : ehrProp;
+            if (ehr === Cesium.HeightReference.CLAMP_TO_GROUND || ehr === Cesium.HeightReference.RELATIVE_TO_GROUND) {
+              report.suspects.push({ source, id: String(entity.id), kind: 'rectangle.extrudedHeightReference', value: ehr });
+            }
+          }
+
+          if (entity.ellipse && (entity.ellipse as any).heightReference) {
+            const hrProp: any = (entity.ellipse as any).heightReference;
+            const hr = hrProp?.getValue ? hrProp.getValue(now) : hrProp;
+            if (hr === Cesium.HeightReference.CLAMP_TO_GROUND || hr === Cesium.HeightReference.RELATIVE_TO_GROUND) {
+              report.suspects.push({ source, id: String(entity.id), kind: 'ellipse.heightReference', value: hr });
+            }
+          }
+
+          if (entity.ellipse && (entity.ellipse as any).extrudedHeightReference) {
+            const ehrProp: any = (entity.ellipse as any).extrudedHeightReference;
+            const ehr = ehrProp?.getValue ? ehrProp.getValue(now) : ehrProp;
+            if (ehr === Cesium.HeightReference.CLAMP_TO_GROUND || ehr === Cesium.HeightReference.RELATIVE_TO_GROUND) {
+              report.suspects.push({ source, id: String(entity.id), kind: 'ellipse.extrudedHeightReference', value: ehr });
+            }
+          }
+
+          // polyline clampToGround
+          if (entity.polyline && (entity.polyline as any).clampToGround) {
+            const ctgProp: any = (entity.polyline as any).clampToGround;
+            const ctg = ctgProp?.getValue ? ctgProp.getValue(now) : ctgProp;
+            if (ctg === true) {
+              report.suspects.push({ source, id: String(entity.id), kind: 'polyline.clampToGround', value: true });
+            }
+          }
+
+          // point/label/billboard heightReference
+          if (entity.point && (entity.point as any).heightReference) {
+            const hrProp: any = (entity.point as any).heightReference;
+            const hr = hrProp?.getValue ? hrProp.getValue(now) : hrProp;
+            if (hr === Cesium.HeightReference.CLAMP_TO_GROUND || hr === Cesium.HeightReference.RELATIVE_TO_GROUND) {
+              report.suspects.push({ source, id: String(entity.id), kind: 'point.heightReference', value: hr });
+            }
+          }
+          if (entity.label && (entity.label as any).heightReference) {
+            const hrProp: any = (entity.label as any).heightReference;
+            const hr = hrProp?.getValue ? hrProp.getValue(now) : hrProp;
+            if (hr === Cesium.HeightReference.CLAMP_TO_GROUND || hr === Cesium.HeightReference.RELATIVE_TO_GROUND) {
+              report.suspects.push({ source, id: String(entity.id), kind: 'label.heightReference', value: hr });
+            }
+          }
+          if (entity.billboard && (entity.billboard as any).heightReference) {
+            const hrProp: any = (entity.billboard as any).heightReference;
+            const hr = hrProp?.getValue ? hrProp.getValue(now) : hrProp;
+            if (hr === Cesium.HeightReference.CLAMP_TO_GROUND || hr === Cesium.HeightReference.RELATIVE_TO_GROUND) {
+              report.suspects.push({ source, id: String(entity.id), kind: 'billboard.heightReference', value: hr });
+            }
+          }
+
+          // position validity (for quick hint)
+          if (entity.position) {
+            try {
+              const pos = (entity.position as any).getValue ? (entity.position as any).getValue(now) : entity.position;
+              if (pos && !this.isFiniteCartesian3(pos)) {
+                report.invalidPositions.push({ source, id: String(entity.id), kind: 'position' });
+              }
+            } catch {
+              // ignore
+            }
+          }
+        }
+      };
+
+      scanCollection(this.entities, 'viewer.entities');
+      const dsCollection: any = (this.viewer as any).dataSources;
+      if (dsCollection && typeof dsCollection.length === 'number' && typeof dsCollection.get === 'function') {
+        report.scanned.dataSources = dsCollection.length;
+        for (let i = 0; i < dsCollection.length; i++) {
+          const ds = dsCollection.get(i);
+          const ents = ds?.entities as Cesium.EntityCollection | undefined;
+          if (ents) scanCollection(ents, `dataSource[${i}]`);
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    // 输出一个更显眼的汇总（避免日志被大量堆栈淹没）
+    try {
+      console.warn('[DrawHelper] NaN diagnostic report:', {
+        tag: report.tag,
+        time: report.time,
+        scanned: report.scanned,
+        suspectCount: report.suspects.length,
+        invalidPositionCount: report.invalidPositions.length,
+      });
+      if (report.suspects.length) console.warn('[DrawHelper] suspects:', report.suspects.slice(0, 30));
+      if (report.invalidPositions.length) console.warn('[DrawHelper] invalidPositions:', report.invalidPositions.slice(0, 30));
+    } catch {
+      // ignore
+    }
+    return report;
+  }
+
+  private sanitizeNewEntity(entity: Cesium.Entity, tag: string): void {
+    try {
+      if (!entity) return;
+      const now = Cesium.JulianDate.now();
+
+      // 1) 禁止触发 TerrainOffsetProperty：把所有 CLAMP/RELATIVE 降级为 NONE
+      if (entity.polygon && (entity.polygon as any).heightReference) {
+        const hrProp: any = (entity.polygon as any).heightReference;
+        const hr = hrProp?.getValue ? hrProp.getValue(now) : hrProp;
+        if (hr === Cesium.HeightReference.CLAMP_TO_GROUND || hr === Cesium.HeightReference.RELATIVE_TO_GROUND) {
+          (entity.polygon as any).heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.NONE);
+          console.warn(`[DrawHelper] sanitized polygon heightReference (${tag})`, entity.id);
+        }
+      }
+
+      if (entity.polygon && (entity.polygon as any).extrudedHeightReference) {
+        const ehrProp: any = (entity.polygon as any).extrudedHeightReference;
+        const ehr = ehrProp?.getValue ? ehrProp.getValue(now) : ehrProp;
+        if (ehr === Cesium.HeightReference.CLAMP_TO_GROUND || ehr === Cesium.HeightReference.RELATIVE_TO_GROUND) {
+          (entity.polygon as any).extrudedHeightReference = new Cesium.ConstantProperty(Cesium.HeightReference.NONE);
+          console.warn(`[DrawHelper] sanitized polygon extrudedHeightReference (${tag})`, entity.id);
+        }
+      }
+      if (entity.rectangle && (entity.rectangle as any).heightReference) {
+        const hrProp: any = (entity.rectangle as any).heightReference;
+        const hr = hrProp?.getValue ? hrProp.getValue(now) : hrProp;
+        if (hr === Cesium.HeightReference.CLAMP_TO_GROUND || hr === Cesium.HeightReference.RELATIVE_TO_GROUND) {
+          (entity.rectangle as any).heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.NONE);
+          console.warn(`[DrawHelper] sanitized rectangle heightReference (${tag})`, entity.id);
+        }
+      }
+
+      if (entity.rectangle && (entity.rectangle as any).extrudedHeightReference) {
+        const ehrProp: any = (entity.rectangle as any).extrudedHeightReference;
+        const ehr = ehrProp?.getValue ? ehrProp.getValue(now) : ehrProp;
+        if (ehr === Cesium.HeightReference.CLAMP_TO_GROUND || ehr === Cesium.HeightReference.RELATIVE_TO_GROUND) {
+          (entity.rectangle as any).extrudedHeightReference = new Cesium.ConstantProperty(Cesium.HeightReference.NONE);
+          console.warn(`[DrawHelper] sanitized rectangle extrudedHeightReference (${tag})`, entity.id);
+        }
+      }
+      if (entity.ellipse && (entity.ellipse as any).heightReference) {
+        const hrProp: any = (entity.ellipse as any).heightReference;
+        const hr = hrProp?.getValue ? hrProp.getValue(now) : hrProp;
+        if (hr === Cesium.HeightReference.CLAMP_TO_GROUND || hr === Cesium.HeightReference.RELATIVE_TO_GROUND) {
+          (entity.ellipse as any).heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.NONE);
+          console.warn(`[DrawHelper] sanitized ellipse heightReference (${tag})`, entity.id);
+        }
+      }
+
+      if (entity.ellipse && (entity.ellipse as any).extrudedHeightReference) {
+        const ehrProp: any = (entity.ellipse as any).extrudedHeightReference;
+        const ehr = ehrProp?.getValue ? ehrProp.getValue(now) : ehrProp;
+        if (ehr === Cesium.HeightReference.CLAMP_TO_GROUND || ehr === Cesium.HeightReference.RELATIVE_TO_GROUND) {
+          (entity.ellipse as any).extrudedHeightReference = new Cesium.ConstantProperty(Cesium.HeightReference.NONE);
+          console.warn(`[DrawHelper] sanitized ellipse extrudedHeightReference (${tag})`, entity.id);
+        }
+      }
+      if (entity.polyline && (entity.polyline as any).clampToGround) {
+        const ctgProp: any = (entity.polyline as any).clampToGround;
+        const ctg = ctgProp?.getValue ? ctgProp.getValue(now) : ctgProp;
+        if (ctg === true) {
+          (entity.polyline as any).clampToGround = new Cesium.ConstantProperty(false);
+          console.warn(`[DrawHelper] sanitized polyline clampToGround (${tag})`, entity.id);
+        }
+      }
+
+      if (entity.point && (entity.point as any).heightReference) {
+        const hrProp: any = (entity.point as any).heightReference;
+        const hr = hrProp?.getValue ? hrProp.getValue(now) : hrProp;
+        if (hr === Cesium.HeightReference.CLAMP_TO_GROUND || hr === Cesium.HeightReference.RELATIVE_TO_GROUND) {
+          (entity.point as any).heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.NONE);
+          console.warn(`[DrawHelper] sanitized point heightReference (${tag})`, entity.id);
+        }
+      }
+      if (entity.label && (entity.label as any).heightReference) {
+        const hrProp: any = (entity.label as any).heightReference;
+        const hr = hrProp?.getValue ? hrProp.getValue(now) : hrProp;
+        if (hr === Cesium.HeightReference.CLAMP_TO_GROUND || hr === Cesium.HeightReference.RELATIVE_TO_GROUND) {
+          (entity.label as any).heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.NONE);
+          console.warn(`[DrawHelper] sanitized label heightReference (${tag})`, entity.id);
+        }
+      }
+      if (entity.billboard && (entity.billboard as any).heightReference) {
+        const hrProp: any = (entity.billboard as any).heightReference;
+        const hr = hrProp?.getValue ? hrProp.getValue(now) : hrProp;
+        if (hr === Cesium.HeightReference.CLAMP_TO_GROUND || hr === Cesium.HeightReference.RELATIVE_TO_GROUND) {
+          (entity.billboard as any).heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.NONE);
+          console.warn(`[DrawHelper] sanitized billboard heightReference (${tag})`, entity.id);
+        }
+      }
+
+      // 2) 如果包含 NaN/Infinity，立即移除（否则下一帧 GeometryUpdater 会直接停渲染）
+      this.validateEntityPositionsOrRemove(entity);
+    } catch {
+      // ignore
+    }
+  }
+
+  private installEntitiesAddHook(): void {
+    if (this.entityCollectionAddHookInstalled) return;
+    try {
+      const proto: any = (Cesium as any).EntityCollection?.prototype;
+      if (!proto || typeof proto.add !== 'function') return;
+      this.originalEntityCollectionAdd = proto.add;
+      const self = this;
+      proto.add = function (this: any, options: any) {
+        const entity = self.originalEntityCollectionAdd!.call(this, options);
+        // 只在绘制中启用：避免影响正常覆盖物
+        if (self.isDrawing) {
+          self.sanitizeNewEntity(entity, 'EntityCollection.add(during-draw)');
+        }
+        return entity;
+      };
+      this.entityCollectionAddHookInstalled = true;
+    } catch {
+      // ignore
+    }
+  }
+
+  private uninstallEntitiesAddHook(): void {
+    if (!this.entityCollectionAddHookInstalled) return;
+    try {
+      const proto: any = (Cesium as any).EntityCollection?.prototype;
+      if (proto && this.originalEntityCollectionAdd) {
+        proto.add = this.originalEntityCollectionAdd;
+      }
+    } catch {
+      // ignore
+    }
+    this.originalEntityCollectionAdd = null;
+    this.entityCollectionAddHookInstalled = false;
+  }
+
+  private installGroundGeometryUpdaterDebugHook(): void {
+    try {
+      const anyViewer: any = this.viewer as any;
+      if (anyViewer.__vmapDrawHelperGroundUpdaterHookInstalled) return;
+
+      const GG: any = (Cesium as any).GroundGeometryUpdater;
+      const proto: any = GG?.prototype;
+      const original: any = proto?._onEntityPropertyChanged;
+      if (!proto || typeof original !== 'function') return;
+
+      anyViewer.__vmapDrawHelperGroundUpdaterHookInstalled = true;
+      const self = this;
+
+      proto._onEntityPropertyChanged = function (...args: any[]) {
+        const entity: any = args?.[0];
+        const propertyName: any = args?.[1];
+
+        // 预检查：如果 polygon hierarchy 已经含 NaN/Infinity，直接移除该实体，避免进入 Cesium 的 clamping 逻辑后停渲染。
+        try {
+          if (entity?.polygon && propertyName === 'polygon') {
+            const now = Cesium.JulianDate.now();
+            const hierarchyAny: any = (entity.polygon as any).hierarchy;
+            const hierarchy = hierarchyAny?.getValue ? hierarchyAny.getValue(now) : hierarchyAny;
+            const positions: any[] = hierarchy?.positions ?? hierarchy;
+            if (Array.isArray(positions) && positions.length > 0) {
+              const bad = positions.find((p) => !p || !self.isFiniteCartesian3(p));
+              if (bad) {
+                const entityId = entity?.id !== undefined ? String(entity.id) : '';
+
+                try {
+                  anyViewer.__vmapDrawHelperNaNRecoveredCount = (Number(anyViewer.__vmapDrawHelperNaNRecoveredCount) || 0) + 1;
+                  anyViewer.__vmapDrawHelperNaNRecoveredLastAt = Date.now();
+                  anyViewer.__vmapDrawHelperNaNRecoveredLastReason = 'ground-precheck-invalid-position';
+                } catch {
+                  // ignore
+                }
+
+                anyViewer.__vmapDrawHelperLastGroundUpdaterThrow = {
+                  time: Date.now(),
+                  propertyName,
+                  entityId,
+                  reason: 'precheck-invalid-position',
+                  firstInvalidPosition: bad,
+                };
+                console.error('[DrawHelper] GroundGeometryUpdater precheck removed invalid entity:', {
+                  entityId,
+                  propertyName,
+                  bad,
+                });
+                if (entityId) {
+                  self.removeEntityById(entityId);
+                }
+                return;
+              }
+            }
+          }
+        } catch {
+          // ignore
+        }
+
+        try {
+          return original.apply(this, args);
+        } catch (e: any) {
+          try {
+            const now = Cesium.JulianDate.now();
+            const snapshot: any = {
+              time: Date.now(),
+              propertyName,
+              entityId: entity?.id !== undefined ? String(entity.id) : undefined,
+              hasPolygon: !!entity?.polygon,
+              hasRectangle: !!entity?.rectangle,
+              hasEllipse: !!entity?.ellipse,
+            };
+
+            if (entity?.polygon) {
+              const poly: any = entity.polygon;
+              const hrProp: any = poly.heightReference;
+              const ehrProp: any = poly.extrudedHeightReference;
+              const ctProp: any = poly.classificationType;
+              const pphProp: any = poly.perPositionHeight;
+              snapshot.polygon = {
+                heightReference: hrProp?.getValue ? hrProp.getValue(now) : hrProp,
+                extrudedHeightReference: ehrProp?.getValue ? ehrProp.getValue(now) : ehrProp,
+                classificationType: ctProp?.getValue ? ctProp.getValue(now) : ctProp,
+                perPositionHeight: pphProp?.getValue ? pphProp.getValue(now) : pphProp,
+              };
+
+              try {
+                const hierarchyAny: any = poly.hierarchy;
+                const hierarchy = hierarchyAny?.getValue ? hierarchyAny.getValue(now) : hierarchyAny;
+                const positions: any[] = hierarchy?.positions ?? hierarchy;
+                if (Array.isArray(positions)) {
+                  const bad = positions.find((p) => !p || !self.isFiniteCartesian3(p));
+                  snapshot.polygon.positionsCount = positions.length;
+                  snapshot.polygon.hasInvalidPosition = !!bad;
+                  if (bad) snapshot.polygon.firstInvalidPosition = bad;
+                }
+              } catch {
+                // ignore
+              }
+            }
+
+            if (entity?.rectangle) {
+              const rect: any = entity.rectangle;
+              const hrProp: any = rect.heightReference;
+              const ehrProp: any = rect.extrudedHeightReference;
+              snapshot.rectangle = {
+                heightReference: hrProp?.getValue ? hrProp.getValue(now) : hrProp,
+                extrudedHeightReference: ehrProp?.getValue ? ehrProp.getValue(now) : ehrProp,
+              };
+            }
+
+            if (entity?.ellipse) {
+              const ell: any = entity.ellipse;
+              const hrProp: any = ell.heightReference;
+              const ehrProp: any = ell.extrudedHeightReference;
+              snapshot.ellipse = {
+                heightReference: hrProp?.getValue ? hrProp.getValue(now) : hrProp,
+                extrudedHeightReference: ehrProp?.getValue ? ehrProp.getValue(now) : ehrProp,
+              };
+            }
+
+            anyViewer.__vmapDrawHelperLastGroundUpdaterThrow = snapshot;
+            console.error('[DrawHelper] GroundGeometryUpdater throw snapshot:', snapshot);
+          } catch {
+            // ignore
+          }
+
+          // 关键兜底：对于 NaN 相关 DeveloperError，移除罪魁祸首并吞掉异常，避免 CesiumWidget 进入“渲染停止”状态。
+          try {
+            const msg = (e && (e.message || e.toString?.())) ? String(e.message || e.toString()) : '';
+            if (msg.includes('NaN component') || msg.includes('cartesian has a NaN')) {
+              const entityId = entity?.id !== undefined ? String(entity.id) : '';
+              if (entityId) {
+                const removed = self.removeEntityById(entityId);
+                console.warn('[DrawHelper] Swallowed NaN render error by removing entity:', { entityId, removed });
+
+                try {
+                  anyViewer.__vmapDrawHelperNaNRecoveredCount = (Number(anyViewer.__vmapDrawHelperNaNRecoveredCount) || 0) + 1;
+                  anyViewer.__vmapDrawHelperNaNRecoveredLastAt = Date.now();
+                  anyViewer.__vmapDrawHelperNaNRecoveredLastReason = 'ground-throw-nan-removed';
+                  anyViewer.__vmapDrawHelperNaNRecoveredLastEntityId = entityId;
+                } catch {
+                  // ignore
+                }
+              }
+              return;
+            }
+          } catch {
+            // ignore
+          }
+
+          throw e;
+        }
+      };
+    } catch {
+      // ignore
+    }
+  }
+
+  // 扩展日志记录
+  private logRenderErrorDetails(error: any): void {
+    console.error("[CesiumMapDraw] Render error detected:", error);
+
+    // 记录当前所有实体的状态
+    const entities = this.viewer.entities.values;
+    entities.forEach((entity, index) => {
+      const position = entity.position ? entity.position.getValue(this.viewer.clock.currentTime) : null;
+      console.log(`[Entity ${index}]`, {
+        id: entity.id,
+        name: entity.name,
+        position,
+        polygon: entity.polygon,
+        polyline: entity.polyline,
+        billboard: entity.billboard,
+      });
+    });
+
+    // 记录当前场景的状态
+    console.log("[CesiumMapDraw] Scene state:", {
+      primitivesLength: this.viewer.scene.primitives.length,
+      groundPrimitivesLength: this.viewer.scene.groundPrimitives.length,
+    });
   }
 
   /**
@@ -186,6 +1164,13 @@ class DrawHelper {
       return "";
     }
 
+    // 临时覆盖优先（例如自相交提示）
+    if (this.drawHintOverrideText && Date.now() < this.drawHintOverrideUntil) {
+      return this.drawHintOverrideText;
+    }
+    this.drawHintOverrideText = null;
+    this.drawHintOverrideUntil = 0;
+
     const pointCount = this.tempPositions.length;
 
     switch (this.drawMode) {
@@ -200,31 +1185,59 @@ class DrawHelper {
         return "双击完成，右键撤销";
       }
       case "polygon": {
-        if (pointCount === 0) return "单击开始绘制";
-        return "单击继续添加点，双击完成，右键删除最后一点";
+        if (pointCount === 0) return "单击绘制区域";
+        if (pointCount === 1) return "单击绘制区域，右键删除点位";
+        return "左击绘制区域，右键删除点位，双击结束绘制";
       }
       case "line": {
-        if (pointCount === 0) return "单击开始绘制";
-        return "单击继续添加点，双击完成，右键删除最后一点";
+        if (pointCount === 0) return "单击绘制区域";
+        if (pointCount === 1) return "单击绘制区域，右键删除点位";
+        return "左击绘制区域，右键删除点位，双击结束绘制";
       }
       default:
         return "";
     }
   }
 
+  private setDrawHintOverride(text: string, ms: number = 1200): void {
+    this.drawHintOverrideText = text;
+    this.drawHintOverrideUntil = Date.now() + Math.max(0, ms);
+    this.refreshDrawHintTextOnly();
+  }
+
   /**
    * 将提示位置转换为显示位置（按当前模式做轻微抬高，避免被地形遮挡）
    */
   private toHintDisplayPosition(position: Cesium.Cartesian3): Cesium.Cartesian3 {
+    // 这里不能只依赖 try/catch：fromRadians 传入 NaN 不会 throw，会返回 NaN Cartesian3。
+    if (
+      !position ||
+      !Number.isFinite((position as any).x) ||
+      !Number.isFinite((position as any).y) ||
+      !Number.isFinite((position as any).z)
+    ) {
+      return position;
+    }
     try {
       const carto = Cesium.Cartographic.fromCartesian(position);
-      const baseHeight = carto.height || 0;
+      if (!Number.isFinite(carto.longitude) || !Number.isFinite(carto.latitude)) {
+        return position;
+      }
+      const baseHeight = Number.isFinite(carto.height) ? (carto.height as number) : 0;
       const extraHeight = this.offsetHeight > 0 ? this.offsetHeight : 0.1;
-      return Cesium.Cartesian3.fromRadians(
+      const displayPos = Cesium.Cartesian3.fromRadians(
         carto.longitude,
         carto.latitude,
         baseHeight + extraHeight
       );
+      if (
+        Number.isFinite((displayPos as any).x) &&
+        Number.isFinite((displayPos as any).y) &&
+        Number.isFinite((displayPos as any).z)
+      ) {
+        return displayPos;
+      }
+      return position;
     } catch {
       return position;
     }
@@ -339,6 +1352,12 @@ class DrawHelper {
    * @param mode 绘制模式
    */
   private startDrawing(mode: "line" | "polygon" | "rectangle" | "circle", options?: DrawOptions): void {
+    // 防御：清理旧的非法实体，避免其在 render/update 阶段持续抛错
+    this.removeEntitiesWithInvalidPositions();
+
+    // 开始绘制的临界时刻，短暂屏蔽外部 pick（例如覆盖物 click handler）
+    this.setPickCooldown(500, 'draw-start');
+
     // 若有其他 DrawHelper 实例正在绘制，先取消其绘制，避免多个实例的事件同时响应
     const active = DrawHelper.activeDrawingHelper;
     if (active && active !== this) {
@@ -353,12 +1372,20 @@ class DrawHelper {
 
     this.drawMode = mode;
     this.isDrawing = true;
+    try {
+      (this.viewer as any).__vmapDrawHelperIsDrawing = true;
+    } catch {
+      // ignore
+    }
     this.lastPreviewPosition = null;
     DrawHelper.activeDrawingHelper = this;
     this.tempPositions = [];
     this.tempEntities = [];
     this._doubleClickPending = false;
     this.currentDrawOptions = options;
+
+    // 绘制期间拦截 entities.add：若其他模块在同一点击链路中创建贴地实体，先降级/校验避免 NaN 停渲染
+    this.installEntitiesAddHook();
 
     // 选择对应的绘制类
     switch (mode) {
@@ -400,15 +1427,43 @@ class DrawHelper {
     this.screenSpaceEventHandler.setInputAction(
       (click: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
         if (!this.isDrawing) return;
+        console.log('左键点击44444444添加点位置');
+        // 本次点击事件链中屏蔽其它模块 pick（绘制中通常已屏蔽，但用于“结束绘制”边界的兜底）
+        this.setPickCooldown(300, 'draw-left-click');
+        // 防御：requestRenderMode 下，点击会触发渲染更新；先清理历史脏实体避免更新阶段抛错
+        this.removeEntitiesWithInvalidPositions();
+
         if (this._doubleClickPending) {
           this._doubleClickPending = false;
           return;
         }
         const cartesian = this.pickGlobePosition(click.position);
+        console.log('左键点击55555555添加点位置:', cartesian);
+
+        try {
+          const anyViewer: any = this.viewer as any;
+          this.lastLeftClickDebug = {
+            time: Date.now(),
+            mode: this.drawMode,
+            isDrawing: this.isDrawing,
+            pickedCartesian: cartesian
+              ? { x: (cartesian as any).x, y: (cartesian as any).y, z: (cartesian as any).z }
+              : null,
+            tempPositionsCount: this.tempPositions.length,
+            tempEntitiesCount: this.tempEntities.length,
+          };
+          anyViewer.__vmapDrawHelperLastLeftClickDebug = this.lastLeftClickDebug;
+        } catch {
+          // ignore
+        }
+
         if (cartesian) {
           // 点击时同步提示位置（避免用户不移动鼠标看不到提示更新）
           this.updateDrawHintPosition(cartesian);
           this.addPoint(cartesian);
+
+          // 再清理一次：本次点击可能刚创建了新的临时点/面/边框实体，确保下一帧不会因 NaN 停渲染
+          this.removeEntitiesWithInvalidPositions();
         }
       },
       Cesium.ScreenSpaceEventType.LEFT_CLICK
@@ -459,6 +1514,8 @@ class DrawHelper {
         }
 
         this._doubleClickPending = true;
+        // 双击结束绘制：提前设置较长的冷却，避免随后同一/紧邻事件链触发覆盖物 pick
+        this.setPickCooldown(900, 'draw-double-click-finish');
         this.finishDrawing();
 
         // 恢复 Cesium 默认的双击行为（如果存在的话）
@@ -539,14 +1596,7 @@ class DrawHelper {
       console.warn("Invalid Cartesian3 detected in addPoint. Point ignored.", position);
       return;
     }
-    // 在 3D 模式下，若地形尚未加载完成且当前为测面模式，则忽略点击，避免早期不稳定坐标
-    if (
-      this.drawMode === "polygon" &&
-      this.scene.mode === Cesium.SceneMode.SCENE3D &&
-      !this.scene.globe.tilesLoaded
-    ) {
-      return;
-    }
+    // 不因 tilesLoaded 拦截点击：地形未就绪时回退为椭球拾取，后续再做采样修正
 
     if (this.currentDrawer) {
       // 多边形：在落点前进行自相交校验（可通过 DrawOptions 控制行为）
@@ -560,6 +1610,7 @@ class DrawHelper {
           if (willSelfIntersect && !allowContinue) {
             // 阻止落点，但保持绘制状态，用户可继续选择其他点
             console.warn('Polygon self-intersection detected; point rejected.');
+            this.setDrawHintOverride('多边形不能交叉');
             return;
           }
         }
@@ -612,6 +1663,21 @@ class DrawHelper {
   private updatePreview(currentMousePosition: Cesium.Cartesian3): void {
     // 记录最近一次预览点，便于右键删点后立即重绘
     this.lastPreviewPosition = currentMousePosition.clone();
+
+    // 多边形：预览阶段同样拦截“将要自相交”的鼠标点，避免自相交三角剖分导致的缺失/闪烁
+    if (this.drawMode === "polygon" && this.currentDrawer) {
+      const allowTouch = !!this.currentDrawOptions?.selfIntersectionAllowTouch;
+      const allowContinue = !!this.currentDrawOptions?.selfIntersectionAllowContinue;
+      const existing = this.currentDrawer.getTempPositions();
+      if (existing && existing.length >= 2) {
+        const willSelfIntersect = wouldCreatePolygonSelfIntersection(existing, currentMousePosition, { allowTouch });
+        if (willSelfIntersect && !allowContinue) {
+          this.setDrawHintOverride('多边形不能交叉');
+          this.updateDrawingEntity(undefined);
+          return;
+        }
+      }
+    }
     this.updateDrawingEntity(currentMousePosition);
   }
 
@@ -642,6 +1708,28 @@ class DrawHelper {
       return;
     }
 
+    // 结束绘制的临界时刻：绘制状态即将切换，短暂屏蔽其它模块 pick
+    this.setPickCooldown(900, 'draw-finish');
+
+    // 双击结束绘制时，Cesium 往往会先触发两次 LEFT_CLICK 再触发 LEFT_DOUBLE_CLICK，
+    // 导致最后一个点被重复落两次（两个点几乎相同），进而在闭合自相交校验中被判定为 touch/overlap。
+    // 这里在真正 finish 前去掉这个“重复末尾点”。
+    if (this.drawMode === 'polygon') {
+      try {
+        const pts = this.currentDrawer.getTempPositions();
+        if (pts && pts.length >= 2) {
+          const a = pts[pts.length - 1];
+          const b = pts[pts.length - 2];
+          // 5cm 阈值：足以覆盖双击同一点的拾取抖动，不影响正常绘制
+          if (Cesium.Cartesian3.distance(a, b) <= 0.05) {
+            this.currentDrawer.removeLastPointAndRedraw();
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+
     const result = this.currentDrawer.finishDrawing();
 
     // 若绘制类返回 null（例如点数不足/自相交被拦截），它通常不会触发 onDrawEnd 回调。
@@ -667,6 +1755,22 @@ class DrawHelper {
 
     if (result && result.entity) {
       this.finishedEntities.push(result.entity);
+
+      // 关键：在下一帧渲染更新前校验实体，避免 GeometryUpdater 因 NaN 直接停渲染
+      this.validateEntityPositionsOrRemove(result.entity);
+      const border = (result.entity as any)?._borderEntity as Cesium.Entity | undefined;
+      if (border) {
+        this.validateEntityPositionsOrRemove(border);
+      }
+
+      // 两阶段：先 NONE 落地，地形稳定后再采样/切换
+      this.scheduleTerrainRefine(result.entity);
+      try {
+        const labels = ((result.entity as any)?._labelEntities as Cesium.Entity[] | undefined) || [];
+        labels.forEach((l) => this.scheduleTerrainRefine(l));
+      } catch {
+        // ignore
+      }
     }
 
     // 同步临时数据
@@ -684,6 +1788,11 @@ class DrawHelper {
     // 完成绘制后，恢复绘图状态和事件
     this.drawMode = null;
     this.isDrawing = false;
+    try {
+      (this.viewer as any).__vmapDrawHelperIsDrawing = false;
+    } catch {
+      // ignore
+    }
     this.lastPreviewPosition = null;
     this.currentDrawer = null;
     this.currentDrawOptions = undefined;
@@ -695,6 +1804,9 @@ class DrawHelper {
     if (DrawHelper.activeDrawingHelper === this) {
       DrawHelper.activeDrawingHelper = null;
     }
+
+    // 防御：finish 后也清理一次，避免遗留实体在 render/update 中持续触发 NaN
+    this.removeEntitiesWithInvalidPositions();
   }
 
   /**
@@ -718,6 +1830,11 @@ class DrawHelper {
     if (resetMode) {
       this.drawMode = null;
       this.isDrawing = false;
+      try {
+        (this.viewer as any).__vmapDrawHelperIsDrawing = false;
+      } catch {
+        // ignore
+      }
       this.lastPreviewPosition = null;
       this.currentDrawer = null;
       this.deactivateDrawingHandlers();
@@ -742,6 +1859,9 @@ class DrawHelper {
       if (DrawHelper.activeDrawingHelper === this) {
         DrawHelper.activeDrawingHelper = null;
       }
+
+      // 退出绘制后恢复 entities.add
+      this.uninstallEntitiesAddHook();
     }
   }
 
@@ -984,6 +2104,8 @@ class DrawHelper {
    */
   private updateFinishedEntitiesForModeChange(): void {
     const is3DMode = this.offsetHeight > 0;
+    const allowGroundClamping =
+      this.scene.mode === Cesium.SceneMode.SCENE3D && this.scene.globe.tilesLoaded;
 
     // 更新已完成的主要实体（线、多边形、矩形）
     this.finishedEntities.forEach((entity) => {
@@ -1000,25 +2122,36 @@ class DrawHelper {
             Number.isFinite(pos.y) &&
             Number.isFinite(pos.z)
           );
-          if (groundPositions.length === 0) {
+          if (groundPositions.length < 2) {
             return;
           }
           if (is3DMode) {
             // 切换到3D模式：抬高位置，取消贴地
-            const elevatedPositions = groundPositions.map(pos => {
-              const carto = Cesium.Cartographic.fromCartesian(pos);
-              return Cesium.Cartesian3.fromRadians(
-                carto.longitude,
-                carto.latitude,
-                (carto.height || 0) + this.offsetHeight
-              );
-            });
+            const elevatedPositions = groundPositions
+              .map((pos) => {
+                try {
+                  const carto = Cesium.Cartographic.fromCartesian(pos);
+                  if (!Number.isFinite(carto.longitude) || !Number.isFinite(carto.latitude)) return null;
+                  const baseHeight = Number.isFinite(carto.height) ? (carto.height as number) : 0;
+                  const p = Cesium.Cartesian3.fromRadians(
+                    carto.longitude,
+                    carto.latitude,
+                    baseHeight + this.offsetHeight
+                  );
+                  return this.isFiniteCartesian3(p) ? p : null;
+                } catch {
+                  return null;
+                }
+              })
+              .filter((p): p is Cesium.Cartesian3 => !!p);
+            if (elevatedPositions.length < 2) return;
             entity.polyline.positions = new Cesium.ConstantProperty(elevatedPositions);
             entity.polyline.clampToGround = new Cesium.ConstantProperty(false);
           } else {
             // 切换到2D模式：使用原始地面位置，贴地
             entity.polyline.positions = new Cesium.ConstantProperty(groundPositions);
-            entity.polyline.clampToGround = new Cesium.ConstantProperty(true);
+            // 统一不走 ground pipeline：clampToGround=false，避免 TerrainOffsetProperty/ground worker 异常
+            entity.polyline.clampToGround = new Cesium.ConstantProperty(false);
           }
         }
       } else if (entity.polygon) {
@@ -1031,25 +2164,38 @@ class DrawHelper {
             Number.isFinite(pos.y) &&
             Number.isFinite(pos.z)
           );
-          if (groundPositions.length === 0) {
+          if (groundPositions.length < 3) {
             return;
           }
           if (is3DMode) {
             // 切换到3D模式：抬高位置
-            const elevatedPositions = groundPositions.map(pos => {
-              const carto = Cesium.Cartographic.fromCartesian(pos);
-              return Cesium.Cartesian3.fromRadians(
-                carto.longitude,
-                carto.latitude,
-                (carto.height || 0) + this.offsetHeight
-              );
-            });
-            entity.polygon.hierarchy = new Cesium.ConstantProperty(new Cesium.PolygonHierarchy(elevatedPositions));
+            const elevatedPositions = groundPositions
+              .map((pos) => {
+                try {
+                  const carto = Cesium.Cartographic.fromCartesian(pos);
+                  if (!Number.isFinite(carto.longitude) || !Number.isFinite(carto.latitude)) return null;
+                  const baseHeight = Number.isFinite(carto.height) ? (carto.height as number) : 0;
+                  const p = Cesium.Cartesian3.fromRadians(
+                    carto.longitude,
+                    carto.latitude,
+                    baseHeight + this.offsetHeight
+                  );
+                  return this.isFiniteCartesian3(p) ? p : null;
+                } catch {
+                  return null;
+                }
+              })
+              .filter((p): p is Cesium.Cartesian3 => !!p);
+            if (elevatedPositions.length < 3) return;
+
+            entity.polygon.hierarchy = new Cesium.ConstantProperty(
+              new Cesium.PolygonHierarchy(elevatedPositions)
+            );
             entity.polygon.heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.NONE);
           } else {
-            // 切换到2D模式：使用原始地面位置，贴地
+            // 切换到非 3D：统一不使用 CLAMP_TO_GROUND（会创建 TerrainOffsetProperty/ground pipeline）
             entity.polygon.hierarchy = new Cesium.ConstantProperty(new Cesium.PolygonHierarchy(groundPositions));
-            entity.polygon.heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.CLAMP_TO_GROUND);
+            entity.polygon.heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.NONE);
           }
         }
       } else if (entity.rectangle) {
@@ -1060,7 +2206,7 @@ class DrawHelper {
             entity.rectangle.heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.NONE);
             entity.rectangle.extrudedHeight = new Cesium.ConstantProperty(this.offsetHeight);
           } else {
-            entity.rectangle.heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.CLAMP_TO_GROUND);
+            entity.rectangle.heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.NONE);
             entity.rectangle.extrudedHeight = undefined;
           }
         }
@@ -1079,30 +2225,47 @@ class DrawHelper {
         // 处理面积等使用 Cesium.Label 的标签
         if (is3DMode) {
           // 切换到3D模式：抬高标签位置
-          const carto = Cesium.Cartographic.fromCartesian(groundPosition);
-          const elevatedPosition = Cesium.Cartesian3.fromRadians(
-            carto.longitude,
-            carto.latitude,
-            (carto.height || 0) + this.offsetHeight
-          );
-          entity.position = new Cesium.ConstantPositionProperty(elevatedPosition);
-          entity.label.heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.RELATIVE_TO_GROUND);
+          try {
+            const carto = Cesium.Cartographic.fromCartesian(groundPosition);
+            const baseHeight = Number.isFinite(carto.height) ? (carto.height as number) : 0;
+            const elevatedPosition = Cesium.Cartesian3.fromRadians(
+              carto.longitude,
+              carto.latitude,
+              baseHeight + this.offsetHeight
+            );
+            if (!this.isFiniteCartesian3(elevatedPosition)) return;
+            entity.position = new Cesium.ConstantPositionProperty(elevatedPosition);
+          } catch {
+            return;
+          }
+          // 两阶段：先 NONE，待 tilesLoaded 后采样并可切换
+          entity.label.heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.NONE);
+          (entity as any)._preferRelativeToGround = true;
+          this.scheduleTerrainRefine(entity);
         } else {
           // 切换到2D模式：使用原始地面位置，贴地
           entity.position = new Cesium.ConstantPositionProperty(groundPosition);
-          entity.label.heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.CLAMP_TO_GROUND);
+          entity.label.heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.NONE);
         }
       } else if (entity.billboard) {
         // 处理测距总长 / 分段的 billboard 标签
         if (is3DMode) {
-          const carto = Cesium.Cartographic.fromCartesian(groundPosition);
-          const elevatedPosition = Cesium.Cartesian3.fromRadians(
-            carto.longitude,
-            carto.latitude,
-            (carto.height || 0) + this.offsetHeight
-          );
-          entity.position = new Cesium.ConstantPositionProperty(elevatedPosition);
-          entity.billboard.heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.RELATIVE_TO_GROUND);
+          try {
+            const carto = Cesium.Cartographic.fromCartesian(groundPosition);
+            const baseHeight = Number.isFinite(carto.height) ? (carto.height as number) : 0;
+            const elevatedPosition = Cesium.Cartesian3.fromRadians(
+              carto.longitude,
+              carto.latitude,
+              baseHeight + this.offsetHeight
+            );
+            if (!this.isFiniteCartesian3(elevatedPosition)) return;
+            entity.position = new Cesium.ConstantPositionProperty(elevatedPosition);
+          } catch {
+            return;
+          }
+          entity.billboard.heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.NONE);
+          (entity as any)._preferRelativeToGround = true;
+          this.scheduleTerrainRefine(entity);
         } else {
           // 2D 模式下对 billboard 贴地支持有限，这里直接使用地面 Cartesian3，关闭贴地
           entity.position = new Cesium.ConstantPositionProperty(groundPosition);
@@ -1117,45 +2280,230 @@ class DrawHelper {
 
       const position = entity.position?.getValue(Cesium.JulianDate.now()) as Cesium.Cartesian3;
       if (position) {
-        const carto = Cesium.Cartographic.fromCartesian(position);
+        let carto: Cesium.Cartographic;
+        try {
+          carto = Cesium.Cartographic.fromCartesian(position);
+        } catch {
+          return;
+        }
         // 尝试从保存的原始位置获取，如果没有则从当前位置推断
         const groundPosition = (entity as any)._groundPosition;
         if (groundPosition) {
           if (is3DMode) {
-            const carto = Cesium.Cartographic.fromCartesian(groundPosition);
+            let gc: Cesium.Cartographic;
+            try {
+              gc = Cesium.Cartographic.fromCartesian(groundPosition);
+            } catch {
+              return;
+            }
+            const baseHeight = Number.isFinite(gc.height) ? (gc.height as number) : 0;
             const elevatedPosition = Cesium.Cartesian3.fromRadians(
-              carto.longitude,
-              carto.latitude,
-              (carto.height || 0) + this.offsetHeight
+              gc.longitude,
+              gc.latitude,
+              baseHeight + this.offsetHeight
             );
+            if (!this.isFiniteCartesian3(elevatedPosition)) return;
             entity.position = new Cesium.ConstantPositionProperty(elevatedPosition);
-            entity.point.heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.RELATIVE_TO_GROUND);
+            entity.point.heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.NONE);
+            (entity as any)._preferRelativeToGround = true;
+            this.scheduleTerrainRefine(entity);
           } else {
             entity.position = new Cesium.ConstantPositionProperty(groundPosition);
-            entity.point.heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.CLAMP_TO_GROUND);
+            entity.point.heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.NONE);
           }
         } else {
-          // 如果没有保存的原始位置，从当前位置推断（兼容旧数据）
+          // 如果没有保存的原位置，从当前位置推断（兼容旧数据）
           if (is3DMode) {
+            const baseHeight = Number.isFinite(carto.height) ? (carto.height as number) : 0;
             const elevatedPosition = Cesium.Cartesian3.fromRadians(
               carto.longitude,
               carto.latitude,
-              Math.max(0, (carto.height || 0) - this.offsetHeight) + this.offsetHeight
+              Math.max(0, baseHeight - this.offsetHeight) + this.offsetHeight
             );
+            if (!this.isFiniteCartesian3(elevatedPosition)) return;
             entity.position = new Cesium.ConstantPositionProperty(elevatedPosition);
-            entity.point.heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.RELATIVE_TO_GROUND);
+            entity.point.heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.NONE);
+            (entity as any)._preferRelativeToGround = true;
+            this.scheduleTerrainRefine(entity);
           } else {
+            const baseHeight = Number.isFinite(carto.height) ? (carto.height as number) : 0;
             const groundPos = Cesium.Cartesian3.fromRadians(
               carto.longitude,
               carto.latitude,
-              Math.max(0, (carto.height || 0) - this.offsetHeight)
+              Math.max(0, baseHeight - this.offsetHeight)
             );
+            if (!this.isFiniteCartesian3(groundPos)) return;
             entity.position = new Cesium.ConstantPositionProperty(groundPos);
-            entity.point.heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.CLAMP_TO_GROUND);
+            entity.point.heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.NONE);
           }
         }
       }
     });
+  }
+
+  /**
+   * 加入“两阶段地形适配”队列：先 NONE 安全显示，tilesLoaded 后再采样/切换。
+   */
+  private scheduleTerrainRefine(entity: Cesium.Entity): void {
+    try {
+      if (!entity) return;
+      // 只在 3D 模式下才有“地形稳定后再贴地/采样”的意义
+      if (this.scene.mode !== Cesium.SceneMode.SCENE3D) return;
+      this.terrainRefineQueue.add(entity);
+    } catch {
+      // ignore
+    }
+  }
+
+  private processTerrainRefineQueue(): void {
+    try {
+      const now = Date.now();
+      if (now - this.terrainRefineLastTick < 500) return;
+      this.terrainRefineLastTick = now;
+
+      if (this.scene.mode !== Cesium.SceneMode.SCENE3D) return;
+      if (!this.scene.globe.tilesLoaded) return;
+      if (this.terrainRefineQueue.size === 0) return;
+
+      // 每次最多处理一个，避免一次性采样太多点位造成卡顿
+      const next = this.terrainRefineQueue.values().next().value as Cesium.Entity | undefined;
+      if (!next) return;
+      const id = (next as any).id as string | undefined;
+      if (id && this.terrainRefineInFlight.has(id)) {
+        this.terrainRefineQueue.delete(next);
+        return;
+      }
+      if (id) this.terrainRefineInFlight.add(id);
+      this.terrainRefineQueue.delete(next);
+
+      this.refineEntityToTerrain(next)
+        .catch(() => {
+          // ignore
+        })
+        .finally(() => {
+          if (id) this.terrainRefineInFlight.delete(id);
+        });
+    } catch {
+      // ignore
+    }
+  }
+
+  private async refineEntityToTerrain(entity: Cesium.Entity): Promise<void> {
+    const CesiumAny: any = Cesium as any;
+    const sampleMostDetailed = CesiumAny.sampleTerrainMostDetailed as
+      | ((terrainProvider: any, positions: Cesium.Cartographic[]) => Promise<Cesium.Cartographic[]>)
+      | undefined;
+    const terrainProvider = (this.viewer as any).terrainProvider;
+
+    if (!sampleMostDetailed || !terrainProvider) return;
+    if (!entity) return;
+
+    // 1) 绘制实体（polygon/line）的采样：用 _groundPositions
+    const drawType = (entity as any)._drawType as string | undefined;
+    const rawGroundPositions = (entity as any)._groundPositions as Cesium.Cartesian3[] | undefined;
+    if (drawType && Array.isArray(rawGroundPositions) && rawGroundPositions.length > 0) {
+      const required = drawType === 'polygon' ? 3 : 2;
+      if (rawGroundPositions.length >= required) {
+        const cartos = rawGroundPositions
+          .map((p) => {
+            try {
+              const c = Cesium.Cartographic.fromCartesian(p);
+              if (!Number.isFinite(c.longitude) || !Number.isFinite(c.latitude)) return null;
+              c.height = 0;
+              return c;
+            } catch {
+              return null;
+            }
+          })
+          .filter((c): c is Cesium.Cartographic => !!c);
+        if (cartos.length >= required) {
+          const sampled = await sampleMostDetailed(terrainProvider, cartos);
+
+          const safeGround = sampled
+            .map((c) => {
+              const h = Number.isFinite((c as any).height) ? (c as any).height : 0;
+              const p = Cesium.Cartesian3.fromRadians(c.longitude, c.latitude, h);
+              return this.isFiniteCartesian3(p) ? p : null;
+            })
+            .filter((p): p is Cesium.Cartesian3 => !!p);
+          if (safeGround.length >= required) {
+            (entity as any)._groundPositions = safeGround;
+
+            const elevated = sampled
+              .map((c) => {
+                const h = Number.isFinite((c as any).height) ? (c as any).height : 0;
+                const p = Cesium.Cartesian3.fromRadians(c.longitude, c.latitude, h + Math.max(0, this.offsetHeight));
+                return this.isFiniteCartesian3(p) ? p : null;
+              })
+              .filter((p): p is Cesium.Cartesian3 => !!p);
+
+            if (drawType === 'polygon' && entity.polygon && elevated.length >= 3) {
+              entity.polygon.hierarchy = new Cesium.ConstantProperty(new Cesium.PolygonHierarchy(elevated));
+              (entity.polygon as any).heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.NONE);
+
+              const border = (entity as any)._borderEntity as Cesium.Entity | undefined;
+              if (border?.polyline) {
+                const closed = elevated.slice();
+                if (closed.length >= 2) closed.push(elevated[0]);
+                border.polyline.positions = new Cesium.ConstantProperty(closed);
+                (border.polyline as any).clampToGround = new Cesium.ConstantProperty(false);
+              }
+            }
+            if (drawType === 'line' && entity.polyline && elevated.length >= 2) {
+              entity.polyline.positions = new Cesium.ConstantProperty(elevated);
+              (entity.polyline as any).clampToGround = new Cesium.ConstantProperty(false);
+            }
+          }
+        }
+      }
+    }
+
+    // 2) 单点实体（label/billboard/point）的采样：用 _groundPosition
+    const groundPosition = (entity as any)._groundPosition as Cesium.Cartesian3 | undefined;
+    if (groundPosition) {
+      let carto: Cesium.Cartographic | null = null;
+      try {
+        carto = Cesium.Cartographic.fromCartesian(groundPosition);
+      } catch {
+        carto = null;
+      }
+      if (carto && Number.isFinite(carto.longitude) && Number.isFinite(carto.latitude)) {
+        carto.height = 0;
+        const sampled = await sampleMostDetailed(terrainProvider, [carto]);
+        const c = sampled && sampled[0];
+        if (c && Number.isFinite(c.longitude) && Number.isFinite(c.latitude)) {
+          const h = Number.isFinite((c as any).height) ? (c as any).height : 0;
+          const elevated = Cesium.Cartesian3.fromRadians(c.longitude, c.latitude, h + Math.max(0, this.offsetHeight));
+          if (this.isFiniteCartesian3(elevated)) {
+            entity.position = new Cesium.ConstantPositionProperty(elevated);
+
+            // 关键：永远不启用 RELATIVE/CLAMP，以彻底绕开 TerrainOffsetProperty（NaN 源头）
+            if (entity.billboard) {
+              entity.billboard.heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.NONE);
+            }
+            if (entity.label) {
+              entity.label.heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.NONE);
+            }
+            if (entity.point) {
+              entity.point.heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.NONE);
+            }
+          }
+        }
+      }
+    }
+
+    // 3) 若该 entity 是绘制主体，顺带处理其关联 label（避免需要单独入队）
+    try {
+      const labels = ((entity as any)._labelEntities as Cesium.Entity[] | undefined) || [];
+      for (const l of labels) {
+        if (l) {
+          // label 自己会走上面的 groundPosition 分支
+          await this.refineEntityToTerrain(l);
+        }
+      }
+    } catch {
+      // ignore
+    }
   }
 
   /**
@@ -1169,6 +2517,21 @@ class DrawHelper {
       } catch { /* ignore */ }
       this.entityClickHandler = null;
     }
+
+    // 卸载 terrain refine listener（仅移除当前实例安装的那个）
+    try {
+      const anyViewer: any = this.viewer as any;
+      const cur = anyViewer.__vmapDrawHelperTerrainRefineListener as
+        | ((scene: Cesium.Scene, time: Cesium.JulianDate) => void)
+        | undefined;
+      if (cur && this.terrainRefineListener && cur === this.terrainRefineListener) {
+        this.scene.postRender.removeEventListener(cur);
+        anyViewer.__vmapDrawHelperTerrainRefineListener = undefined;
+      }
+    } catch {
+      // ignore
+    }
+
     // 可以选择不清除实体，由用户决定
     // this.clearAll();
   }

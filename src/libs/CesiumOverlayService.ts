@@ -65,9 +65,6 @@ export class CesiumOverlayService {
     const container = this.viewer.container;
     this.infoWindowContainer = document.createElement('div');
     this.infoWindowContainer.id = 'cesium-info-window-container';
-    // Make the info window container cover the entire map container so child coordinates
-    // can be expressed in container-local pixels. Keep pointerEvents none so clicks pass
-    // through, but individual info windows can opt-in with pointerEvents = 'auto'.
     this.infoWindowContainer.style.position = 'absolute';
     this.infoWindowContainer.style.left = '0';
     this.infoWindowContainer.style.top = '0';
@@ -83,6 +80,24 @@ export class CesiumOverlayService {
    */
   private setupEntityClickHandler(): void {
     this.viewer.cesiumWidget.screenSpaceEventHandler.setInputAction((click: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
+      // 绘制过程中禁用覆盖物 pick：避免与 DrawHelper 的绘制交互冲突，并减少 ground/worker 管线异常概率
+      const anyViewer: any = this.viewer as any;
+      if (anyViewer.__vmapDrawHelperIsDrawing) {
+        return;
+      }
+
+      // 绘制刚结束的短窗口内也禁用 pick（避免“结束绘制的那次点击/双击”继续触发 overlay pick）
+      const blockUntil = Number(anyViewer.__vmapDrawHelperBlockPickUntil) || 0;
+      if (Date.now() < blockUntil) {
+        return;
+      }
+
+      // 防御：偶发会收到非有限的屏幕坐标
+      const anyPos: any = (click as any).position;
+      if (!anyPos || !Number.isFinite(anyPos.x) || !Number.isFinite(anyPos.y)) {
+        return;
+      }
+
       const pickedObject = this.viewer.scene.pick(click.position);
       if (pickedObject && Cesium.defined(pickedObject.id) && pickedObject.id instanceof Cesium.Entity) {
         const entity = pickedObject.id as DrawEntity & OverlayEntity;
@@ -122,22 +137,6 @@ export class CesiumOverlayService {
     const v = this.getPropertyValue<any>(prop, fallback);
     const n = typeof v === 'number' ? v : Number(v);
     return Number.isFinite(n) ? n : fallback;
-  }
-
-  private toggleOverlayHighlight(entity: OverlayEntity): void {
-    const targets = (entity._highlightEntities && entity._highlightEntities.length > 0)
-      ? entity._highlightEntities
-      : [entity];
-    const shouldHighlight = !targets.some((e) => (e as OverlayEntity)._isHighlighted);
-
-    for (const e of targets) {
-      const oe = e as OverlayEntity;
-      if (shouldHighlight) {
-        this.applyOverlayHighlightStyle(oe);
-      } else {
-        this.restoreOverlayHighlightStyle(oe);
-      }
-    }
   }
 
   private resolveHighlightOptions(entity: OverlayEntity): { color: Cesium.Color; fillAlpha: number } {
@@ -381,6 +380,22 @@ export class CesiumOverlayService {
 
   // ========== 便捷方法：直接调用工具类方法并管理ID ==========
 
+  public toggleOverlayHighlight(entity: OverlayEntity): void {
+    const targets = (entity._highlightEntities && entity._highlightEntities.length > 0)
+      ? entity._highlightEntities
+      : [entity];
+    const shouldHighlight = !targets.some((e) => (e as OverlayEntity)._isHighlighted);
+
+    for (const e of targets) {
+      const oe = e as OverlayEntity;
+      if (shouldHighlight) {
+        this.applyOverlayHighlightStyle(oe);
+      } else {
+        this.restoreOverlayHighlightStyle(oe);
+      }
+    }
+  }
+
   /**
    * 添加 Marker
    */
@@ -512,7 +527,7 @@ export class CesiumOverlayService {
         this.entities.remove(overlay._borderEntity);
         overlay._borderEntity = undefined;
       }
-      
+
       this.entities.remove(entity);
       this.overlayMap.delete(id);
       return true;
@@ -587,12 +602,12 @@ export class CesiumOverlayService {
       if (overlay._borderEntity) {
         overlay._borderEntity.show = visible;
       }
-      
+
       // 如果是信息窗口，更新DOM显示
       if (overlay._infoWindow) {
         this.infoWindow.setVisible(entity, visible);
       }
-      
+
       return true;
     }
     return false;

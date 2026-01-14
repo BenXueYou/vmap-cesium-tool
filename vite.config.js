@@ -54,6 +54,7 @@ export default defineConfig(({ mode }) => {
       include: ["cesium"],
     },
     server: {
+      host: '0.0.0.0',
       port: 3000,
       fs: {
         // 允许访问项目根目录以外的文件
