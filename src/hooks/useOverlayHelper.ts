@@ -16,6 +16,8 @@ export function useOverlayHelper(
   const overlayService = ref<CesiumOverlayService | null>(null);
   const markerHandler = ref<Cesium.ScreenSpaceEventHandler | null>(null);
   const markerEntities: Entity[] = [];
+  const lastRectangleB = ref<Entity | null>(null);
+  const lastRectangleE = ref<Entity | null>(null);
 
   /**
    * 初始化覆盖物服务
@@ -274,6 +276,7 @@ export function useOverlayHelper(
       },
     });
     logRectangle('B(init)', rectangleB);
+    lastRectangleB.value = rectangleB;
 
     // Test C: primitive ❌（显式悬空 clampToGround=false，会回退到 entity rectangle）
     const rectC = Cesium.Rectangle.fromDegrees(lon - 0.012, lat - 0.015, lon - 0.006, lat - 0.008);
@@ -336,6 +339,7 @@ export function useOverlayHelper(
       },
     });
     logRectangle('E(init)', rectangleE);
+    lastRectangleE.value = rectangleE;
 
     markerEntities.push(rectangleA, rectangleB, rectangleC, rectangleD, rectangleE);
     message.value = '已添加矩形：A primitive粗边框贴地 / B fallback非粗边框 / C fallback悬空 / D auto->primitive / E fallback非纯色材质';
@@ -343,18 +347,68 @@ export function useOverlayHelper(
 
     // Quick check: visible toggle（primitive/entity 都应该正常生效）
     setTimeout(() => {
-      // overlayService.value!.setOverlayVisible(rectangleA.id, false);
-      // overlayService.value!.setOverlayVisible(rectangleD.id, false);
+      overlayService.value!.setOverlayVisible(rectangleA.id, false);
+      overlayService.value!.setOverlayVisible(rectangleD.id, false);
       setTimeout(() => {
-        // overlayService.value!.setOverlayVisible(rectangleA.id, true);
-        // overlayService.value!.setOverlayVisible(rectangleD.id, true);
+        overlayService.value!.setOverlayVisible(rectangleA.id, true);
+        overlayService.value!.setOverlayVisible(rectangleD.id, true);
       }, 800);
     }, 900);
 
     // Quick check: remove（验证 primitive/entity 的 removeOverlay 兼容）
     setTimeout(() => {
-      // overlayService.value!.removeOverlay(rectangleC.id);
+      overlayService.value!.removeOverlay(rectangleC.id);
     }, 2600);
+
+    // Quick check: highlight APIs
+    setTimeout(() => {
+      // 显式高亮（click reason）
+      overlayService.value!.setOverlayHighlight(rectangleB.id, true);
+      // 2s 后取消高亮
+      setTimeout(() => {
+        overlayService.value!.setOverlayHighlight(rectangleB.id, false);
+      }, 2000);
+    }, 3000);
+
+    setTimeout(() => {
+      // toggle 高亮（click reason）
+      overlayService.value!.toggleOverlayHighlight(rectangleE as any);
+      setTimeout(() => {
+        overlayService.value!.toggleOverlayHighlight(rectangleE as any);
+      }, 2000);
+    }, 5600);
+  };
+
+  /**
+   * 显式高亮测试（setOverlayHighlight）
+   */
+  const testSetOverlayHighlight = () => {
+    if (!overlayService.value) return;
+    if (!lastRectangleB.value) {
+      message.value = '请先添加矩形（RectB）';
+      setTimeout(() => (message.value = ''), 1500);
+      return;
+    }
+    overlayService.value.setOverlayHighlight(lastRectangleB.value.id as any, true, 'hover');
+    setTimeout(() => {
+      overlayService.value!.setOverlayHighlight(lastRectangleB.value!.id as any, false, 'hover');
+    }, 2000);
+  };
+
+  /**
+   * 切换高亮测试（toggleOverlayHighlight）
+   */
+  const testToggleOverlayHighlight = () => {
+    if (!overlayService.value) return;
+    if (!lastRectangleE.value) {
+      message.value = '请先添加矩形（RectE）';
+      setTimeout(() => (message.value = ''), 1500);
+      return;
+    }
+    overlayService.value.toggleOverlayHighlight(lastRectangleE.value as any);
+    setTimeout(() => {
+      overlayService.value!.toggleOverlayHighlight(lastRectangleE.value as any);
+    }, 2000);
   };
 
   /**
@@ -864,6 +918,8 @@ export function useOverlayHelper(
     addPolygon,
     addRectangle,
     addInfoWindow,
+    testSetOverlayHighlight,
+    testToggleOverlayHighlight,
     cancelMarkerMode,
     destroyOverlayService,
   };

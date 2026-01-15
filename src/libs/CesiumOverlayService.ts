@@ -677,7 +677,12 @@ export class CesiumOverlayService {
 
     entity._isHighlighted = true;
   }
-
+  
+  /**
+   * 恢复覆盖物的高亮样式
+   * @param entity - 覆盖物实体对象
+   * @returns 无返回值
+   */
   private restoreOverlayHighlightStyle(entity: OverlayEntity): void {
     // Primitive-backed circle：颜色更新不走 entity.graphics
     if (entity._overlayType === 'circle-primitive') {
@@ -696,13 +701,16 @@ export class CesiumOverlayService {
       this.rectangle.restorePrimitiveHighlight(entity);
       return;
     }
+    // 如果实体未被高亮，直接返回
     if (!entity._isHighlighted) return;
+    // 获取原始样式，如果没有则取消高亮状态并返回
     const orig = entity._highlightOriginalStyle;
     if (!orig) {
       entity._isHighlighted = false;
       return;
     }
 
+    // 恢复点的样式
     if (entity.point && orig.point) {
       const p = entity.point;
       p.pixelSize = orig.point.pixelSize;
@@ -767,13 +775,34 @@ export class CesiumOverlayService {
 
   // ========== 便捷方法：直接调用工具类方法并管理ID ==========
 
-  public toggleOverlayHighlight(entity: OverlayEntity): void {
+  public toggleOverlayHighlight(entity: OverlayEntity, reason: 'click' | 'hover' = 'click'): void {
     const targets = (entity._highlightEntities && entity._highlightEntities.length > 0)
       ? entity._highlightEntities
       : [entity];
 
-    const shouldEnable = !targets.some((e) => !!(e as OverlayEntity)._highlightState?.click);
-    this.setOverlayHighlightReason(targets, 'click', shouldEnable);
+    const shouldEnable = !targets.some((e) => !!(e as OverlayEntity)._highlightState?.[reason]);
+    this.setOverlayHighlightReason(targets, reason, shouldEnable);
+  }
+
+  /**
+   * 高亮/取消高亮覆盖物（显式设置）
+   * @param entityOrId 覆盖物实体或 id
+   * @param enabled 是否高亮
+   * @param reason 高亮原因（默认 click）
+   */
+  public setOverlayHighlight(entityOrId: OverlayEntity | string, enabled: boolean, reason: 'click' | 'hover' = 'click'): boolean {
+    const entity = (typeof entityOrId === 'string')
+      ? (this.overlayMap.get(entityOrId) as OverlayEntity | undefined)
+      : entityOrId;
+
+    if (!entity) return false;
+
+    const targets = (entity._highlightEntities && entity._highlightEntities.length > 0)
+      ? entity._highlightEntities
+      : [entity];
+
+    this.setOverlayHighlightReason(targets, reason, enabled);
+    return true;
   }
 
   /**

@@ -15,6 +15,7 @@
         <button @click="addDrawPolygon_FinishFallback">绘制多边形(完成回退)</button>
         <button @click="addDrawPolygonNoLabel">绘制多边形(无面积)</button>
       </div>
+      <br />
       <div>
         <button @click="addMarker">添加点位</button>
         <button @click="addLine">添加线条</button>
@@ -27,11 +28,13 @@
         <button @click="addMarkerWithLabel">添加点位带标签</button>
         <button @click="addLabel">添加标签</button>
         <button @click="addRectangle">添加矩形</button>
+        <button @click="testSetOverlayHighlight">测试 setOverlayHighlight</button>
+        <button @click="testToggleOverlayHighlight">测试 toggleOverlayHighlight</button>
         <button @click="addInfoWindow">添加窗口</button>
         <button @click="() => addRing()">添加圆环</button>
         <button @click="addRingTest">测试添加圆环性能</button>
       </div>
-
+      <br />
       <div>
         <button @click="addHeatMap">添加热力图</button>
         <button @click="enableHeatmapAuto">开启热力图动态聚合</button>
@@ -99,6 +102,8 @@ const {
   cancelMarkerMode,
   addRing,
   destroyOverlayService,
+  testSetOverlayHighlight,
+  testToggleOverlayHighlight,
 } = useOverlayHelper(viewer, message);
 
 const {

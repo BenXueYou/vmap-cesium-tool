@@ -536,6 +536,7 @@ export interface RingOptions {
 
 export declare class CesiumOverlayService {
   constructor(viewer: Viewer);
+  toggleOverlayHighlight(entity: any, reason?: 'click' | 'hover'): void;
   addMarker(options: MarkerOptions): any; // 返回 Cesium.Entity
   addLabel(options: LabelOptions): any; // 返回 Cesium.Entity
   addIcon(options: IconOptions): any; // 返回 Cesium.Entity
@@ -551,6 +552,7 @@ export declare class CesiumOverlayService {
   removeAllOverlays(): void;
   updateOverlayPosition(id: string, position: Cartesian3 | [number, number, number?]): boolean;
   setOverlayVisible(id: string, visible: boolean): boolean;
+  setOverlayHighlight(entityOrId: any | string, enabled: boolean, reason?: 'click' | 'hover'): boolean;
   getAllOverlayIds(): string[];
   getAllOverlays(): any[]; // Cesium.Entity[]
   destroy(): void;
