@@ -46,6 +46,7 @@ export class CesiumOverlayService {
   constructor(viewer: Viewer) {
     this.viewer = viewer;
     this.entities = viewer.entities;
+    this.enableTranslucentPicking();
     this.initInfoWindowContainer();
     this.setupEntityClickHandler();
     this.setupEntityHoverHandler();
@@ -61,6 +62,169 @@ export class CesiumOverlayService {
     this.rectangle = new MapRectangle(viewer);
     this.circle = new MapCircle(viewer);
     this.ring = new MapRing(viewer);
+  }
+
+  /**
+   * Cesium 默认可能无法 pick 到半透明覆盖物（例如 alpha < 1 的填充面）。
+   * 开启 pickTranslucentDepth 后，hover/click 才能稳定命中半透明面。
+   */
+  private enableTranslucentPicking(): void {
+    try {
+      const scene: any = this.viewer.scene as any;
+      if (scene && 'pickTranslucentDepth' in scene) {
+        scene.pickTranslucentDepth = true;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  /**
+   * 尝试从屏幕坐标拾取地表/模型位置并转为 Cartographic
+   */
+  private pickCartographic(windowPosition: Cesium.Cartesian2): Cesium.Cartographic | null {
+    try {
+      const scene = this.viewer.scene;
+      let cartesian: Cesium.Cartesian3 | null = null;
+
+      if ((scene as any).pickPositionSupported) {
+        try {
+          const picked = scene.pickPosition(windowPosition);
+          if (picked && Number.isFinite((picked as any).x)) {
+            cartesian = picked as Cesium.Cartesian3;
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      if (!cartesian) {
+        cartesian = this.viewer.camera.pickEllipsoid(windowPosition, scene.globe.ellipsoid) as Cesium.Cartesian3 | null;
+      }
+
+      if (!cartesian) return null;
+      return Cesium.Cartographic.fromCartesian(cartesian);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * 当 pick/drillPick 未命中时，使用经纬度判断是否落在 Rectangle 覆盖物内
+   */
+  private findHoverableRectangleByCartographic(carto: Cesium.Cartographic): (DrawEntity & OverlayEntity) | null {
+    for (const entity of this.overlayMap.values()) {
+      const e = entity as DrawEntity & OverlayEntity;
+      if (e._drawType !== undefined) continue;
+      if (e.show === false) continue;
+
+      const hoverEnabled = !!(e._hoverHighlight || (e._highlightEntities && e._highlightEntities.some((h) => (h as OverlayEntity)._hoverHighlight)));
+      if (!hoverEnabled) continue;
+
+      let rect: Cesium.Rectangle | null = null;
+      if (e.rectangle && (e.rectangle as any).coordinates !== undefined) {
+        rect = this.getPropertyValue<Cesium.Rectangle | null>((e.rectangle as any).coordinates, null);
+      }
+      if (!rect && e._innerEntity && (e._innerEntity as any).rectangle && (e._innerEntity as any).rectangle.coordinates !== undefined) {
+        rect = this.getPropertyValue<Cesium.Rectangle | null>((e._innerEntity as any).rectangle.coordinates, null);
+      }
+
+      if (rect && Cesium.Rectangle.contains(rect, carto)) {
+        return e;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * 判断点是否在多边形内（2D）
+   */
+  private isPointInPolygon2D(point: Cesium.Cartesian2, polygon: Cesium.Cartesian2[]): boolean {
+    let inside = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const xi = polygon[i].x, yi = polygon[i].y;
+      const xj = polygon[j].x, yj = polygon[j].y;
+      const intersect = ((yi > point.y) !== (yj > point.y)) &&
+        (point.x < (xj - xi) * (point.y - yi) / (yj - yi + 1e-12) + xi);
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  }
+
+  private resolvePolygonPositions(entity: OverlayEntity): Cesium.Cartesian3[] | null {
+    if (entity.polygon && (entity.polygon as any).hierarchy !== undefined) {
+      const hierarchy = this.getPropertyValue<any>((entity.polygon as any).hierarchy, null);
+      if (hierarchy && Array.isArray(hierarchy.positions)) {
+        return hierarchy.positions as Cesium.Cartesian3[];
+      }
+    }
+    return null;
+  }
+
+  private findHoverablePolygonByCartographic(carto: Cesium.Cartographic): (DrawEntity & OverlayEntity) | null {
+    for (const entity of this.overlayMap.values()) {
+      const e = entity as DrawEntity & OverlayEntity;
+      if (e._drawType !== undefined) continue;
+      if (e.show === false) continue;
+
+      const hoverEnabled = !!(e._hoverHighlight || (e._highlightEntities && e._highlightEntities.some((h) => (h as OverlayEntity)._hoverHighlight)));
+      if (!hoverEnabled) continue;
+
+      const positions = this.resolvePolygonPositions(e) || (e._innerEntity ? this.resolvePolygonPositions(e._innerEntity as OverlayEntity) : null);
+      if (!positions || positions.length < 3) continue;
+
+      const plane = Cesium.EllipsoidTangentPlane.fromPoints(positions, this.viewer.scene.globe.ellipsoid);
+      const point2 = plane.projectPointOntoPlane(Cesium.Cartesian3.fromRadians(carto.longitude, carto.latitude, 0));
+      if (!point2) continue;
+
+      const poly2 = plane.projectPointsOntoPlane(positions);
+      if (!poly2 || poly2.length < 3) continue;
+
+      if (this.isPointInPolygon2D(point2, poly2)) {
+        return e;
+      }
+    }
+    return null;
+  }
+
+  private findHoverableCircleByCartographic(carto: Cesium.Cartographic): (DrawEntity & OverlayEntity) | null {
+    for (const entity of this.overlayMap.values()) {
+      const e = entity as DrawEntity & OverlayEntity;
+      if (e._drawType !== undefined) continue;
+      if (e.show === false) continue;
+
+      const hoverEnabled = !!(e._hoverHighlight || (e._highlightEntities && e._highlightEntities.some((h) => (h as OverlayEntity)._hoverHighlight)));
+      if (!hoverEnabled) continue;
+
+      // entity 环形圆：使用中心+半径元数据
+      if (e._isRing && e._outerRadius && e._centerCartographic) {
+        const center = e._centerCartographic as Cesium.Cartographic;
+        const d = Cesium.Cartesian3.distance(
+          Cesium.Cartesian3.fromRadians(center.longitude, center.latitude, 0),
+          Cesium.Cartesian3.fromRadians(carto.longitude, carto.latitude, 0)
+        );
+        if (d <= e._outerRadius) return e;
+      }
+
+      // 非环形 ellipse：从 ellipse 取半径并计算距离
+      if (e.ellipse && (e as any).position) {
+        const semiMajor = this.getNumberProperty((e.ellipse as any).semiMajorAxis, 0);
+        const semiMinor = this.getNumberProperty((e.ellipse as any).semiMinorAxis, 0);
+        const radius = Math.max(0, Math.min(semiMajor, semiMinor));
+        if (radius > 0) {
+          const pos = this.getPropertyValue<Cesium.Cartesian3 | null>((e as any).position, null);
+          if (pos) {
+            const c = Cesium.Cartographic.fromCartesian(pos);
+            const d = Cesium.Cartesian3.distance(
+              Cesium.Cartesian3.fromRadians(c.longitude, c.latitude, 0),
+              Cesium.Cartesian3.fromRadians(carto.longitude, carto.latitude, 0)
+            );
+            if (d <= radius) return e;
+          }
+        }
+      }
+    }
+    return null;
   }
 
   /**
@@ -106,6 +270,9 @@ export class CesiumOverlayService {
       const pickedObject = this.viewer.scene.pick(click.position);
       if (pickedObject && Cesium.defined(pickedObject.id) && pickedObject.id instanceof Cesium.Entity) {
         const entity = pickedObject.id as DrawEntity & OverlayEntity;
+        if (entity.show === false) {
+          return;
+        }
         // 如果是绘制模块创建的实体（带有 _drawType），交给绘制模块自己的点击处理器，避免重复触发
         if (entity._drawType !== undefined) {
           return;
@@ -178,21 +345,87 @@ export class CesiumOverlayService {
 
           const pickedObject = this.viewer.scene.pick(pickPos);
           let pickedEntity: (DrawEntity & OverlayEntity) | null = null;
-          if (pickedObject && Cesium.defined((pickedObject as any).id) && (pickedObject as any).id instanceof Cesium.Entity) {
-            pickedEntity = (pickedObject as any).id as DrawEntity & OverlayEntity;
+
+          const asHoverableOverlayEntity = (id: any): (DrawEntity & OverlayEntity) | null => {
+            let entity: Cesium.Entity | null = null;
+            if (id instanceof Cesium.Entity) {
+              entity = id;
+            } else if (id && (id as any).id instanceof Cesium.Entity) {
+              entity = (id as any).id as Cesium.Entity;
+            } else if (id && (id as any).entity instanceof Cesium.Entity) {
+              entity = (id as any).entity as Cesium.Entity;
+            }
+            if (!entity) return null;
+            const e = entity as DrawEntity & OverlayEntity;
+            if (e._drawType !== undefined) return null;
+            if (e.show === false) return null;
+            // 只对启用 hoverHighlight 的覆盖物生效；否则允许继续 drillPick 找“下面那个”
+            if (e._hoverHighlight) return e;
+
+            // 兼容复合覆盖物：如果当前命中的子实体没有单独设置 hoverHighlight，
+            // 但其联动组内有启用 hoverHighlight 的实体，则仍允许触发高亮（避免“填充区域闪烁”）
+            const group = e._highlightEntities as (DrawEntity & OverlayEntity)[] | undefined;
+            if (group && group.length > 0) {
+              const candidate = group.find((g) => !!(g as OverlayEntity)._hoverHighlight);
+              if (candidate && candidate.show !== false && (candidate as any)._drawType === undefined) {
+                return candidate as DrawEntity & OverlayEntity;
+              }
+            }
+
+            return null;
+          };
+
+          // Fast path: pick 命中 entity
+          if (pickedObject) {
+            if (Cesium.defined((pickedObject as any).id)) {
+              pickedEntity = asHoverableOverlayEntity((pickedObject as any).id);
+            }
+            if (!pickedEntity && Cesium.defined((pickedObject as any).primitive)) {
+              pickedEntity = asHoverableOverlayEntity((pickedObject as any).primitive);
+            }
+          }
+
+          // Fallback: 当 pick 不是 hoverable overlay entity（例如命中地形/影像/其它 primitive，或命中未启用 hover 的 entity）时
+          if (!pickedEntity) {
+            try {
+              const list = this.viewer.scene.drillPick(pickPos);
+              if (Array.isArray(list)) {
+                for (const obj of list) {
+                  const e = asHoverableOverlayEntity((obj as any)?.id) || asHoverableOverlayEntity((obj as any)?.primitive);
+                  if (e) {
+                    pickedEntity = e;
+                    break;
+                  }
+                }
+              }
+            } catch {
+              // ignore
+            }
+          }
+
+          // 如果没有命中 overlay，尝试用地表坐标做 Rectangle 覆盖物的范围判断（应对半透明面 pick 失败）
+          if (!pickedEntity) {
+            const carto = this.pickCartographic(pickPos);
+            if (carto) {
+              pickedEntity =
+                this.findHoverableRectangleByCartographic(carto) ||
+                this.findHoverableCircleByCartographic(carto) ||
+                this.findHoverablePolygonByCartographic(carto);
+            }
           }
 
           // 不是覆盖物 / 或来自绘制模块：取消 hover
-          if (!pickedEntity || pickedEntity._drawType !== undefined) {
+          if (!pickedEntity) {
             clearHover();
             return;
           }
 
-          // 没开 hoverHighlight：也要清除旧的 hover
-          if (!pickedEntity._hoverHighlight) {
+          if (pickedEntity.show === false) {
             clearHover();
             return;
           }
+
+          // pickedEntity 已在筛选时保证 _hoverHighlight
 
           const targets = (pickedEntity._highlightEntities && pickedEntity._highlightEntities.length > 0)
             ? pickedEntity._highlightEntities
@@ -280,6 +513,27 @@ export class CesiumOverlayService {
 
   private applyOverlayHighlightStyle(entity: OverlayEntity): void {
     if (!entity._highlightOriginalStyle) entity._highlightOriginalStyle = {};
+
+    // Primitive-backed circle：颜色更新不走 entity.graphics
+    if (entity._overlayType === 'circle-primitive') {
+      const { color: hl, fillAlpha } = this.getActiveHighlightOptions(entity);
+      this.circle.applyPrimitiveHighlight(entity, hl, fillAlpha);
+      return;
+    }
+
+    // Primitive-backed polygon：颜色更新不走 entity.graphics
+    if (entity._overlayType === 'polygon-primitive') {
+      const { color: hl, fillAlpha } = this.getActiveHighlightOptions(entity);
+      this.polygon.applyPrimitiveHighlight(entity, hl, fillAlpha);
+      return;
+    }
+
+    // Primitive-backed rectangle：颜色更新不走 entity.graphics
+    if (entity._overlayType === 'rectangle-primitive') {
+      const { color: hl, fillAlpha } = this.getActiveHighlightOptions(entity);
+      this.rectangle.applyPrimitiveHighlight(entity, hl, fillAlpha);
+      return;
+    }
 
     const { color: hl, fillAlpha } = this.getActiveHighlightOptions(entity);
 
@@ -425,6 +679,23 @@ export class CesiumOverlayService {
   }
 
   private restoreOverlayHighlightStyle(entity: OverlayEntity): void {
+    // Primitive-backed circle：颜色更新不走 entity.graphics
+    if (entity._overlayType === 'circle-primitive') {
+      this.circle.restorePrimitiveHighlight(entity);
+      return;
+    }
+
+    // Primitive-backed polygon：颜色更新不走 entity.graphics
+    if (entity._overlayType === 'polygon-primitive') {
+      this.polygon.restorePrimitiveHighlight(entity);
+      return;
+    }
+
+    // Primitive-backed rectangle：颜色更新不走 entity.graphics
+    if (entity._overlayType === 'rectangle-primitive') {
+      this.rectangle.restorePrimitiveHighlight(entity);
+      return;
+    }
     if (!entity._isHighlighted) return;
     const orig = entity._highlightOriginalStyle;
     if (!orig) {
@@ -627,6 +898,39 @@ export class CesiumOverlayService {
         this.infoWindow.remove(entity);
       }
 
+      // Circle primitive：不在 entities 集合里，交由 MapCircle 释放 batch 资源
+      if (overlay._overlayType === 'circle-primitive') {
+        try {
+          this.circle.remove(entity);
+        } catch {
+          // ignore
+        }
+        this.overlayMap.delete(id);
+        return true;
+      }
+
+      // Polygon primitive：不在 entities 集合里，交由 MapPolygon 释放 batch 资源
+      if (overlay._overlayType === 'polygon-primitive') {
+        try {
+          this.polygon.remove(entity);
+        } catch {
+          // ignore
+        }
+        this.overlayMap.delete(id);
+        return true;
+      }
+
+      // Rectangle primitive：不在 entities 集合里，交由 MapRectangle 释放 batch 资源
+      if (overlay._overlayType === 'rectangle-primitive') {
+        try {
+          this.rectangle.remove(entity);
+        } catch {
+          // ignore
+        }
+        this.overlayMap.delete(id);
+        return true;
+      }
+
       // 复合覆盖物：同时移除关联实体（如圆环的内层线、图形边框等）
       if (overlay._innerEntity) {
         this.entities.remove(overlay._innerEntity);
@@ -660,6 +964,11 @@ export class CesiumOverlayService {
     if (!entity) return false;
 
     const overlay = entity as OverlayEntity;
+
+    if (overlay._overlayType === 'circle-primitive') {
+      this.circle.updatePosition(entity, position);
+      return true;
+    }
 
     // 根据实体类型调用对应的更新方法
     if (entity.point && !overlay._infoWindow) {
@@ -703,6 +1012,30 @@ export class CesiumOverlayService {
     if (entity) {
       entity.show = visible;
       const overlay = entity as OverlayEntity;
+
+      if (overlay._overlayType === 'circle-primitive') {
+        this.circle.setPrimitiveVisible(entity, visible);
+        if (overlay._innerEntity) {
+          overlay._innerEntity.show = visible;
+        }
+        return true;
+      }
+
+      if (overlay._overlayType === 'polygon-primitive') {
+        this.polygon.setPrimitiveVisible(entity, visible);
+        if (overlay._borderEntity) {
+          overlay._borderEntity.show = visible;
+        }
+        return true;
+      }
+
+      if (overlay._overlayType === 'rectangle-primitive') {
+        this.rectangle.setPrimitiveVisible(entity, visible);
+        if (overlay._innerEntity) {
+          overlay._innerEntity.show = visible;
+        }
+        return true;
+      }
 
       // 复合覆盖物：联动显示/隐藏关联实体
       if (overlay._innerEntity) {

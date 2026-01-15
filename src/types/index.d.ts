@@ -198,6 +198,9 @@ export interface InitOptions {
   requestRenderMode?: boolean;
   token?: string;
   cesiumToken?: string;
+  orderIndependentTranslucency?: boolean // 无序半透明度,
+  fxaa?: boolean, // 启用FXAA后处理抗锯齿
+  msaaSamples?: number, // MSAA采样数（推荐4或8）,
   success?: () => void;
   cancel?: () => void;
   mapCenter?: MapCenter;
@@ -294,6 +297,13 @@ export interface OverlayEntity extends Entity {
   _outerRadius?: number;
   _innerRadius?: number;
   _outerRectangle?: Cesium.Rectangle;
+
+  /** primitive circle: 内部使用的纯色缓存（用于高亮恢复） */
+  _primitiveRingBaseColor?: any;
+  _primitiveFillBaseColor?: any;
+
+  /** primitive polygon/rectangle: 边框纯色缓存（用于高亮恢复） */
+  _primitiveBorderBaseColor?: any;
 }
 
 export type PositionOffset =
@@ -429,6 +439,8 @@ export interface PolylineOptions {
 
 export interface PolygonOptions {
   positions: OverlayPosition[];
+  /** 渲染模式：auto(默认) / entity / primitive（贴地粗边框纯色场景支持） */
+  renderMode?: 'auto' | 'entity' | 'primitive';
   material?: Cesium.MaterialProperty | any | string;
   outline?: boolean;
   outlineColor?: any | string;
@@ -444,6 +456,7 @@ export interface PolygonOptions {
 
 export interface RectangleOptions {
   coordinates: Cesium.Rectangle;
+  renderMode?: 'auto' | 'entity' | 'primitive';
   material?: Cesium.MaterialProperty | any | string;
   outline?: boolean;
   outlineColor?: any | string;
@@ -462,6 +475,8 @@ export interface RectangleOptions {
 export interface CircleOptions {
   position: OverlayPosition;
   radius: number;
+  /** 渲染模式：auto(默认) / entity / primitive（预留） */
+  renderMode?: 'auto' | 'entity' | 'primitive';
   material?: Cesium.MaterialProperty | any | string;
   outline?: boolean;
   outlineColor?: any | string;

@@ -83,8 +83,7 @@ export function addDynamicRing(
 		width: options.width ?? 900,
 		height: options.height ?? 900,
 		scale: options.scale ?? 1.0,
-		disableDepthTestDistance:
-			options.disableDepthTestDistance ?? Number.POSITIVE_INFINITY,
+		disableDepthTestDistance: options.disableDepthTestDistance ?? Number.POSITIVE_INFINITY,
 	});
 
 	return { billboard, color, direction };

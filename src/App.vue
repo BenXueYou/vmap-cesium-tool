@@ -329,6 +329,17 @@ onMounted(async () => {
       baseLayerPicker: false,
       showRenderLoopErrors: true,
       terrainProvider: new Cesium.EllipsoidTerrainProvider(),
+      contextOptions: {
+        webgl: {
+          antialias: true,    // 启用抗锯齿
+          alpha: false,       // 关闭 alpha 通道以提升性能
+        }
+      },
+      // 其他相关配置
+      orderIndependentTranslucency: true,
+      fxaa: true, // 启用FXAA后处理抗锯齿
+      scene3DOnly: false,
+      msaaSamples: 4, // MSAA采样数（推荐4或8）
       success: () => {
         console.log('初始化地图成功');
       }
@@ -337,7 +348,7 @@ onMounted(async () => {
   // 调试用：挂到全局
   (window as any).cesiumViewer = cesiumViewer;
   viewer.value = cesiumViewer;
-  viewer.value.scene.globe.depthTestAgainstTerrain = true; // 启用地形深度测
+  // viewer.value.scene.globe.depthTestAgainstTerrain = true; // 启用地形深度测
   (viewer.value.cesiumWidget.creditContainer as HTMLElement).style.display = "none"; // 去掉左下角的Cesium商标
 
   // 初始化覆盖物服务

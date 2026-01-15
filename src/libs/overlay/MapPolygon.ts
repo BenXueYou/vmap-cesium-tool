@@ -1,12 +1,20 @@
 import * as Cesium from "cesium";
 import type { Viewer, Entity, Cartesian3, Color, HeightReference } from "cesium";
 import type { OverlayPosition, OverlayEntity } from './types';
+import { PolygonPrimitiveBatch } from './primitives/PolygonPrimitiveBatch';
 
 /**
  * Polygon 选项
  */
 export interface PolygonOptions {
   positions: OverlayPosition[];
+  /**
+   * 渲染模式：
+   * - auto：自动选择（默认；当前仅在“粗边框+贴地+纯色”场景下会切到 primitive）
+   * - entity：使用 Cesium Entity
+   * - primitive：使用 Cesium GroundPrimitive / GroundPolylinePrimitive（大批量静态贴地场景）
+   */
+  renderMode?: 'auto' | 'entity' | 'primitive';
   material?: Cesium.MaterialProperty | Color | string;
   outline?: boolean;
   outlineColor?: Color | string;
@@ -33,10 +41,113 @@ export interface PolygonOptions {
 export class MapPolygon {
   private viewer: Viewer;
   private entities: Cesium.EntityCollection;
+  private primitiveBatch: PolygonPrimitiveBatch | null = null;
 
   constructor(viewer: Viewer) {
     this.viewer = viewer;
     this.entities = viewer.entities;
+  }
+
+  private getPrimitiveBatch(): PolygonPrimitiveBatch {
+    if (!this.primitiveBatch) {
+      this.primitiveBatch = new PolygonPrimitiveBatch(this.viewer);
+    }
+    return this.primitiveBatch;
+  }
+
+  private resolveMaterialColor(material?: Cesium.MaterialProperty | Color | string): Cesium.Color | null {
+    if (!material) return Cesium.Color.BLUE.withAlpha(0.5);
+    if (typeof material === 'string') return this.resolveColor(material);
+    if (material instanceof Cesium.Color) return material;
+    return null;
+  }
+
+  private canUsePrimitive(options: PolygonOptions): boolean {
+    const ringThickness = (options.outlineWidth && options.outlineWidth > 1) ? options.outlineWidth : 0;
+    if (!(ringThickness > 0)) return false;
+    const clampToGround = options.clampToGround ?? true;
+    if (!clampToGround) return false;
+    if (options.extrudedHeight !== undefined) return false;
+    if (this.resolveMaterialColor(options.material ?? Cesium.Color.ORANGE.withAlpha(0.5)) === null) return false;
+    // borderColor 也要求纯色（Color / css string）
+    if (options.outlineColor !== undefined && this.resolveColor(options.outlineColor as any) === null) return false;
+    return true;
+  }
+
+  private addPrimitivePolygon(options: PolygonOptions): Entity {
+    const positions = options.positions.map(pos => this.convertPosition(pos));
+    const id = options.id || `polygon_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    const ringThickness = (options.outlineWidth && options.outlineWidth > 1) ? options.outlineWidth : 0;
+    const clampToGround = options.clampToGround ?? true;
+    if (!(ringThickness > 0) || !clampToGround || options.extrudedHeight !== undefined) {
+      console.warn('[vmap-cesium-tool] Polygon renderMode=primitive is not supported for the given options; falling back to Entity.');
+      return this.add({ ...options, renderMode: 'entity' });
+    }
+
+    const fillColor = this.resolveMaterialColor(options.material ?? Cesium.Color.ORANGE.withAlpha(0.5));
+    if (!fillColor) {
+      console.warn('[vmap-cesium-tool] Polygon renderMode=primitive requires solid color material; falling back to Entity.');
+      return this.add({ ...options, renderMode: 'entity' });
+    }
+
+    const borderColor = options.outlineColor ? this.resolveColor(options.outlineColor) : Cesium.Color.ORANGE;
+    const borderWidth = Math.max(1, Number(ringThickness) || 1);
+
+    // Primitive 使用 proxy entity 作为 pick id（不加入 viewer.entities）
+    const fill = new Cesium.Entity({ id });
+    const border = new Cesium.Entity({ id: `${id}__border` });
+
+    const fillEntity = fill as OverlayEntity;
+    const borderEntity = border as OverlayEntity;
+    fillEntity._overlayType = 'polygon-primitive';
+    borderEntity._overlayType = 'polygon-primitive';
+
+    if (options.onClick) {
+      fillEntity._onClick = options.onClick;
+      borderEntity._onClick = options.onClick;
+    }
+
+    const group = [fill, border];
+    const clickHighlight = options.clickHighlight ?? false;
+    const hoverHighlight = options.hoverHighlight ?? false;
+    fillEntity._clickHighlight = clickHighlight;
+    borderEntity._clickHighlight = clickHighlight;
+    fillEntity._hoverHighlight = hoverHighlight;
+    borderEntity._hoverHighlight = hoverHighlight;
+    fillEntity._highlightEntities = group;
+    borderEntity._highlightEntities = group;
+
+    fillEntity._borderEntity = border;
+    fillEntity._isThickOutline = true;
+    fillEntity._outlineWidth = borderWidth;
+    fillEntity._clampToGround = true;
+    fillEntity._baseHeight = 0;
+
+    // 保存原始颜色，供高亮恢复使用
+    fillEntity._primitiveFillBaseColor = fillColor;
+    fillEntity._primitiveBorderBaseColor = borderColor;
+    borderEntity._primitiveFillBaseColor = fillColor;
+    borderEntity._primitiveBorderBaseColor = borderColor;
+
+    // 贴地：统一把高度压到 0
+    const surfacePositions = this.elevatePositions(positions, 0);
+    const borderBase = surfacePositions;
+    const borderPositions: Cesium.Cartesian3[] = borderBase.slice();
+    if (borderPositions.length >= 2) borderPositions.push(borderBase[0]);
+
+    this.getPrimitiveBatch().upsertGeometry({
+      polygonId: id,
+      parts: { fill, border },
+      fillPositions: surfacePositions,
+      borderPositions,
+      borderWidth,
+      fillColor,
+      borderColor,
+      visible: true,
+    });
+
+    return fill;
   }
 
   /**
@@ -201,6 +312,11 @@ export class MapPolygon {
    * 添加 Polygon（多边形）
    */
   public add(options: PolygonOptions): Entity {
+    const renderMode = options.renderMode ?? 'auto';
+    if ((renderMode === 'primitive' || renderMode === 'auto') && this.canUsePrimitive(options)) {
+      return this.addPrimitivePolygon(options);
+    }
+
     const positions = options.positions.map(pos => this.convertPosition(pos));
     const id = options.id || `polygon_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const material = this.resolveMaterial(options.material);
@@ -314,6 +430,34 @@ export class MapPolygon {
   public updatePositions(entity: Entity, positions: OverlayPosition[]): void {
     const newPositions = positions.map(pos => this.convertPosition(pos));
     const overlayEntity = entity as OverlayEntity;
+
+    // primitive
+    if (overlayEntity._overlayType === 'polygon-primitive') {
+      const border = overlayEntity._borderEntity;
+      if (!border) return;
+      const id = String(entity.id);
+      const surfacePositions = this.elevatePositions(newPositions, 0);
+      const borderBase = surfacePositions;
+      const borderPositions: Cesium.Cartesian3[] = borderBase.slice();
+      if (borderPositions.length >= 2) borderPositions.push(borderBase[0]);
+
+      const fillColor = overlayEntity._primitiveFillBaseColor ?? Cesium.Color.ORANGE.withAlpha(0.5);
+      const borderColor = overlayEntity._primitiveBorderBaseColor ?? Cesium.Color.ORANGE;
+      const borderWidth = Math.max(1, Number(overlayEntity._outlineWidth ?? 2) || 2);
+
+      this.getPrimitiveBatch().upsertGeometry({
+        polygonId: id,
+        parts: { fill: entity, border },
+        fillPositions: surfacePositions,
+        borderPositions,
+        borderWidth,
+        fillColor,
+        borderColor,
+        visible: entity.show !== false,
+      });
+      return;
+    }
+
     const border = overlayEntity._borderEntity;
     const isThick = overlayEntity._isThickOutline;
     if (entity.polygon && border && isThick) {
@@ -351,6 +495,36 @@ export class MapPolygon {
    */
   public updateStyle(entity: Entity, options: Partial<Pick<PolygonOptions, 'material' | 'outline' | 'outlineColor' | 'outlineWidth'>>): void {
     const overlayEntity = entity as OverlayEntity;
+
+    // primitive
+    if (overlayEntity._overlayType === 'polygon-primitive') {
+      const id = String(entity.id);
+      if (options.material !== undefined) {
+        const c = this.resolveMaterialColor(options.material as any);
+        if (c) {
+          overlayEntity._primitiveFillBaseColor = c;
+          const border = overlayEntity._borderEntity;
+          if (border) (border as OverlayEntity)._primitiveFillBaseColor = c;
+        }
+      }
+      if (options.outlineColor !== undefined) {
+        const c = this.resolveColor(options.outlineColor as any);
+        overlayEntity._primitiveBorderBaseColor = c;
+        const border = overlayEntity._borderEntity;
+        if (border) (border as OverlayEntity)._primitiveBorderBaseColor = c;
+      }
+      if (options.outlineWidth !== undefined) {
+        const w = Math.max(1, Number(options.outlineWidth) || 1);
+        overlayEntity._outlineWidth = w;
+        this.getPrimitiveBatch().setBorderWidth(id, w);
+      }
+
+      const fillColor = overlayEntity._primitiveFillBaseColor ?? Cesium.Color.ORANGE.withAlpha(0.5);
+      const borderColor = overlayEntity._primitiveBorderBaseColor ?? Cesium.Color.ORANGE;
+      this.getPrimitiveBatch().setColors(id, borderColor, fillColor);
+      return;
+    }
+
     const border = overlayEntity._borderEntity;
     const isThick = overlayEntity._isThickOutline;
     if (isThick && entity.polygon && border) {
@@ -385,6 +559,24 @@ export class MapPolygon {
    */
   public remove(entityOrId: Entity | string): boolean {
     const entity = typeof entityOrId === 'string' ? this.entities.getById(entityOrId) : entityOrId;
+    const direct = (typeof entityOrId !== 'string') ? entityOrId : entity;
+    const anyOverlay = direct as OverlayEntity;
+    if (anyOverlay && anyOverlay._overlayType === 'polygon-primitive') {
+      const id = String((direct as any).id);
+      try {
+        this.getPrimitiveBatch().remove(id);
+      } catch {
+        // ignore
+      }
+      const border = anyOverlay._borderEntity;
+      if (border) {
+        (border as OverlayEntity)._onClick = undefined;
+        anyOverlay._borderEntity = undefined;
+      }
+      anyOverlay._onClick = undefined;
+      return true;
+    }
+
     if (!entity) return false;
     const overlayEntity = entity as OverlayEntity;
     const border = overlayEntity._borderEntity;
@@ -394,6 +586,41 @@ export class MapPolygon {
     }
     overlayEntity._onClick = undefined;
     return this.entities.remove(entity);
+  }
+
+  public setPrimitiveVisible(entity: Entity, visible: boolean): void {
+    const overlay = entity as OverlayEntity;
+    if (overlay._overlayType !== 'polygon-primitive') return;
+    const id = String(entity.id);
+    this.getPrimitiveBatch().setVisible(id, visible);
+  }
+
+  public applyPrimitiveHighlight(entity: OverlayEntity, hlColor: Cesium.Color, fillAlpha: number): void {
+    if (entity._overlayType !== 'polygon-primitive') return;
+    const root = entity._highlightEntities && entity._highlightEntities.length > 0
+      ? (entity._highlightEntities[0] as OverlayEntity)
+      : entity;
+    const id = String(root.id);
+
+    if (!root._primitiveBorderBaseColor) root._primitiveBorderBaseColor = Cesium.Color.ORANGE;
+    if (!root._primitiveFillBaseColor) root._primitiveFillBaseColor = Cesium.Color.ORANGE.withAlpha(0.5);
+
+    const borderColor = hlColor.withAlpha(1.0);
+    const fillColor = hlColor.withAlpha(fillAlpha);
+    this.getPrimitiveBatch().setColors(id, borderColor, fillColor);
+    entity._isHighlighted = true;
+  }
+
+  public restorePrimitiveHighlight(entity: OverlayEntity): void {
+    if (entity._overlayType !== 'polygon-primitive') return;
+    const root = entity._highlightEntities && entity._highlightEntities.length > 0
+      ? (entity._highlightEntities[0] as OverlayEntity)
+      : entity;
+    const id = String(root.id);
+    if (root._primitiveBorderBaseColor && root._primitiveFillBaseColor) {
+      this.getPrimitiveBatch().setColors(id, root._primitiveBorderBaseColor, root._primitiveFillBaseColor);
+    }
+    entity._isHighlighted = false;
   }
 }
 

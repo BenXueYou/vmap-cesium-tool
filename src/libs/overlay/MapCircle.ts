@@ -1,6 +1,7 @@
 import * as Cesium from "cesium";
 import type { Viewer, Entity, Cartesian3, Color, HeightReference } from "cesium";
 import type { OverlayPosition, OverlayEntity } from './types';
+import { CirclePrimitiveBatch } from './primitives/CirclePrimitiveBatch';
 
 /**
  * Circle 选项
@@ -8,6 +9,13 @@ import type { OverlayPosition, OverlayEntity } from './types';
 export interface CircleOptions {
   position: OverlayPosition;
   radius: number; // 米
+  /**
+   * 渲染模式：
+   * - auto：自动选择（默认；当前实现等同于 entity）
+   * - entity：使用 Cesium Entity
+   * - primitive：使用 Cesium Primitive（为大批量静态覆盖物预留）
+   */
+  renderMode?: 'auto' | 'entity' | 'primitive';
   material?: Cesium.MaterialProperty | Color | string;
   outline?: boolean;
   outlineColor?: Color | string;
@@ -41,9 +49,124 @@ export class MapCircle {
   private viewer: Viewer;
   private entities: Cesium.EntityCollection;
 
+  private primitiveBatch: CirclePrimitiveBatch | null = null;
+
+  private static bearingTableCache: Map<number, { sin: Float64Array; cos: Float64Array }> = new Map();
+
   constructor(viewer: Viewer) {
     this.viewer = viewer;
     this.entities = viewer.entities;
+  }
+
+  private getPrimitiveBatch(): CirclePrimitiveBatch {
+    if (!this.primitiveBatch) {
+      this.primitiveBatch = new CirclePrimitiveBatch(this.viewer);
+    }
+    return this.primitiveBatch;
+  }
+
+  private resolveMaterialColor(material?: Cesium.MaterialProperty | Color | string): Cesium.Color | null {
+    if (!material) return Cesium.Color.BLUE.withAlpha(0.5);
+    if (typeof material === 'string') return this.resolveColor(material);
+    if (material instanceof Cesium.Color) return material;
+    // Primitive 模式仅支持纯色（Color / css string）。复杂材质无法用 PerInstanceColorAppearance 表达。
+    return null;
+  }
+
+  private canUsePrimitive(options: CircleOptions): boolean {
+    const ringThickness = (options.outlineWidth && options.outlineWidth > 1) ? options.outlineWidth : 0;
+    if (!(ringThickness > 0)) return false;
+    const clampToGround = options.clampToGround ?? true;
+    if (!clampToGround) return false;
+    if (options.extrudedHeight !== undefined) return false;
+    if (this.resolveMaterialColor(options.material) === null) return false;
+    return true;
+  }
+
+  private addPrimitiveCircle(options: CircleOptions): Entity {
+    const id = options.id || `circle_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    // 仅支持：粗边框 + 贴地 + 纯色
+    const ringThickness = (options.outlineWidth && options.outlineWidth > 1) ? options.outlineWidth : 0;
+    const clampToGround = options.clampToGround ?? true;
+    const fillColor = this.resolveMaterialColor(options.material);
+    if (!(ringThickness > 0) || !clampToGround || !fillColor) {
+      // 兜底：不满足 primitive 支持条件时，回退到 entity（并尽量不抛错）
+      console.warn('[vmap-cesium-tool] Circle renderMode=primitive is not supported for the given options; falling back to Entity.');
+      return this.add({ ...options, renderMode: 'entity' });
+    }
+
+    const position = this.convertPosition(options.position);
+    const baseCartoRaw = Cesium.Cartographic.fromCartesian(position);
+    const baseCarto0 = new Cesium.Cartographic(baseCartoRaw.longitude, baseCartoRaw.latitude, 0);
+
+    const outerRadius = options.radius;
+    const ringSegments = Math.max(16, Math.floor(options.segments ?? this.getDefaultSegmentsForRadius(outerRadius)));
+    const innerRadius = Math.max(0, options.radius - ringThickness);
+
+    const ringPositions = this.generateCirclePositions(baseCarto0, outerRadius, 0, ringSegments);
+    const fillPositions = this.generateCirclePositions(baseCarto0, innerRadius, 0, ringSegments);
+
+    const ringColor = options.outlineColor ? this.resolveColor(options.outlineColor) : Cesium.Color.BLACK;
+
+    // Primitive pick 需要稳定的 id：这里用两个“代理 Entity”（不加入 viewer.entities）
+    const outer = new Cesium.Entity({ id });
+    const inner = new Cesium.Entity({ id: `${id}__fill` });
+
+    const outerEntity = outer as OverlayEntity;
+    const innerEntity = inner as OverlayEntity;
+
+    outerEntity._overlayType = 'circle-primitive';
+    innerEntity._overlayType = 'circle-primitive';
+
+    // 复合覆盖物联动：outer（环）+ inner（填充）
+    const group = [outer, inner];
+    const clickHighlight = options.clickHighlight ?? false;
+    const hoverHighlight = options.hoverHighlight ?? false;
+    outerEntity._clickHighlight = clickHighlight;
+    innerEntity._clickHighlight = clickHighlight;
+    outerEntity._hoverHighlight = hoverHighlight;
+    innerEntity._hoverHighlight = hoverHighlight;
+    outerEntity._highlightEntities = group;
+    innerEntity._highlightEntities = group;
+
+    // 复合引用：复用 _innerEntity 字段（与 entity 模式一致）
+    outerEntity._innerEntity = inner;
+
+    if (options.onClick) {
+      outerEntity._onClick = options.onClick;
+      innerEntity._onClick = options.onClick;
+    }
+
+    // 记录可用于 update/remove/visible 的元数据
+    outerEntity._clampToGround = true;
+    outerEntity._baseHeight = 0;
+    outerEntity._centerCartographic = new Cesium.Cartographic(baseCartoRaw.longitude, baseCartoRaw.latitude, 0);
+    outerEntity._isRing = true;
+    outerEntity._ringThickness = ringThickness;
+    outerEntity._outerRadius = outerRadius;
+    outerEntity._innerRadius = innerRadius;
+    outerEntity._ringSegments = ringSegments;
+    outerEntity._fillMaterial = fillColor;
+    outerEntity._primitiveRingBaseColor = ringColor;
+    outerEntity._primitiveFillBaseColor = fillColor;
+
+    // inner 也写一份，方便从任意命中对象恢复
+    innerEntity._primitiveRingBaseColor = ringColor;
+    innerEntity._primitiveFillBaseColor = fillColor;
+
+    // 入 batch
+    this.getPrimitiveBatch().upsertGeometry({
+      circleId: id,
+      parts: { outer, inner },
+      ringPositions,
+      fillPositions,
+      ringColor,
+      fillColor,
+      visible: true,
+    });
+
+    return outer;
   }
 
   /**
@@ -118,6 +241,11 @@ export class MapCircle {
    * 添加 Circle（圆形）
    */
   public add(options: CircleOptions): Entity {
+    const renderMode = options.renderMode ?? 'auto';
+    if ((renderMode === 'primitive' || renderMode === 'auto') && this.canUsePrimitive(options)) {
+      return this.addPrimitiveCircle(options);
+    }
+
     const position = this.convertPosition(options.position);
     const id = options.id || `circle_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
@@ -140,9 +268,10 @@ export class MapCircle {
       const baseCarto = new Cesium.Cartographic(baseCartoRaw.longitude, baseCartoRaw.latitude, 0);
       const centerCartesian = Cesium.Cartesian3.fromRadians(baseCartoRaw.longitude, baseCartoRaw.latitude, 0);
 
-      const ringSegments = Math.max(16, Math.floor(options.segments ?? 256));
-
       const outerRadius = options.radius;
+      // 性能：粗边框模式下一个圆会创建 2 个实体 + 2 套多边形顶点。
+      // 若用户未显式指定 segments，则按半径选择更合理的默认值，避免在大量圆场景下过度消耗。
+      const ringSegments = Math.max(16, Math.floor(options.segments ?? this.getDefaultSegmentsForRadius(outerRadius)));
       const innerRadius = Math.max(0, options.radius - ringThickness);
 
       // 统一几何：外环与内填充都使用同样的近似圆顶点，避免“外圈是多边形/内圈是真圆”产生缝隙
@@ -262,19 +391,53 @@ export class MapCircle {
     const lon1 = center.longitude;
     const d = radiusMeters / R;
     const positions: Cesium.Cartesian3[] = [];
-    for (let i = 0; i < segments; i++) {
-      const bearing = (i / segments) * Cesium.Math.TWO_PI;
-      const sinLat1 = Math.sin(lat1);
-      const cosLat1 = Math.cos(lat1);
-      const sinD = Math.sin(d);
-      const cosD = Math.cos(d);
-      const sinBearing = Math.sin(bearing);
-      const cosBearing = Math.cos(bearing);
+
+    const seg = Math.max(3, Math.floor(segments));
+    const table = this.getBearingTable(seg);
+
+    const sinLat1 = Math.sin(lat1);
+    const cosLat1 = Math.cos(lat1);
+    const sinD = Math.sin(d);
+    const cosD = Math.cos(d);
+
+    for (let i = 0; i < seg; i++) {
+      const sinBearing = table.sin[i];
+      const cosBearing = table.cos[i];
       const lat2 = Math.asin(sinLat1 * cosD + cosLat1 * sinD * cosBearing);
       const lon2 = lon1 + Math.atan2(sinBearing * sinD * cosLat1, cosD - sinLat1 * Math.sin(lat2));
       positions.push(Cesium.Cartesian3.fromRadians(lon2, lat2, heightMeters));
     }
     return positions;
+  }
+
+  private getBearingTable(segments: number): { sin: Float64Array; cos: Float64Array } {
+    const seg = Math.max(3, Math.floor(segments));
+    const cached = MapCircle.bearingTableCache.get(seg);
+    if (cached) return cached;
+
+    const sin = new Float64Array(seg);
+    const cos = new Float64Array(seg);
+    for (let i = 0; i < seg; i++) {
+      const bearing = (i / seg) * Cesium.Math.TWO_PI;
+      sin[i] = Math.sin(bearing);
+      cos[i] = Math.cos(bearing);
+    }
+    const table = { sin, cos };
+    MapCircle.bearingTableCache.set(seg, table);
+    return table;
+  }
+
+  /**
+   * 粗边框模式的默认分段数：平衡“圆滑程度/性能”。
+   * 用户如果传了 options.segments，则完全尊重用户设置。
+   */
+  private getDefaultSegmentsForRadius(radiusMeters: number): number {
+    const r = Math.max(0, Number(radiusMeters));
+    if (!Number.isFinite(r)) return 96;
+    if (r <= 200) return 48;
+    if (r <= 1000) return 64;
+    if (r <= 5000) return 96;
+    return 128;
   }
 
   /**
@@ -283,6 +446,39 @@ export class MapCircle {
   public updatePosition(entity: Entity, position: OverlayPosition): void {
     const newPosition = this.convertPosition(position);
     const overlay = entity as OverlayEntity;
+
+    // primitive（静态批处理）模式：通过重建该 circle 的几何并让 batch 重新 build
+    if (overlay._overlayType === 'circle-primitive') {
+      const root = entity as OverlayEntity;
+      const id = String(root.id);
+
+      const thickness = root._ringThickness ?? 0;
+      const outerRadius = root._outerRadius ?? 0;
+      const segments = root._ringSegments ?? this.getDefaultSegmentsForRadius(outerRadius);
+      const innerRadius = Math.max(0, outerRadius - thickness);
+
+      const carto = Cesium.Cartographic.fromCartesian(newPosition);
+      const baseCarto0 = new Cesium.Cartographic(carto.longitude, carto.latitude, 0);
+      root._centerCartographic = new Cesium.Cartographic(carto.longitude, carto.latitude, 0);
+      const ringPositions = this.generateCirclePositions(baseCarto0, outerRadius, 0, segments);
+      const fillPositions = this.generateCirclePositions(baseCarto0, innerRadius, 0, segments);
+
+      const inner = root._innerEntity;
+      if (!inner) return;
+
+      const ringBase = root._primitiveRingBaseColor ?? Cesium.Color.BLACK;
+      const fillBase = root._primitiveFillBaseColor ?? (this.resolveMaterialColor(root._fillMaterial as any) ?? Cesium.Color.BLUE.withAlpha(0.5));
+      this.getPrimitiveBatch().upsertGeometry({
+        circleId: id,
+        parts: { outer: entity, inner },
+        ringPositions,
+        fillPositions,
+        ringColor: ringBase,
+        fillColor: fillBase,
+        visible: entity.show !== false,
+      });
+      return;
+    }
 
     let carto: Cesium.Cartographic | undefined;
     try {
@@ -373,6 +569,46 @@ export class MapCircle {
     const overlayEntity = entity as OverlayEntity;
     const thickness = overlayEntity._ringThickness;
 
+    // primitive（静态批处理）模式：重建该 circle 的几何并让 batch 重新 build
+    if (overlayEntity._overlayType === 'circle-primitive') {
+      const root = entity as OverlayEntity;
+      const id = String(root.id);
+      const inner = root._innerEntity;
+      if (!inner) return;
+
+      const thickness2 = root._ringThickness ?? 0;
+      const clampToGround = true;
+      if (!clampToGround) return;
+
+      const carto = root._centerCartographic
+        ? new Cesium.Cartographic(root._centerCartographic.longitude, root._centerCartographic.latitude, 0)
+        : (() => {
+            // 尝试从 inner/outer 的 id 推断没有位置；primitive 模式必须有 centerCartographic，缺失则直接返回
+            return undefined;
+          })();
+      if (!carto) return;
+
+      const segments = root._ringSegments ?? this.getDefaultSegmentsForRadius(radius);
+      root._outerRadius = radius;
+      root._innerRadius = Math.max(0, radius - thickness2);
+
+      const ringPositions = this.generateCirclePositions(carto, root._outerRadius, 0, segments);
+      const fillPositions = this.generateCirclePositions(carto, root._innerRadius, 0, segments);
+
+      const ringBase = (root as any)._primitiveRingBaseColor as Cesium.Color | undefined;
+      const fillBase = (root as any)._primitiveFillBaseColor as Cesium.Color | undefined;
+      this.getPrimitiveBatch().upsertGeometry({
+        circleId: id,
+        parts: { outer: entity, inner },
+        ringPositions,
+        fillPositions,
+        ringColor: ringBase ?? Cesium.Color.BLACK,
+        fillColor: fillBase ?? (this.resolveMaterialColor(root._fillMaterial as any) ?? Cesium.Color.BLUE.withAlpha(0.5)),
+        visible: entity.show !== false,
+      });
+      return;
+    }
+
     // 环形（粗边框）：需要重建外环 + 内填充的 polygon hierarchy
     if (overlayEntity._isRing && entity.polygon && thickness !== undefined) {
       const center = overlayEntity._centerCartographic;
@@ -425,6 +661,38 @@ export class MapCircle {
   public updateStyle(entity: Entity, options: Partial<Pick<CircleOptions, 'material' | 'outline' | 'outlineColor' | 'outlineWidth'>>): void {
     const overlay = entity as OverlayEntity;
 
+    // primitive：仅支持纯色填充/边框。更新后重建该 circle 的实例颜色/几何。
+    if (overlay._overlayType === 'circle-primitive') {
+      const root = entity as OverlayEntity;
+      const id = String(root.id);
+      const inner = root._innerEntity;
+      if (!inner) return;
+
+      if (options.outlineColor !== undefined) {
+        root._primitiveRingBaseColor = this.resolveColor(options.outlineColor as any);
+        (inner as OverlayEntity)._primitiveRingBaseColor = root._primitiveRingBaseColor;
+      }
+      if (options.material !== undefined) {
+        const c = this.resolveMaterialColor(options.material as any);
+        if (c) {
+          root._primitiveFillBaseColor = c;
+          (inner as OverlayEntity)._primitiveFillBaseColor = c;
+          root._fillMaterial = c;
+        }
+      }
+      if (options.outlineWidth !== undefined) {
+        const thickness = Math.max(0, options.outlineWidth as any);
+        root._ringThickness = thickness;
+        // NOTE: primitive 模式依赖粗边框，outlineWidth<=1 时回退到 entity 不在这里处理
+      }
+
+      // 重新应用当前高亮（如果有）
+      if (root._primitiveRingBaseColor && root._primitiveFillBaseColor) {
+        this.getPrimitiveBatch().setColors(id, root._primitiveRingBaseColor, root._primitiveFillBaseColor);
+      }
+      return;
+    }
+
     // 环形（粗边框）方案：外层 polygon 是边框，内层 polygon 是填充
     if (overlay._isRing && entity.polygon) {
       const inner = overlay._innerEntity;
@@ -470,6 +738,25 @@ export class MapCircle {
    */
   public remove(entityOrId: Entity | string): boolean {
     const entity = typeof entityOrId === 'string' ? this.entities.getById(entityOrId) : entityOrId;
+    // primitive：overlayService 可能直接传入 proxy entity（不在 entities 集合里）
+    const direct = (typeof entityOrId !== 'string') ? entityOrId : entity;
+    const anyOverlay = direct as OverlayEntity;
+    if (anyOverlay && anyOverlay._overlayType === 'circle-primitive') {
+      const id = String((direct as any).id);
+      try {
+        this.getPrimitiveBatch().remove(id);
+      } catch {
+        // ignore
+      }
+      const inner = anyOverlay._innerEntity;
+      if (inner) {
+        (inner as OverlayEntity)._onClick = undefined;
+        anyOverlay._innerEntity = undefined;
+      }
+      anyOverlay._onClick = undefined;
+      return true;
+    }
+
     if (!entity) return false;
     const overlayEntity = entity as OverlayEntity;
     const inner = overlayEntity._innerEntity;
@@ -479,6 +766,44 @@ export class MapCircle {
     }
     overlayEntity._onClick = undefined;
     return this.entities.remove(entity);
+  }
+
+  public setPrimitiveVisible(entity: Entity, visible: boolean): void {
+    const overlay = entity as OverlayEntity;
+    if (overlay._overlayType !== 'circle-primitive') return;
+    const id = String(entity.id);
+    this.getPrimitiveBatch().setVisible(id, visible);
+  }
+
+  public applyPrimitiveHighlight(entity: OverlayEntity, hlColor: Cesium.Color, fillAlpha: number): void {
+    if (entity._overlayType !== 'circle-primitive') return;
+    const root = entity._highlightEntities && entity._highlightEntities.length > 0
+      ? (entity._highlightEntities[0] as OverlayEntity)
+      : entity;
+    const id = String(root.id);
+
+    // 若缺失 base（理论上 addPrimitiveCircle 已写入），做兜底
+    if (!root._primitiveRingBaseColor) root._primitiveRingBaseColor = Cesium.Color.BLACK;
+    if (!root._primitiveFillBaseColor) {
+      root._primitiveFillBaseColor = this.resolveMaterialColor(root._fillMaterial as any) ?? Cesium.Color.BLUE.withAlpha(0.5);
+    }
+
+    const ringColor = hlColor.withAlpha(1.0);
+    const fillColor = hlColor.withAlpha(fillAlpha);
+    this.getPrimitiveBatch().setColors(id, ringColor, fillColor);
+    (entity as OverlayEntity)._isHighlighted = true;
+  }
+
+  public restorePrimitiveHighlight(entity: OverlayEntity): void {
+    if (entity._overlayType !== 'circle-primitive') return;
+    const root = entity._highlightEntities && entity._highlightEntities.length > 0
+      ? (entity._highlightEntities[0] as OverlayEntity)
+      : entity;
+    const id = String(root.id);
+    if (root._primitiveRingBaseColor && root._primitiveFillBaseColor) {
+      this.getPrimitiveBatch().setColors(id, root._primitiveRingBaseColor, root._primitiveFillBaseColor);
+    }
+    (entity as OverlayEntity)._isHighlighted = false;
   }
 } 
 

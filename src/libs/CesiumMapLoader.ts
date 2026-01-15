@@ -4,6 +4,10 @@ import type { Viewer as CesiumViewer } from 'cesium'
 import { TDTMapTypes } from './config/CesiumMapConfig'
 import { Ion, Viewer, createWorldTerrainAsync, Terrain, TerrainProvider } from 'cesium'
 interface InitOptions {
+  // 其他相关配置
+  orderIndependentTranslucency?: boolean // 无序半透明度,
+  fxaa?: boolean, // 启用FXAA后处理抗锯齿
+  msaaSamples?: number, // MSAA采样数（推荐4或8）
   terrain?: Terrain, // 地形
   terrainProvider?: TerrainProvider // 地形提供者
   mapType?: string // 地图类型，默认为天地图

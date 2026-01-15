@@ -112,5 +112,11 @@ export interface OverlayEntity extends Entity {
 	_outerRadius?: number;
 	_innerRadius?: number;
 	_outerRectangle?: Rectangle;
+
+	/** primitive circle: 内部使用的纯色缓存（用于高亮恢复） */
+	_primitiveRingBaseColor?: Color;
+	_primitiveFillBaseColor?: Color;
+	/** primitive polygon/rectangle: 边框纯色缓存（用于高亮恢复） */
+	_primitiveBorderBaseColor?: Color;
 }
 
