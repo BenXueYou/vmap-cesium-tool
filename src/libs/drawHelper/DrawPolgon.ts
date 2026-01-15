@@ -251,12 +251,15 @@ export class DrawPolygon extends BaseDraw {
     }
 
     // 自相交校验（闭合边也纳入检测）：不允许则阻止完成
+    const selfIntersectionEnabled = !!this.drawOptions?.selfIntersectionEnabled;
     const allowTouch = !!this.drawOptions?.selfIntersectionAllowTouch;
     const allowContinue = !!this.drawOptions?.selfIntersectionAllowContinue;
-    const selfIntersecting = isClosedPolygonSelfIntersecting(safeGroundPositions, { allowTouch });
-    if (selfIntersecting && !allowContinue) {
-      this.restoreRequestRenderModeIfNeeded();
-      return null;
+    if (selfIntersectionEnabled) {
+      const selfIntersecting = isClosedPolygonSelfIntersecting(safeGroundPositions, { allowTouch });
+      if (selfIntersecting && !allowContinue) {
+        this.restoreRequestRenderModeIfNeeded();
+        return null;
+      }
     }
 
     let finalEntity: Entity | null = null;

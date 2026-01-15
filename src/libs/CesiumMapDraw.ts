@@ -1601,17 +1601,19 @@ class DrawHelper {
     if (this.currentDrawer) {
       // 多边形：在落点前进行自相交校验（可通过 DrawOptions 控制行为）
       if (this.drawMode === "polygon") {
+        const selfIntersectionEnabled = !!this.currentDrawOptions?.selfIntersectionEnabled;
         const allowTouch = !!this.currentDrawOptions?.selfIntersectionAllowTouch;
         const allowContinue = !!this.currentDrawOptions?.selfIntersectionAllowContinue;
-
-        const existing = this.currentDrawer.getTempPositions();
-        if (existing && existing.length >= 2) {
-          const willSelfIntersect = wouldCreatePolygonSelfIntersection(existing, position, { allowTouch });
-          if (willSelfIntersect && !allowContinue) {
-            // 阻止落点，但保持绘制状态，用户可继续选择其他点
-            console.warn('Polygon self-intersection detected; point rejected.');
-            this.setDrawHintOverride('多边形不能交叉');
-            return;
+        if (selfIntersectionEnabled) {
+          const existing = this.currentDrawer.getTempPositions();
+          if (existing && existing.length >= 2) {
+            const willSelfIntersect = wouldCreatePolygonSelfIntersection(existing, position, { allowTouch });
+            if (willSelfIntersect && !allowContinue) {
+              // 阻止落点，但保持绘制状态，用户可继续选择其他点
+              console.warn('Polygon self-intersection detected; point rejected.');
+              this.setDrawHintOverride('多边形不能交叉');
+              return;
+            }
           }
         }
       }
@@ -1666,15 +1668,18 @@ class DrawHelper {
 
     // 多边形：预览阶段同样拦截“将要自相交”的鼠标点，避免自相交三角剖分导致的缺失/闪烁
     if (this.drawMode === "polygon" && this.currentDrawer) {
+      const selfIntersectionEnabled = !!this.currentDrawOptions?.selfIntersectionEnabled;
       const allowTouch = !!this.currentDrawOptions?.selfIntersectionAllowTouch;
       const allowContinue = !!this.currentDrawOptions?.selfIntersectionAllowContinue;
-      const existing = this.currentDrawer.getTempPositions();
-      if (existing && existing.length >= 2) {
-        const willSelfIntersect = wouldCreatePolygonSelfIntersection(existing, currentMousePosition, { allowTouch });
-        if (willSelfIntersect && !allowContinue) {
-          this.setDrawHintOverride('多边形不能交叉');
-          this.updateDrawingEntity(undefined);
-          return;
+      if (selfIntersectionEnabled) {
+        const existing = this.currentDrawer.getTempPositions();
+        if (existing && existing.length >= 2) {
+          const willSelfIntersect = wouldCreatePolygonSelfIntersection(existing, currentMousePosition, { allowTouch });
+          if (willSelfIntersect && !allowContinue) {
+            this.setDrawHintOverride('多边形不能交叉');
+            this.updateDrawingEntity(undefined);
+            return;
+          }
         }
       }
     }

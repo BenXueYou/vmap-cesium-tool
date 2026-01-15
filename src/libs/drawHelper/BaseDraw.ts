@@ -66,6 +66,13 @@ export interface DrawOptions {
   showAreaLabel?: boolean;
 
   /**
+   * 是否启用多边形自相交校验。
+   * - false/未设置：默认允许交叉（不做校验）
+   * - true：启用自相交校验（结合 selfIntersectionAllowTouch/AllowContinue 控制行为）
+   */
+  selfIntersectionEnabled?: boolean;
+
+  /**
    * 多边形自相交校验：是否允许“擦边/顶点落在旧边上”等仅接触（touch）情况。
    * - false/未设置：touch 也视为不合法
    * - true：允许 touch，但仍不允许重叠（overlap）与真正穿越（cross）

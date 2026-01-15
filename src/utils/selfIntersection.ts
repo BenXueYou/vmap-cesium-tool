@@ -141,6 +141,26 @@ function openPolylineWouldSelfIntersect2D(points: Vec2[], allowTouch: boolean): 
   return false;
 }
 
+function closingEdgeWouldIntersect2D(points: Vec2[], allowTouch: boolean): boolean {
+  // Check whether the closing edge (last -> first) intersects any non-adjacent edge.
+  const n = points.length;
+  if (n < 4) return false;
+
+  const a = points[n - 1];
+  const b = points[0];
+
+  // Skip edges adjacent to the closing edge: (0->1) and (n-2->n-1)
+  for (let i = 1; i <= n - 3; i++) {
+    const c = points[i];
+    const d = points[i + 1];
+
+    const kind = segmentIntersectionKind(a, b, c, d);
+    if (isSelfIntersectionBlocking(kind, allowTouch)) return true;
+  }
+
+  return false;
+}
+
 function closedPolygonIsSelfIntersecting2D(points: Vec2[], allowTouch: boolean): boolean {
   // points are polygon vertices in order (not repeating first at end)
   const n = points.length;
@@ -186,7 +206,8 @@ export function wouldCreatePolygonSelfIntersection(
   const points = [...existingPoints, nextPoint];
   if (points.length < 4) return false;
   const pts2d = toLocal2D(points);
-  return openPolylineWouldSelfIntersect2D(pts2d, allowTouch);
+  // Preview stage: treat as a closed polygon and run full edge-to-edge detection.
+  return closedPolygonIsSelfIntersecting2D(pts2d, allowTouch);
 }
 
 /**

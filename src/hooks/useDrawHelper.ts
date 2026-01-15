@@ -260,6 +260,7 @@ export function useDrawHelper(
       strokeColor: Cesium.Color.ORANGE,
       fillColor: Cesium.Color.ORANGE.withAlpha(0.35),
       showAreaLabel: true,
+      selfIntersectionEnabled: true,
       // 严格：不允许擦边、不允许继续（即：检测到就拒绝落点/拒绝完成）
       selfIntersectionAllowTouch: false,
       selfIntersectionAllowContinue: false,
@@ -295,6 +296,7 @@ export function useDrawHelper(
       strokeColor: Cesium.Color.CYAN,
       fillColor: Cesium.Color.CYAN.withAlpha(0.35),
       showAreaLabel: true,
+      selfIntersectionEnabled: true,
       // 严格：不允许擦边、不允许继续（兜底拦截将阻止完成）
       selfIntersectionAllowTouch: false,
       selfIntersectionAllowContinue: false,
