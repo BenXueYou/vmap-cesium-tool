@@ -144,7 +144,7 @@ export async function initCesium(
     ...options
   });
   (viewer.cesiumWidget.creditContainer as HTMLElement).style.display = 'none';
-  viewer.scene.postProcessStages.fxaa.enabled = false;
+  viewer.scene.postProcessStages.fxaa.enabled = options.fxaa || true;
   viewer.scene.globe.depthTestAgainstTerrain = options.depthTestAgainstTerrain || false; // 启用地形深度测
   // 地形提供者
   if (!options.terrainProvider && !options.terrain) {
