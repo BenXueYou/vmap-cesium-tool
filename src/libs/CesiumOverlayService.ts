@@ -46,7 +46,7 @@ export class CesiumOverlayService {
   constructor(viewer: Viewer) {
     this.viewer = viewer;
     this.entities = viewer.entities;
-    this.enableTranslucentPicking();
+    // this.enableTranslucentPicking();
     this.initInfoWindowContainer();
     this.setupEntityClickHandler();
     this.setupEntityHoverHandler();
