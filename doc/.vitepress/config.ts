@@ -37,7 +37,7 @@ export default defineConfig({
     socialLinks: [
       {
         icon: 'github',
-        link: 'https://github.com/benxueyou/vmap-cesium-toolbar',
+        link: 'https://github.com/BenXueYou/vmap-cesium-tool',
       },
     ],
   },
