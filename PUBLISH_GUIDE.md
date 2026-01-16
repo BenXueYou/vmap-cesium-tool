@@ -15,7 +15,8 @@ npm run build:plugin
 ```
 
 这个命令会：
-- 清理 dist 目录
+
+- 清理dist目录
 - 构建库文件（ES模块格式）
 - 复制类型定义文件
 - 复制样式文件
@@ -26,7 +27,7 @@ npm run build:plugin
 
 构建完成后，`dist/` 目录应包含以下文件：
 
-```
+``` bash
 dist/
 ├── index.js          # 主入口文件（ES模块）
 ├── index.d.ts        # TypeScript 类型定义
