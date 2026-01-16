@@ -2,7 +2,9 @@
 
 ## 概述
 
-`CesiumMapToolbar` 是一个功能完整的Cesium地图工具栏组件，提供搜索、测量、2D/3D切换、图层切换、定位、缩放、全屏等功能。
+`CesiumMapToolbar` 是一个 Cesium 地图工具栏组件，提供搜索、测量（测距/测面）、2D/3D 切换、图层切换、定位复位、缩放、全屏等功能。
+
+源码位于 `src/libs/CesiumMapToolbar.ts`，类型定义主要来自 `src/libs/CesiumMapModel.ts`。
 
 ## 类定义
 
@@ -49,6 +51,7 @@ interface ToolbarConfig {
   borderWidth?: number;          // 边框宽度
   boxShadow?: string;           // 阴影
   zIndex?: number;              // 层级
+  buttons?: CustomButtonConfig[]; // 按钮配置（可用于“只显示部分按钮”或“加入自定义按钮”）
 }
 ```
 
@@ -58,6 +61,9 @@ interface ToolbarConfig {
 interface SearchCallback {
   onSearch?: (query: string) => Promise<SearchResult[]>;
   onSelect?: (result: SearchResult) => void;
+  // 可选：在输入/结果阶段自定义 DOM
+  onSearchInput?: (query: string, container: HTMLElement) => void;
+  onSearchResults?: (results: SearchResult[], container: HTMLElement) => void;
 }
 ```
 
@@ -65,6 +71,7 @@ interface SearchCallback {
 
 ```typescript
 interface MeasurementCallback {
+  onMeasurementStart?: (positions?: Cartesian3[]) => void;
   onDistanceComplete?: (positions: Cartesian3[], distance: number) => void;
   onAreaComplete?: (positions: Cartesian3[], area: number) => void;
   onClear?: () => void;
@@ -75,8 +82,9 @@ interface MeasurementCallback {
 
 ```typescript
 interface ZoomCallback {
-  onZoomIn?: (beforeLevel: number, afterLevel: number) => void;
-  onZoomOut?: (beforeLevel: number, afterLevel: number) => void;
+  // 当前实现回调传入的是相机高度与层级（由 CesiumMapController 计算）
+  onZoomIn?: (beforeHeight: number, afterHeight: number, currentLevel: number) => void;
+  onZoomOut?: (beforeHeight: number, afterHeight: number, currentLevel: number) => void;
 }
 ```
 
@@ -116,29 +124,64 @@ toolbar.setInitialCenter({
 
 ### 2. 获取初始中心点
 
-```typescript
+```ts
 getInitialCenter(): { longitude: number; latitude: number; height: number } | undefined
 ```
 
-#### 返回值
-
-- 初始中心点坐标对象或undefined
-
 ### 3. 复位到初始位置
 
-```typescript
+```ts
 resetToInitialLocation(): void
 ```
 
-将地图视角复位到初始中心点。
+等价于内部的“定位/复位”逻辑。
 
-### 4. 销毁工具栏
+### 4. 设置天地图 Token
 
-```typescript
+```ts
+setTDToken(token: string): void
+```
+
+用于图层服务切换天地图底图时的鉴权。
+
+### 5. 覆盖可选的地图类型列表
+
+```ts
+setMapTypes(mapTypes: MapType[]): void
+```
+
+`mapTypes` 用于图层菜单中展示可切换的底图类型。
+
+### 6. 动态更新按钮样式
+
+```ts
+updateButtonConfig(buttonId: string, config: Partial<CustomButtonConfig>): void
+```
+
+可更新 `title/icon/size/color/backgroundColor/border...` 等。
+
+### 7. 添加/更新自定义按钮
+
+```ts
+addCustomButton(config: CustomButtonConfig): void
+```
+
+- 支持 `sort` 控制按钮顺序（值越小越靠前）
+- 若 id 已存在，会替换旧配置并重建该按钮
+
+### 8. 移除按钮
+
+```ts
+removeButton(buttonId: string): void
+```
+
+### 9. 销毁
+
+```ts
 destroy(): void
 ```
 
-销毁工具栏实例，清理所有事件监听器和资源。
+销毁工具栏实例并释放事件监听器/DOM（建议在组件卸载时调用）。
 
 ## 工具栏按钮功能
 
@@ -193,6 +236,8 @@ const toolbar = new CesiumMapToolbar(viewer, container, config, {
 });
 ```
 
+也可以通过 `toolbar.measurement.getMeasureMode()` 查询当前测量状态：`none | distance | area`。
+
 ### 3. 2D/3D 切换按钮
 
 **功能**：视角切换
@@ -233,11 +278,11 @@ const toolbar = new CesiumMapToolbar(viewer, container, config, {
 ```typescript
 const toolbar = new CesiumMapToolbar(viewer, container, config, {
   zoom: {
-    onZoomIn: (beforeLevel, afterLevel) => {
-      console.log(`放大: ${beforeLevel.toFixed(0)} -> ${afterLevel.toFixed(0)}`);
+    onZoomIn: (beforeHeight, afterHeight, currentLevel) => {
+      console.log(`放大: ${beforeHeight} -> ${afterHeight}, level=${currentLevel}`);
     },
-    onZoomOut: (beforeLevel, afterLevel) => {
-      console.log(`缩小: ${beforeLevel.toFixed(0)} -> ${afterLevel.toFixed(0)}`);
+    onZoomOut: (beforeHeight, afterHeight, currentLevel) => {
+      console.log(`缩小: ${beforeHeight} -> ${afterHeight}, level=${currentLevel}`);
     }
   }
 });

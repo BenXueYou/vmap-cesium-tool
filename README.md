@@ -28,12 +28,14 @@ import { CesiumMapToolbar, initCesium } from '@xingm/vmap-cesium-toolbar';
 import '@xingm/vmap-cesium-toolbar/style';
 
 // 初始化Cesium
-const viewer = initCesium('cesiumContainer', {
-  terrainProvider: Cesium.createWorldTerrain()
-});
+(async () => {
+  const { viewer } = await initCesium('cesiumContainer', {
+    terrainProvider: Cesium.createWorldTerrain(),
+  });
 
-// 创建工具栏
-const toolbar = new CesiumMapToolbar(viewer, document.getElementById('toolbar'));
+  // 创建工具栏
+  const toolbar = new CesiumMapToolbar(viewer, document.getElementById('toolbar'));
+})();
 ```
 
 ### Vue 3 项目中使用
@@ -52,11 +54,12 @@ import '@xingm/vmap-cesium-toolbar/style';
 let viewer;
 let toolbar;
 
-onMounted(() => {
+onMounted(async () => {
   // 初始化Cesium
-  viewer = initCesium('cesiumContainer', {
-    terrainProvider: Cesium.createWorldTerrain()
+  const result = await initCesium('cesiumContainer', {
+    terrainProvider: Cesium.createWorldTerrain(),
   });
+  viewer = result.viewer;
 
   // 创建工具栏
   toolbar = new CesiumMapToolbar(viewer, document.getElementById('toolbar'));
@@ -80,30 +83,26 @@ const toolbar = new CesiumMapToolbar(
 );
 ```
 
-### CesiumMapHelper
+### DrawHelper
 
-地图辅助工具类，提供绘制和测量功能。
+绘制工具类（包的默认导出），提供线/面/矩形/圆等交互绘制能力。
 
 ```typescript
-import { CesiumMapHelper } from '@xingm/vmap-cesium-toolbar';
+import DrawHelper from '@xingm/vmap-cesium-toolbar';
 
-const helper = new CesiumMapHelper(viewer);
-helper.startDrawing('line');  // 开始绘制线条
-helper.startMeasurement('distance'); // 开始距离测量
+const drawHelper = new DrawHelper(viewer);
+drawHelper.startDrawingPolygon();
 ```
 
-### CesiumMapLoader
+### initCesium
 
-Cesium初始化工具，简化Cesium的配置和初始化。
+Cesium 初始化函数，简化 Viewer 创建、底图/地形与初始视角配置。
 
 ```typescript
-import { CesiumMapLoader } from '@xingm/vmap-cesium-toolbar';
+import { initCesium } from '@xingm/vmap-cesium-toolbar';
 
-const viewer = CesiumMapLoader.init('container', {
-  terrainProvider: Cesium.createWorldTerrain(),
-  imageryProvider: new Cesium.OpenStreetMapImageryProvider({
-    url: 'https://a.tile.openstreetmap.org/'
-  })
+const { viewer } = await initCesium('cesiumContainer', {
+  cesiumToken: 'your_cesium_ion_token',
 });
 ```
 
@@ -231,6 +230,7 @@ npm run dev
 - [CesiumMapToolbar API](./doc/CesiumMapToolbar_API.md)
 - [CesiumMapHelper API](./doc/CesiumMapHelper_API.md)
 - [CesiumMapLoader API](./doc/CesiumMapLoader_API.md)
+- [CesiumOverlayService API](./doc/CesiumOverlayService_API.md)
 
 ## 依赖要求
 

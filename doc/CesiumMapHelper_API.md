@@ -1,289 +1,162 @@
-# CesiumMapHelper API 文档
+# CesiumMapHelper / DrawHelper API 文档
 
 ## 概述
 
-`CesiumMapHelper` 是一个功能完整的Cesium绘图辅助工具类，提供绘制点、线、多边形、矩形、视锥体等功能，支持编辑和删除操作。
+当前版本对外导出的绘制类名称为 `DrawHelper`（默认导出自 `src/libs/CesiumMapDraw.ts`）。
+
+它提供：
+
+- 交互式绘制：线 / 多边形 / 矩形 / 圆
+- 清理与删除：按实体删除、清空所有绘制
+- 回调：开始/结束绘制、测量结果、实体移除
+- 2D/3D 切换适配：场景模式切换后可触发重算
 
 ## 类定义
 
-```typescript
+```ts
 class DrawHelper
 ```
 
 ## 构造函数
 
-```typescript
+```ts
 constructor(viewer: Cesium.Viewer)
 ```
 
-### 参数
-- `viewer` (Cesium.Viewer): Cesium Viewer 实例
+## 交互规则（绘制期间）
 
-### 示例
-```typescript
-import DrawHelper from './libs/CesiumMapHelper';
-
-const drawHelper = new DrawHelper(viewer);
-```
+- 左键：落点
+- 鼠标移动：更新预览
+- 右键：撤销最后一个点
+- 双击：结束绘制并生成最终实体
 
 ## 主要方法
 
-### 1. 绘制线条
-```typescript
-startDrawingLine(): void
-```
-开始绘制线条模式。支持多点折线绘制，实时显示每段距离和总距离。
+### 1) 开始绘制
 
-**功能特点：**
-- 支持多点折线绘制
-- 实时显示每段距离（青色标签）
-- 显示总距离（白色标签）
-- 双击结束绘制
-- 右键删除最后一个点
-
-**使用示例：**
-```typescript
-drawHelper.startDrawingLine();
+```ts
+startDrawingLine(options?: DrawOptions): void
+startDrawingPolygon(options?: DrawOptions): void
+startDrawingRectangle(options?: DrawOptions): void
+startDrawingCircle(options?: DrawOptions): void
 ```
 
-### 2. 绘制多边形
-```typescript
-startDrawingPolygon(): void
-```
-开始绘制多边形模式。绘制带淡绿色填充的多边形区域。
+其中 `options` 用于控制样式、选中态、面积标签显示，以及多边形自相交校验等。
 
-**功能特点：**
-- 淡绿色填充区域（30%透明度）
-- 绿色边框
-- 自动计算并显示面积
-- 双击结束绘制
-- 右键删除最后一个点
+### 2) 结束/取消绘制
 
-**使用示例：**
-```typescript
-drawHelper.startDrawingPolygon();
+```ts
+endDrawing(): void
+cancelDrawing(): void
 ```
 
-### 3. 绘制矩形
-```typescript
-startDrawingRectangle(): void
-```
-开始绘制矩形模式。
+- `endDrawing()`：若正在绘制，等价于“结束绘制”（会尝试产出最终实体）；若未在绘制则做一次清理收尾。
+- `cancelDrawing()`：取消当前未完成绘制，不生成实体（适合外部在开启新绘制前主动中止旧绘制）。
 
-**功能特点：**
-- 两点确定矩形
-- 绿色半透明填充
-- 自动计算并显示面积
+### 3) 清理
 
-**使用示例：**
-```typescript
-drawHelper.startDrawingRectangle();
+```ts
+clearAll(): void
+clearAllEntities(): void
+clearAllPoints(): void
 ```
 
-### 4. 绘制视锥体
-```typescript
-drawFrustum(options?: FrustumOptions): void
+- `clearAll()`：清空 DrawHelper 追踪的“已完成实体/标签/点”等
+- `clearAllEntities()`：更彻底，直接 `viewer.entities.removeAll()`
+- `clearAllPoints()`：只清点实体（用于处理点实体偶发残留）
+
+### 4) 删除与查询
+
+```ts
+removeEntity(entity: Cesium.Entity): void
+getFinishedEntities(): Cesium.Entity[]
+getEntityLabelEntities(entity: Cesium.Entity): Cesium.Entity[]
 ```
 
-#### FrustumOptions 接口
-```typescript
-interface FrustumOptions {
-  position?: Cartesian3;           // 视锥体位置（默认相机位置）
-  orientation?: Quaternion;        // 视锥体方向（默认相机方向）
-  fov?: number;                   // 视野角度 (1-179度，默认60)
-  aspectRatio?: number;           // 宽高比（默认1.0）
-  near?: number;                  // 近平面距离（默认1.0）
-  far?: number;                   // 远平面距离（默认1000.0）
-  fillColor?: Color;              // 填充颜色（默认红色半透明）
-  outlineColor?: Color;           // 轮廓颜色（默认白色）
-  onRightClick?: (position: Cartesian3) => void; // 右键点击回调
+`getEntityLabelEntities` 可获取与某个绘制实体绑定的标签实体（例如面积 label）。
+
+### 5) 回调注册
+
+```ts
+onDrawStart(callback: () => void): void
+onDrawEnd(callback: (entity: Cesium.Entity | null) => void): void
+onEntityRemoved(callback: (entity: Cesium.Entity) => void): void
+onMeasureComplete(callback: (result: {
+  type: 'line' | 'polygon' | 'rectangle' | 'circle';
+  positions: Cesium.Cartesian3[];
+  distance?: number;
+  areaKm2?: number;
+}) => void): void
+```
+
+### 6) 场景模式切换适配
+
+```ts
+handleSceneModeChanged(): void
+```
+
+当你不使用 `CesiumMapToolbar`，而是自己在外部切换 2D/3D（`viewer.scene.mode`）时，建议在切换完成后调用它，用于更新已完成实体/标签在不同模式下的高度与贴地策略。
+
+### 7) 销毁
+
+```ts
+destroy(): void
+```
+
+销毁内部事件处理器（默认不会自动清空实体；是否清空由业务控制）。
+
+## DrawOptions
+
+```ts
+interface DrawOptions {
+  strokeColor?: Cesium.Color | string;
+  strokeWidth?: number;
+  fillColor?: Cesium.Color | string;
+  outlineColor?: Cesium.Color | string;
+  outlineWidth?: number;
+  heightEpsilon?: number;
+  selected?: {
+    color?: Cesium.Color | string;
+    width?: number;
+    outlineColor?: Cesium.Color | string;
+    outlineWidth?: number;
+  };
+
+  // polygon/rectangle/circle：是否显示面积标签（默认 true）
+  showAreaLabel?: boolean;
+
+  // 多边形自相交校验
+  selfIntersectionEnabled?: boolean;
+  selfIntersectionAllowTouch?: boolean;
+  selfIntersectionAllowContinue?: boolean;
+
+  // 点击已完成实体回调
+  onClick?: (entity: Cesium.Entity, type?: 'line' | 'polygon' | 'rectangle' | 'circle', positions?: Cesium.Cartesian3[]) => void;
 }
 ```
 
-**功能特点：**
-- 半透明填充的视锥体
-- 白色轮廓线
-- 支持右键交互
-- 参数验证和错误处理
+## 使用示例
 
-**使用示例：**
-```typescript
-drawHelper.drawFrustum({
-  fov: 60,
-  aspectRatio: 1.5,
-  near: 10,
-  far: 2000,
-  fillColor: Cesium.Color.GREEN.withAlpha(0.3),
-  outlineColor: Cesium.Color.WHITE,
-  onRightClick: (pos) => {
-    console.log('视锥体被右键点击:', pos);
-  }
-});
-```
+```ts
+import DrawHelper from '@xingm/vmap-cesium-toolbar';
 
-### 5. 结束绘制
-```typescript
-endDrawing(): void
-```
-结束当前绘制操作。
-
-### 6. 清除所有
-```typescript
-clearAll(): void
-```
-清除所有已绘制的实体。
-
-### 7. 清除视锥体
-```typescript
-clearFrustum(): void
-```
-清除所有视锥体相关图形。
-
-### 8. 删除指定实体
-```typescript
-removeEntity(entity: Cesium.Entity): void
-```
-
-#### 参数
-- `entity` (Cesium.Entity): 要删除的实体
-
-### 9. 获取已完成实体
-```typescript
-getFinishedEntities(): Cesium.Entity[]
-```
-返回所有已完成的绘制实体数组。
-
-## 事件回调
-
-### 设置开始绘制回调
-```typescript
-onDrawStart(callback: () => void): void
-```
-
-### 设置结束绘制回调
-```typescript
-onDrawEnd(callback: (entity: Cesium.Entity | null) => void): void
-```
-
-### 设置实体移除回调
-```typescript
-onEntityRemoved(callback: (entity: Cesium.Entity) => void): void
-```
-
-### 使用示例
-```typescript
-drawHelper.onDrawStart(() => {
-  console.log('开始绘制');
-});
+const drawHelper = new DrawHelper(viewer);
 
 drawHelper.onDrawEnd((entity) => {
-  if (entity) {
-    console.log('绘制完成:', entity);
-  } else {
-    console.log('绘制被取消');
-  }
+  if (!entity) return;
+  console.log('draw end', entity.id);
 });
 
-drawHelper.onEntityRemoved((entity) => {
-  console.log('实体被移除:', entity);
+drawHelper.startDrawingPolygon({
+  strokeWidth: 2,
+  showAreaLabel: true,
+  selfIntersectionEnabled: true,
+  selfIntersectionAllowTouch: true,
 });
 ```
-
-## 销毁资源
-```typescript
-destroy(): void
-```
-销毁工具实例，清理所有事件监听器和资源。
-
-## 绘制操作说明
-
-### 线条绘制
-1. 调用 `startDrawingLine()` 开始绘制
-2. 左键点击添加点
-3. 右键删除最后一个点
-4. 双击结束绘制
-5. 每段显示距离标签，最后显示总距离
-
-### 多边形绘制
-1. 调用 `startDrawingPolygon()` 开始绘制
-2. 左键点击添加点
-3. 右键删除最后一个点
-4. 双击结束绘制
-5. 显示淡绿色填充区域和面积标签
-
-### 矩形绘制
-1. 调用 `startDrawingRectangle()` 开始绘制
-2. 左键点击确定第一个角点
-3. 左键点击确定对角点
-4. 自动完成矩形绘制
-5. 显示绿色填充区域和面积标签
-
-### 视锥体绘制
-1. 调用 `drawFrustum(options)` 绘制视锥体
-2. 支持自定义位置、方向、大小等参数
-3. 右键点击可触发回调函数
-4. 调用 `clearFrustum()` 清除视锥体
 
 ## 注意事项
 
-1. **地形贴合**：所有绘制内容都会贴合地形显示
-2. **事件冲突**：绘制过程中会临时禁用Cesium的默认交互
-3. **内存管理**：记得在组件销毁时调用 `destroy()` 方法
-4. **精度计算**：面积计算使用球面几何，适合大范围测量
-5. **视觉反馈**：绘制过程中提供实时视觉反馈
-
-## 完整使用示例
-
-```typescript
-import DrawHelper from './libs/CesiumMapHelper';
-
-// 创建绘图助手
-const drawHelper = new DrawHelper(viewer);
-
-// 设置回调
-drawHelper.onDrawStart(() => {
-  console.log('开始绘制');
-});
-
-drawHelper.onDrawEnd((entity) => {
-  if (entity) {
-    console.log('绘制完成:', entity);
-    // 根据实体类型处理结果
-    if (entity.polyline) {
-      console.log('绘制了线条');
-    } else if (entity.polygon) {
-      console.log('绘制了多边形');
-    } else if (entity.rectangle) {
-      console.log('绘制了矩形');
-    }
-  }
-});
-
-drawHelper.onEntityRemoved((entity) => {
-  console.log('实体被移除:', entity);
-});
-
-// 开始绘制线条
-drawHelper.startDrawingLine();
-
-// 开始绘制多边形
-drawHelper.startDrawingPolygon();
-
-// 绘制视锥体
-drawHelper.drawFrustum({
-  fov: 45,
-  aspectRatio: 1.5,
-  near: 10,
-  far: 2000,
-  fillColor: Cesium.Color.BLUE.withAlpha(0.3),
-  onRightClick: (pos) => {
-    console.log('视锥体被点击:', pos);
-  }
-});
-
-// 清除所有绘制内容
-drawHelper.clearAll();
-
-// 销毁资源
-drawHelper.destroy();
-```
+- 绘制过程中会短暂“屏蔽 pick”（通过在 viewer 上挂载内部标记），用于减少与覆盖物点击/hover 的交互冲突。
+- 多边形自相交校验只有在 `selfIntersectionEnabled=true` 时开启。
+- 如需释放内部事件监听器，请在组件卸载时调用 `destroy()`。
