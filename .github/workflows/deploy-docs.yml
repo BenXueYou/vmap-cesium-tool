@@ -43,7 +43,9 @@ jobs:
         env:
           # For GitHub Pages project sites, base must be '/<repo>/'
           DOCS_BASE: /${{ github.event.repository.name }}/
-        run: pnpm docs:build
+        run: |
+          pnpm docs:build
+          touch doc/.vitepress/dist/.nojekyll
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
