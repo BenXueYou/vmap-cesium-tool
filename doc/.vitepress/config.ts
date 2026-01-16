@@ -1,6 +1,9 @@
 import { defineConfig } from 'vitepress';
 
+const base = process.env.DOCS_BASE ?? '/';
+
 export default defineConfig({
+  base,
   lang: 'zh-CN',
   title: 'vmap-cesium-tool',
   description: 'Cesium 地图工具栏与覆盖物/绘制工具文档',
