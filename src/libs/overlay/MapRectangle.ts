@@ -2,6 +2,7 @@ import * as Cesium from "cesium";
 import type { Viewer, Entity, Color, HeightReference } from "cesium";
 import type { OverlayEntity } from './types';
 import { RectanglePrimitiveBatch } from './primitives/RectanglePrimitiveBatch';
+import { RectanglePrimitiveLayerStack } from './primitives/RectanglePrimitiveLayerStack';
 
 /**
  * Rectangle 选项
@@ -32,6 +33,13 @@ export interface RectangleOptions {
   /** 鼠标移入该覆盖物时是否高亮显示（默认 false）。支持传入自定义颜色等参数 */
   hoverHighlight?: boolean | { color?: Color | string; fillAlpha?: number };
   onClick?: (entity: Entity) => void;
+  /**
+   * Primitive 模式分层渲染 key。
+   * - 相同 layerKey 的 rectangle 会被合并到同一个批次中（更高性能）
+   * - 不同 layerKey 会进入不同的“图层空间”，并按首次出现顺序确定上下层
+   * - 只对 primitive 生效；entity 模式忽略
+   */
+  layerKey?: string;
   id?: string;
 }
 
@@ -43,6 +51,8 @@ export class MapRectangle {
   private entities: Cesium.EntityCollection;
 
   private primitiveBatch: RectanglePrimitiveBatch | null = null;
+  private primitiveLayerStack: RectanglePrimitiveLayerStack | null = null;
+  private primitiveBatchesByLayer: Map<string, RectanglePrimitiveBatch> = new Map();
 
   constructor(viewer: Viewer) {
     this.viewer = viewer;
@@ -54,6 +64,26 @@ export class MapRectangle {
       this.primitiveBatch = new RectanglePrimitiveBatch(this.viewer);
     }
     return this.primitiveBatch;
+  }
+
+  private getLayeredPrimitiveBatch(layerKey: string): RectanglePrimitiveBatch {
+    const key = String(layerKey);
+    const existing = this.primitiveBatchesByLayer.get(key);
+    if (existing) return existing;
+
+    if (!this.primitiveLayerStack) {
+      this.primitiveLayerStack = new RectanglePrimitiveLayerStack(this.viewer);
+    }
+    const { fillCollection, ringCollection } = this.primitiveLayerStack.getLayerCollections(key);
+    const batch = new RectanglePrimitiveBatch(this.viewer, { fillCollection, ringCollection });
+    this.primitiveBatchesByLayer.set(key, batch);
+    return batch;
+  }
+
+  private getPrimitiveBatchForOverlay(overlay: OverlayEntity): RectanglePrimitiveBatch {
+    const layerKey = (overlay as any)._primitiveLayerKey as string | undefined;
+    if (layerKey) return this.getLayeredPrimitiveBatch(layerKey);
+    return this.getPrimitiveBatch();
   }
 
   private resolveMaterialColor(material?: Cesium.MaterialProperty | Color | string): Cesium.Color | null {
@@ -78,6 +108,7 @@ export class MapRectangle {
 
   private addPrimitiveRectangle(options: RectangleOptions): Entity {
     const id = options.id || `rectangle_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const layerKey = options.layerKey;
 
     const ringThickness = (options.outlineWidth && options.outlineWidth > 1) ? options.outlineWidth : 0;
     const clampToGround = options.clampToGround ?? true;
@@ -101,6 +132,11 @@ export class MapRectangle {
     const innerEntity = inner as OverlayEntity;
     outerEntity._overlayType = 'rectangle-primitive';
     innerEntity._overlayType = 'rectangle-primitive';
+
+    if (layerKey) {
+      (outerEntity as any)._primitiveLayerKey = layerKey;
+      (innerEntity as any)._primitiveLayerKey = layerKey;
+    }
 
     const group = [outer, inner];
     const clickHighlight = options.clickHighlight ?? false;
@@ -134,7 +170,8 @@ export class MapRectangle {
     const innerRect = this.shrinkRectangle(options.coordinates, ringThickness);
     const innerPositions = this.rectangleToPositions(innerRect, 0);
 
-    this.getPrimitiveBatch().upsertGeometry({
+    const batch = layerKey ? this.getLayeredPrimitiveBatch(layerKey) : this.getPrimitiveBatch();
+    batch.upsertGeometry({
       rectangleId: id,
       parts: { outer, inner },
       outerPositions,
@@ -328,7 +365,9 @@ export class MapRectangle {
 
     // primitive
     if (overlayEntity._overlayType === 'rectangle-primitive') {
-      const root = entity as OverlayEntity;
+      const root = overlayEntity._highlightEntities && overlayEntity._highlightEntities.length > 0
+        ? (overlayEntity._highlightEntities[0] as OverlayEntity)
+        : (entity as OverlayEntity);
       const id = String(root.id);
       const inner = root._innerEntity;
       if (!inner) return;
@@ -341,9 +380,9 @@ export class MapRectangle {
       const ringBase = root._primitiveRingBaseColor ?? Cesium.Color.BLACK;
       const fillBase = root._primitiveFillBaseColor ?? Cesium.Color.BLUE.withAlpha(0.5);
 
-      this.getPrimitiveBatch().upsertGeometry({
+      this.getPrimitiveBatchForOverlay(root).upsertGeometry({
         rectangleId: id,
-        parts: { outer: entity, inner },
+        parts: { outer: root, inner },
         outerPositions,
         innerPositions,
         ringColor: ringBase,
@@ -396,7 +435,9 @@ export class MapRectangle {
 
     // primitive
     if (overlayEntity._overlayType === 'rectangle-primitive') {
-      const root = entity as OverlayEntity;
+      const root = overlayEntity._highlightEntities && overlayEntity._highlightEntities.length > 0
+        ? (overlayEntity._highlightEntities[0] as OverlayEntity)
+        : (entity as OverlayEntity);
       const id = String(root.id);
       const inner = root._innerEntity;
       if (!inner) return;
@@ -419,7 +460,7 @@ export class MapRectangle {
       }
 
       if (root._primitiveRingBaseColor && root._primitiveFillBaseColor) {
-        this.getPrimitiveBatch().setColors(id, root._primitiveRingBaseColor, root._primitiveFillBaseColor);
+        this.getPrimitiveBatchForOverlay(root).setColors(id, root._primitiveRingBaseColor, root._primitiveFillBaseColor);
       }
       return;
     }
@@ -486,18 +527,21 @@ export class MapRectangle {
     const direct = (typeof entityOrId !== 'string') ? entityOrId : entity;
     const anyOverlay = direct as OverlayEntity;
     if (anyOverlay && anyOverlay._overlayType === 'rectangle-primitive') {
-      const id = String((direct as any).id);
+      const root = anyOverlay._highlightEntities && anyOverlay._highlightEntities.length > 0
+        ? (anyOverlay._highlightEntities[0] as OverlayEntity)
+        : anyOverlay;
+      const id = String((root as any).id);
       try {
-        this.getPrimitiveBatch().remove(id);
+        this.getPrimitiveBatchForOverlay(root).remove(id);
       } catch {
         // ignore
       }
-      const inner = anyOverlay._innerEntity;
+      const inner = root._innerEntity;
       if (inner) {
         (inner as OverlayEntity)._onClick = undefined;
-        anyOverlay._innerEntity = undefined;
+        root._innerEntity = undefined;
       }
-      anyOverlay._onClick = undefined;
+      root._onClick = undefined;
       return true;
     }
 
@@ -515,8 +559,11 @@ export class MapRectangle {
   public setPrimitiveVisible(entity: Entity, visible: boolean): void {
     const overlay = entity as OverlayEntity;
     if (overlay._overlayType !== 'rectangle-primitive') return;
-    const id = String(entity.id);
-    this.getPrimitiveBatch().setVisible(id, visible);
+    const root = overlay._highlightEntities && overlay._highlightEntities.length > 0
+      ? (overlay._highlightEntities[0] as OverlayEntity)
+      : overlay;
+    const id = String(root.id);
+    this.getPrimitiveBatchForOverlay(root).setVisible(id, visible);
   }
 
   public applyPrimitiveHighlight(entity: OverlayEntity, hlColor: Cesium.Color, fillAlpha: number): void {
@@ -531,7 +578,7 @@ export class MapRectangle {
 
     const ringColor = hlColor.withAlpha(1.0);
     const fillColor = hlColor.withAlpha(fillAlpha);
-    this.getPrimitiveBatch().setColors(id, ringColor, fillColor);
+    this.getPrimitiveBatchForOverlay(root).setColors(id, ringColor, fillColor);
     (entity as OverlayEntity)._isHighlighted = true;
   }
 
@@ -542,7 +589,7 @@ export class MapRectangle {
       : entity;
     const id = String(root.id);
     if (root._primitiveRingBaseColor && root._primitiveFillBaseColor) {
-      this.getPrimitiveBatch().setColors(id, root._primitiveRingBaseColor, root._primitiveFillBaseColor);
+      this.getPrimitiveBatchForOverlay(root).setColors(id, root._primitiveRingBaseColor, root._primitiveFillBaseColor);
     }
     (entity as OverlayEntity)._isHighlighted = false;
   }

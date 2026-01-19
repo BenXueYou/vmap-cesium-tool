@@ -2,6 +2,7 @@ import * as Cesium from "cesium";
 import type { Viewer, Entity, Cartesian3, Color, HeightReference } from "cesium";
 import type { OverlayPosition, OverlayEntity } from './types';
 import { PolygonPrimitiveBatch } from './primitives/PolygonPrimitiveBatch';
+import { PolygonPrimitiveLayerStack } from './primitives/PolygonPrimitiveLayerStack';
 
 /**
  * Polygon 选项
@@ -32,6 +33,13 @@ export interface PolygonOptions {
   /** 鼠标移入该覆盖物时是否高亮显示（默认 false）。支持传入自定义颜色等参数 */
   hoverHighlight?: boolean | { color?: Color | string; fillAlpha?: number };
   onClick?: (entity: Entity) => void;
+  /**
+   * Primitive 模式分层渲染 key。
+   * - 相同 layerKey 的 polygon 会被合并到同一个批次中（更高性能）
+   * - 不同 layerKey 会进入不同的“图层空间”，并按首次出现顺序确定上下层
+   * - 只对 primitive 生效；entity 模式忽略
+   */
+  layerKey?: string;
   id?: string;
 }
 
@@ -42,6 +50,8 @@ export class MapPolygon {
   private viewer: Viewer;
   private entities: Cesium.EntityCollection;
   private primitiveBatch: PolygonPrimitiveBatch | null = null;
+  private primitiveLayerStack: PolygonPrimitiveLayerStack | null = null;
+  private primitiveBatchesByLayer: Map<string, PolygonPrimitiveBatch> = new Map();
 
   constructor(viewer: Viewer) {
     this.viewer = viewer;
@@ -53,6 +63,26 @@ export class MapPolygon {
       this.primitiveBatch = new PolygonPrimitiveBatch(this.viewer);
     }
     return this.primitiveBatch;
+  }
+
+  private getLayeredPrimitiveBatch(layerKey: string): PolygonPrimitiveBatch {
+    const key = String(layerKey);
+    const existing = this.primitiveBatchesByLayer.get(key);
+    if (existing) return existing;
+
+    if (!this.primitiveLayerStack) {
+      this.primitiveLayerStack = new PolygonPrimitiveLayerStack(this.viewer);
+    }
+    const { fillCollection, borderCollection } = this.primitiveLayerStack.getLayerCollections(key);
+    const batch = new PolygonPrimitiveBatch(this.viewer, { fillCollection, borderCollection });
+    this.primitiveBatchesByLayer.set(key, batch);
+    return batch;
+  }
+
+  private getPrimitiveBatchForOverlay(overlay: OverlayEntity): PolygonPrimitiveBatch {
+    const layerKey = (overlay as any)._primitiveLayerKey as string | undefined;
+    if (layerKey) return this.getLayeredPrimitiveBatch(layerKey);
+    return this.getPrimitiveBatch();
   }
 
   private resolveMaterialColor(material?: Cesium.MaterialProperty | Color | string): Cesium.Color | null {
@@ -77,6 +107,7 @@ export class MapPolygon {
   private addPrimitivePolygon(options: PolygonOptions): Entity {
     const positions = options.positions.map(pos => this.convertPosition(pos));
     const id = options.id || `polygon_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const layerKey = options.layerKey;
 
     const ringThickness = (options.outlineWidth && options.outlineWidth > 1) ? options.outlineWidth : 0;
     const clampToGround = options.clampToGround ?? true;
@@ -102,6 +133,11 @@ export class MapPolygon {
     const borderEntity = border as OverlayEntity;
     fillEntity._overlayType = 'polygon-primitive';
     borderEntity._overlayType = 'polygon-primitive';
+
+    if (layerKey) {
+      (fillEntity as any)._primitiveLayerKey = layerKey;
+      (borderEntity as any)._primitiveLayerKey = layerKey;
+    }
 
     if (options.onClick) {
       fillEntity._onClick = options.onClick;
@@ -136,7 +172,8 @@ export class MapPolygon {
     const borderPositions: Cesium.Cartesian3[] = borderBase.slice();
     if (borderPositions.length >= 2) borderPositions.push(borderBase[0]);
 
-    this.getPrimitiveBatch().upsertGeometry({
+    const batch = layerKey ? this.getLayeredPrimitiveBatch(layerKey) : this.getPrimitiveBatch();
+    batch.upsertGeometry({
       polygonId: id,
       parts: { fill, border },
       fillPositions: surfacePositions,
@@ -433,21 +470,24 @@ export class MapPolygon {
 
     // primitive
     if (overlayEntity._overlayType === 'polygon-primitive') {
-      const border = overlayEntity._borderEntity;
+      const root = overlayEntity._highlightEntities && overlayEntity._highlightEntities.length > 0
+        ? (overlayEntity._highlightEntities[0] as OverlayEntity)
+        : overlayEntity;
+      const border = root._borderEntity;
       if (!border) return;
-      const id = String(entity.id);
+      const id = String(root.id);
       const surfacePositions = this.elevatePositions(newPositions, 0);
       const borderBase = surfacePositions;
       const borderPositions: Cesium.Cartesian3[] = borderBase.slice();
       if (borderPositions.length >= 2) borderPositions.push(borderBase[0]);
 
-      const fillColor = overlayEntity._primitiveFillBaseColor ?? Cesium.Color.ORANGE.withAlpha(0.5);
-      const borderColor = overlayEntity._primitiveBorderBaseColor ?? Cesium.Color.ORANGE;
-      const borderWidth = Math.max(1, Number(overlayEntity._outlineWidth ?? 2) || 2);
+      const fillColor = root._primitiveFillBaseColor ?? Cesium.Color.ORANGE.withAlpha(0.5);
+      const borderColor = root._primitiveBorderBaseColor ?? Cesium.Color.ORANGE;
+      const borderWidth = Math.max(1, Number(root._outlineWidth ?? 2) || 2);
 
-      this.getPrimitiveBatch().upsertGeometry({
+      this.getPrimitiveBatchForOverlay(root).upsertGeometry({
         polygonId: id,
-        parts: { fill: entity, border },
+        parts: { fill: root, border },
         fillPositions: surfacePositions,
         borderPositions,
         borderWidth,
@@ -498,30 +538,33 @@ export class MapPolygon {
 
     // primitive
     if (overlayEntity._overlayType === 'polygon-primitive') {
-      const id = String(entity.id);
+      const root = overlayEntity._highlightEntities && overlayEntity._highlightEntities.length > 0
+        ? (overlayEntity._highlightEntities[0] as OverlayEntity)
+        : overlayEntity;
+      const id = String(root.id);
       if (options.material !== undefined) {
         const c = this.resolveMaterialColor(options.material as any);
         if (c) {
-          overlayEntity._primitiveFillBaseColor = c;
-          const border = overlayEntity._borderEntity;
+          root._primitiveFillBaseColor = c;
+          const border = root._borderEntity;
           if (border) (border as OverlayEntity)._primitiveFillBaseColor = c;
         }
       }
       if (options.outlineColor !== undefined) {
         const c = this.resolveColor(options.outlineColor as any);
-        overlayEntity._primitiveBorderBaseColor = c;
-        const border = overlayEntity._borderEntity;
+        root._primitiveBorderBaseColor = c;
+        const border = root._borderEntity;
         if (border) (border as OverlayEntity)._primitiveBorderBaseColor = c;
       }
       if (options.outlineWidth !== undefined) {
         const w = Math.max(1, Number(options.outlineWidth) || 1);
-        overlayEntity._outlineWidth = w;
-        this.getPrimitiveBatch().setBorderWidth(id, w);
+        root._outlineWidth = w;
+        this.getPrimitiveBatchForOverlay(root).setBorderWidth(id, w);
       }
 
-      const fillColor = overlayEntity._primitiveFillBaseColor ?? Cesium.Color.ORANGE.withAlpha(0.5);
-      const borderColor = overlayEntity._primitiveBorderBaseColor ?? Cesium.Color.ORANGE;
-      this.getPrimitiveBatch().setColors(id, borderColor, fillColor);
+      const fillColor = root._primitiveFillBaseColor ?? Cesium.Color.ORANGE.withAlpha(0.5);
+      const borderColor = root._primitiveBorderBaseColor ?? Cesium.Color.ORANGE;
+      this.getPrimitiveBatchForOverlay(root).setColors(id, borderColor, fillColor);
       return;
     }
 
@@ -562,18 +605,21 @@ export class MapPolygon {
     const direct = (typeof entityOrId !== 'string') ? entityOrId : entity;
     const anyOverlay = direct as OverlayEntity;
     if (anyOverlay && anyOverlay._overlayType === 'polygon-primitive') {
-      const id = String((direct as any).id);
+      const root = anyOverlay._highlightEntities && anyOverlay._highlightEntities.length > 0
+        ? (anyOverlay._highlightEntities[0] as OverlayEntity)
+        : anyOverlay;
+      const id = String((root as any).id);
       try {
-        this.getPrimitiveBatch().remove(id);
+        this.getPrimitiveBatchForOverlay(root).remove(id);
       } catch {
         // ignore
       }
-      const border = anyOverlay._borderEntity;
+      const border = root._borderEntity;
       if (border) {
         (border as OverlayEntity)._onClick = undefined;
-        anyOverlay._borderEntity = undefined;
+        root._borderEntity = undefined;
       }
-      anyOverlay._onClick = undefined;
+      root._onClick = undefined;
       return true;
     }
 
@@ -591,8 +637,11 @@ export class MapPolygon {
   public setPrimitiveVisible(entity: Entity, visible: boolean): void {
     const overlay = entity as OverlayEntity;
     if (overlay._overlayType !== 'polygon-primitive') return;
-    const id = String(entity.id);
-    this.getPrimitiveBatch().setVisible(id, visible);
+    const root = overlay._highlightEntities && overlay._highlightEntities.length > 0
+      ? (overlay._highlightEntities[0] as OverlayEntity)
+      : overlay;
+    const id = String(root.id);
+    this.getPrimitiveBatchForOverlay(root).setVisible(id, visible);
   }
 
   public applyPrimitiveHighlight(entity: OverlayEntity, hlColor: Cesium.Color, fillAlpha: number): void {
@@ -607,7 +656,7 @@ export class MapPolygon {
 
     const borderColor = hlColor.withAlpha(1.0);
     const fillColor = hlColor.withAlpha(fillAlpha);
-    this.getPrimitiveBatch().setColors(id, borderColor, fillColor);
+    this.getPrimitiveBatchForOverlay(root).setColors(id, borderColor, fillColor);
     entity._isHighlighted = true;
   }
 
@@ -618,7 +667,7 @@ export class MapPolygon {
       : entity;
     const id = String(root.id);
     if (root._primitiveBorderBaseColor && root._primitiveFillBaseColor) {
-      this.getPrimitiveBatch().setColors(id, root._primitiveBorderBaseColor, root._primitiveFillBaseColor);
+      this.getPrimitiveBatchForOverlay(root).setColors(id, root._primitiveBorderBaseColor, root._primitiveFillBaseColor);
     }
     entity._isHighlighted = false;
   }

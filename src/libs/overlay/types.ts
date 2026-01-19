@@ -114,6 +114,8 @@ export interface OverlayEntity extends Entity {
 	_outerRectangle?: Rectangle;
 
 	/** primitive circle: 内部使用的纯色缓存（用于高亮恢复） */
+	/** primitive layer key: 用于分层批处理路由 */
+	_primitiveLayerKey?: string;
 	_primitiveRingBaseColor?: Color;
 	_primitiveFillBaseColor?: Color;
 	/** primitive polygon/rectangle: 边框纯色缓存（用于高亮恢复） */

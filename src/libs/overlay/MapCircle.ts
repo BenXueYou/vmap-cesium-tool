@@ -2,6 +2,7 @@ import * as Cesium from "cesium";
 import type { Viewer, Entity, Cartesian3, Color, HeightReference } from "cesium";
 import type { OverlayPosition, OverlayEntity } from './types';
 import { CirclePrimitiveBatch } from './primitives/CirclePrimitiveBatch';
+import { CirclePrimitiveLayerStack } from './primitives/CirclePrimitiveLayerStack';
 
 /**
  * Circle 选项
@@ -39,6 +40,13 @@ export interface CircleOptions {
   /** 鼠标移入该覆盖物时是否高亮显示（默认 false）。支持传入自定义颜色等参数 */
   hoverHighlight?: boolean | { color?: Color | string; fillAlpha?: number };
   onClick?: (entity: Entity) => void;
+  /**
+   * Primitive 模式分层渲染 key。
+   * - 相同 layerKey 的 circle 会被合并到同一个批次中（更高性能）
+   * - 不同 layerKey 会进入不同的“图层空间”，并按首次出现顺序确定上下层
+   * - 只对 primitive 生效；entity 模式忽略
+   */
+  layerKey?: string;
   id?: string;
 }
 
@@ -50,6 +58,8 @@ export class MapCircle {
   private entities: Cesium.EntityCollection;
 
   private primitiveBatch: CirclePrimitiveBatch | null = null;
+  private primitiveLayerStack: CirclePrimitiveLayerStack | null = null;
+  private primitiveBatchesByLayer: Map<string, CirclePrimitiveBatch> = new Map();
 
   private static bearingTableCache: Map<number, { sin: Float64Array; cos: Float64Array }> = new Map();
 
@@ -63,6 +73,26 @@ export class MapCircle {
       this.primitiveBatch = new CirclePrimitiveBatch(this.viewer);
     }
     return this.primitiveBatch;
+  }
+
+  private getLayeredPrimitiveBatch(layerKey: string): CirclePrimitiveBatch {
+    const key = String(layerKey);
+    const existing = this.primitiveBatchesByLayer.get(key);
+    if (existing) return existing;
+
+    if (!this.primitiveLayerStack) {
+      this.primitiveLayerStack = new CirclePrimitiveLayerStack(this.viewer);
+    }
+    const { fillCollection, ringCollection } = this.primitiveLayerStack.getLayerCollections(key);
+    const batch = new CirclePrimitiveBatch(this.viewer, { fillCollection, ringCollection });
+    this.primitiveBatchesByLayer.set(key, batch);
+    return batch;
+  }
+
+  private getPrimitiveBatchForOverlay(overlay: OverlayEntity): CirclePrimitiveBatch {
+    const layerKey = (overlay as any)._primitiveLayerKey as string | undefined;
+    if (layerKey) return this.getLayeredPrimitiveBatch(layerKey);
+    return this.getPrimitiveBatch();
   }
 
   private resolveMaterialColor(material?: Cesium.MaterialProperty | Color | string): Cesium.Color | null {
@@ -85,6 +115,7 @@ export class MapCircle {
 
   private addPrimitiveCircle(options: CircleOptions): Entity {
     const id = options.id || `circle_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const layerKey = options.layerKey;
 
     // 仅支持：粗边框 + 贴地 + 纯色
     const ringThickness = (options.outlineWidth && options.outlineWidth > 1) ? options.outlineWidth : 0;
@@ -118,6 +149,10 @@ export class MapCircle {
 
     outerEntity._overlayType = 'circle-primitive';
     innerEntity._overlayType = 'circle-primitive';
+
+    // primitive 分层信息：用于后续 update/remove/visible/highlight 正确路由到对应 batch
+    (outerEntity as any)._primitiveLayerKey = layerKey;
+    (innerEntity as any)._primitiveLayerKey = layerKey;
 
     // 复合覆盖物联动：outer（环）+ inner（填充）
     const group = [outer, inner];
@@ -155,8 +190,9 @@ export class MapCircle {
     innerEntity._primitiveRingBaseColor = ringColor;
     innerEntity._primitiveFillBaseColor = fillColor;
 
-    // 入 batch
-    this.getPrimitiveBatch().upsertGeometry({
+    // 入 batch（若提供 layerKey，则进入分层渲染栈）
+    const batch = layerKey ? this.getLayeredPrimitiveBatch(layerKey) : this.getPrimitiveBatch();
+    batch.upsertGeometry({
       circleId: id,
       parts: { outer, inner },
       ringPositions,
@@ -468,7 +504,7 @@ export class MapCircle {
 
       const ringBase = root._primitiveRingBaseColor ?? Cesium.Color.BLACK;
       const fillBase = root._primitiveFillBaseColor ?? (this.resolveMaterialColor(root._fillMaterial as any) ?? Cesium.Color.BLUE.withAlpha(0.5));
-      this.getPrimitiveBatch().upsertGeometry({
+      this.getPrimitiveBatchForOverlay(root).upsertGeometry({
         circleId: id,
         parts: { outer: entity, inner },
         ringPositions,
@@ -597,7 +633,7 @@ export class MapCircle {
 
       const ringBase = (root as any)._primitiveRingBaseColor as Cesium.Color | undefined;
       const fillBase = (root as any)._primitiveFillBaseColor as Cesium.Color | undefined;
-      this.getPrimitiveBatch().upsertGeometry({
+      this.getPrimitiveBatchForOverlay(root).upsertGeometry({
         circleId: id,
         parts: { outer: entity, inner },
         ringPositions,
@@ -688,7 +724,7 @@ export class MapCircle {
 
       // 重新应用当前高亮（如果有）
       if (root._primitiveRingBaseColor && root._primitiveFillBaseColor) {
-        this.getPrimitiveBatch().setColors(id, root._primitiveRingBaseColor, root._primitiveFillBaseColor);
+        this.getPrimitiveBatchForOverlay(root).setColors(id, root._primitiveRingBaseColor, root._primitiveFillBaseColor);
       }
       return;
     }
@@ -744,7 +780,7 @@ export class MapCircle {
     if (anyOverlay && anyOverlay._overlayType === 'circle-primitive') {
       const id = String((direct as any).id);
       try {
-        this.getPrimitiveBatch().remove(id);
+        this.getPrimitiveBatchForOverlay(anyOverlay).remove(id);
       } catch {
         // ignore
       }
@@ -772,7 +808,7 @@ export class MapCircle {
     const overlay = entity as OverlayEntity;
     if (overlay._overlayType !== 'circle-primitive') return;
     const id = String(entity.id);
-    this.getPrimitiveBatch().setVisible(id, visible);
+    this.getPrimitiveBatchForOverlay(overlay).setVisible(id, visible);
   }
 
   public applyPrimitiveHighlight(entity: OverlayEntity, hlColor: Cesium.Color, fillAlpha: number): void {
@@ -790,7 +826,7 @@ export class MapCircle {
 
     const ringColor = hlColor.withAlpha(1.0);
     const fillColor = hlColor.withAlpha(fillAlpha);
-    this.getPrimitiveBatch().setColors(id, ringColor, fillColor);
+    this.getPrimitiveBatchForOverlay(root).setColors(id, ringColor, fillColor);
     (entity as OverlayEntity)._isHighlighted = true;
   }
 
@@ -801,7 +837,7 @@ export class MapCircle {
       : entity;
     const id = String(root.id);
     if (root._primitiveRingBaseColor && root._primitiveFillBaseColor) {
-      this.getPrimitiveBatch().setColors(id, root._primitiveRingBaseColor, root._primitiveFillBaseColor);
+      this.getPrimitiveBatchForOverlay(root).setColors(id, root._primitiveRingBaseColor, root._primitiveFillBaseColor);
     }
     (entity as OverlayEntity)._isHighlighted = false;
   }

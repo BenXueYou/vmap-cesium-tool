@@ -18,7 +18,10 @@ interface RectanglePrimitiveRecord {
 
 export class RectanglePrimitiveBatch {
   private viewer: Viewer;
-  private collection: Cesium.PrimitiveCollection;
+  private ringCollection: Cesium.PrimitiveCollection;
+  private fillCollection: Cesium.PrimitiveCollection;
+  private ownsCollections: boolean;
+  private ownedRootCollection: Cesium.PrimitiveCollection | null = null;
 
   private ringPrimitive: Cesium.GroundPrimitive | null = null;
   private fillPrimitive: Cesium.GroundPrimitive | null = null;
@@ -28,26 +31,51 @@ export class RectanglePrimitiveBatch {
   private colorApplyScheduled = false;
   private pendingColorApplyIds: Set<string> = new Set();
 
-  constructor(viewer: Viewer) {
+  constructor(
+    viewer: Viewer,
+    options?: {
+      ringCollection?: Cesium.PrimitiveCollection;
+      fillCollection?: Cesium.PrimitiveCollection;
+    }
+  ) {
     this.viewer = viewer;
-    this.collection = new Cesium.PrimitiveCollection();
-    this.viewer.scene.primitives.add(this.collection);
+
+    const ringCollection = options?.ringCollection;
+    const fillCollection = options?.fillCollection;
+
+    if (ringCollection || fillCollection) {
+      // When mounted under external collections, we do not own them.
+      this.ringCollection = (ringCollection ?? fillCollection) as Cesium.PrimitiveCollection;
+      this.fillCollection = (fillCollection ?? ringCollection) as Cesium.PrimitiveCollection;
+      this.ownsCollections = false;
+    } else {
+      // Backwards-compatible: one owned collection attached to the scene.
+      const root = new Cesium.PrimitiveCollection();
+      this.ownedRootCollection = root;
+      this.ringCollection = root;
+      this.fillCollection = root;
+      this.ownsCollections = true;
+      this.viewer.scene.primitives.add(root);
+    }
   }
 
   public destroy(): void {
     try {
-      if (this.ringPrimitive) this.collection.remove(this.ringPrimitive);
-      if (this.fillPrimitive) this.collection.remove(this.fillPrimitive);
+      if (this.ringPrimitive) this.ringCollection.remove(this.ringPrimitive);
+      if (this.fillPrimitive) this.fillCollection.remove(this.fillPrimitive);
       this.ringPrimitive = null;
       this.fillPrimitive = null;
     } catch {
       // ignore
     }
 
-    try {
-      this.viewer.scene.primitives.remove(this.collection);
-    } catch {
-      // ignore
+    if (this.ownsCollections && this.ownedRootCollection) {
+      try {
+        this.viewer.scene.primitives.remove(this.ownedRootCollection);
+      } catch {
+        // ignore
+      }
+      this.ownedRootCollection = null;
     }
 
     this.records.clear();
@@ -140,11 +168,11 @@ export class RectanglePrimitiveBatch {
 
   private rebuild(): void {
     if (this.ringPrimitive) {
-      try { this.collection.remove(this.ringPrimitive); } catch {}
+      try { this.ringCollection.remove(this.ringPrimitive); } catch {}
       this.ringPrimitive = null;
     }
     if (this.fillPrimitive) {
-      try { this.collection.remove(this.fillPrimitive); } catch {}
+      try { this.fillCollection.remove(this.fillPrimitive); } catch {}
       this.fillPrimitive = null;
     }
 
@@ -189,18 +217,6 @@ export class RectanglePrimitiveBatch {
       );
     }
 
-    if (ringInstances.length > 0) {
-      this.ringPrimitive = new Cesium.GroundPrimitive({
-        geometryInstances: ringInstances,
-        appearance: new Cesium.PerInstanceColorAppearance({
-          translucent: true,
-          flat: true,
-        }),
-        asynchronous: true,
-      });
-      this.collection.add(this.ringPrimitive);
-    }
-
     if (fillInstances.length > 0) {
       this.fillPrimitive = new Cesium.GroundPrimitive({
         geometryInstances: fillInstances,
@@ -210,7 +226,20 @@ export class RectanglePrimitiveBatch {
         }),
         asynchronous: true,
       });
-      this.collection.add(this.fillPrimitive);
+      this.fillCollection.add(this.fillPrimitive);
+    }
+
+    // Add ring after fill so ring stays visible when using a single shared collection.
+    if (ringInstances.length > 0) {
+      this.ringPrimitive = new Cesium.GroundPrimitive({
+        geometryInstances: ringInstances,
+        appearance: new Cesium.PerInstanceColorAppearance({
+          translucent: true,
+          flat: true,
+        }),
+        asynchronous: true,
+      });
+      this.ringCollection.add(this.ringPrimitive);
     }
 
     for (const rec of this.records.values()) {

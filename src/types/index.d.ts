@@ -298,6 +298,9 @@ export interface OverlayEntity extends Entity {
   _innerRadius?: number;
   _outerRectangle?: Cesium.Rectangle;
 
+  /** primitive layer key: 用于分层批处理路由 */
+  _primitiveLayerKey?: string;
+
   /** primitive circle: 内部使用的纯色缓存（用于高亮恢复） */
   _primitiveRingBaseColor?: any;
   _primitiveFillBaseColor?: any;
@@ -451,6 +454,8 @@ export interface PolygonOptions {
   clickHighlight?: boolean | { color?: any | string; fillAlpha?: number };
   hoverHighlight?: boolean | { color?: any | string; fillAlpha?: number };
   onClick?: (entity: Entity) => void;
+  /** primitive 分层渲染 key（不同 key 会进入不同批次并按创建顺序确定上下层） */
+  layerKey?: string;
   id?: string;
 }
 
@@ -469,6 +474,8 @@ export interface RectangleOptions {
   clickHighlight?: boolean | { color?: any | string; fillAlpha?: number };
   hoverHighlight?: boolean | { color?: any | string; fillAlpha?: number };
   onClick?: (entity: Entity) => void;
+  /** primitive 分层渲染 key（不同 key 会进入不同批次并按创建顺序确定上下层） */
+  layerKey?: string;
   id?: string;
 }
 
@@ -489,6 +496,8 @@ export interface CircleOptions {
   clickHighlight?: boolean | { color?: any | string; fillAlpha?: number };
   hoverHighlight?: boolean | { color?: any | string; fillAlpha?: number };
   onClick?: (entity: Entity) => void;
+  /** primitive 分层渲染 key（不同 key 会进入不同批次并按创建顺序确定上下层） */
+  layerKey?: string;
   id?: string;
 }
 

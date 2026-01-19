@@ -259,6 +259,32 @@ export function useOverlayHelper(
     });
     logRectangle('A(init)', rectangleA);
 
+    // Test F: primitive ✅ 分层叠加（detect vs alarm）
+    // 预期：两个矩形填充都可见，且边框不会被其他 fill 盖住。
+    const rectFDetect = Cesium.Rectangle.fromDegrees(lon - 0.029, lat - 0.0145, lon - 0.021, lat - 0.0085);
+    const rectangleFDetect = overlayService.value.addRectangle({
+      coordinates: rectFDetect,
+      material: Cesium.Color.BLUE.withAlpha(0.25),
+      outline: true,
+      outlineColor: Cesium.Color.BLUE,
+      outlineWidth: 18,
+      renderMode: 'primitive',
+      layerKey: 'detect',
+      hoverHighlight: true,
+    });
+
+    const rectFAlarm = Cesium.Rectangle.fromDegrees(lon - 0.0275, lat - 0.013, lon - 0.0195, lat - 0.0095);
+    const rectangleFAlarm = overlayService.value.addRectangle({
+      coordinates: rectFAlarm,
+      material: Cesium.Color.RED.withAlpha(0.25),
+      outline: true,
+      outlineColor: Cesium.Color.RED,
+      outlineWidth: 18,
+      renderMode: 'primitive',
+      layerKey: 'alarm',
+      hoverHighlight: true,
+    });
+
     // Test B: primitive ❌（非粗边框：outlineWidth<=1，会回退到 entity rectangle）
     const rectB = Cesium.Rectangle.fromDegrees(lon - 0.02, lat - 0.015, lon - 0.014, lat - 0.008);
     const rectangleB = overlayService.value.addRectangle({
@@ -341,8 +367,8 @@ export function useOverlayHelper(
     logRectangle('E(init)', rectangleE);
     lastRectangleE.value = rectangleE;
 
-    markerEntities.push(rectangleA, rectangleB, rectangleC, rectangleD, rectangleE);
-    message.value = '已添加矩形：A primitive粗边框贴地 / B fallback非粗边框 / C fallback悬空 / D auto->primitive / E fallback非纯色材质';
+    markerEntities.push(rectangleA, rectangleB, rectangleC, rectangleD, rectangleE, rectangleFDetect, rectangleFAlarm);
+    message.value = '已添加矩形：A primitive粗边框贴地 / B fallback非粗边框 / C fallback悬空 / D auto->primitive / E fallback非纯色材质 / F 分层叠加';
     setTimeout(() => (message.value = ''), 2400);
 
     // Quick check: visible toggle（primitive/entity 都应该正常生效）
@@ -571,6 +597,7 @@ export function useOverlayHelper(
     logOverlayBase('Circle', tag, e, {
       isRing: oe._isRing,
       innerId: oe._innerEntity?.id,
+      primitiveLayerKey: (oe as any)._primitiveLayerKey,
     });
   };
 
@@ -721,8 +748,56 @@ export function useOverlayHelper(
     });
     addIcon({ longitude: lon - 0.03, latitude: lat - 0.01 });
 
-    markerEntities.push(circleA, circleB, circleC, circleD, circleE);
-    message.value = '已添加圆形：A primitive粗边框贴地 / B fallback非粗边框 / C fallback悬空 / D primitive字符串颜色 / E fallback非纯色材质';
+
+    const detectCenter: [number, number] = [lon + 0.06, lat];
+    // 告警区：后创建 => 位于更上层（填充+边框都更靠上）；边框仍会画在所有填充上方。
+    const alarmCircle = overlayService.value.addCircle({
+      position: detectCenter,
+      radius: 950,
+      material: Cesium.Color.fromCssColorString('#e65100').withAlpha(0.28),
+      outline: true,
+      outlineColor: '#fb8c00',
+      outlineWidth: 20,
+      renderMode: 'primitive',
+      layerKey: 'alarm111',
+      hoverHighlight: { color: '#0be967ff', fillAlpha: 0.35 },
+      clickHighlight: { color: '#ffee58', fillAlpha: 0.35 },
+      onClick: () => {
+        logCircle('F-alarm(click)', alarmCircle);
+        message.value = '告警区(primitive, layer=alarm) 被点击';
+        setTimeout(() => (message.value = ''), 2000);
+      },
+    });
+    logCircle('F-alarm(init)', alarmCircle);
+
+        // Test F: primitive ✅（分层叠加：侦测区 vs 告警区）
+    // 目标：两个区域都填充、且边界始终清晰可见。
+    // 关键：为 primitive circle 提供 layerKey，按业务顺序创建即可确定上下层。
+
+    const detectCircle = overlayService.value.addCircle({
+      // position: detectCenter,
+      position: [lon + 0.05, lat],
+      radius: 1400,
+      material: Cesium.Color.fromCssColorString('#1b5e20').withAlpha(0.28),
+      outline: true,
+      outlineColor: '#2e7d32',
+      outlineWidth: 20,
+      renderMode: 'primitive',
+      layerKey: 'detect222',
+      hoverHighlight: { color: '#0be967ff', fillAlpha: 0.35 },
+      clickHighlight: { color: '#ffee58', fillAlpha: 0.35 },
+      onClick: () => {
+        logCircle('F-detect(click)', detectCircle);
+        message.value = '侦测区(primitive, layer=detect) 被点击';
+        setTimeout(() => (message.value = ''), 2000);
+      },
+    });
+    logCircle('F-detect(init)', detectCircle);
+
+    addIcon({ longitude: detectCenter[0], latitude: detectCenter[1] });
+
+    markerEntities.push(circleA, circleB, circleC, circleD, circleE, detectCircle, alarmCircle);
+    message.value = '已添加圆形：A primitive粗边框贴地 / B fallback非粗边框 / C fallback悬空 / D primitive字符串颜色 / E fallback非纯色材质 / F layered(侦测区+告警区)';
     setTimeout(() => (message.value = ''), 2200);
 
     // Quick check: visible toggle（primitive/entity 都应该正常生效）
@@ -812,6 +887,40 @@ export function useOverlayHelper(
     });
     logPolygon('A(init)', polyA);
 
+    // Test D: primitive ✅ 分层叠加（detect vs alarm）
+    // 预期：边框永远压在所有填充之上，重叠区域也能看清边界。
+    const polyDDetect = overlayService.value.addPolygon({
+      positions: [
+        [lon - 0.004, lat - 0.002],
+        [lon + 0.014, lat - 0.002],
+        [lon + 0.016, lat + 0.01],
+        [lon - 0.002, lat + 0.012],
+      ],
+      material: Cesium.Color.BLUE.withAlpha(0.25),
+      outline: true,
+      outlineColor: Cesium.Color.BLUE,
+      outlineWidth: 10,
+      renderMode: 'primitive',
+      layerKey: 'detect',
+      hoverHighlight: true,
+    });
+
+    const polyDAlarm = overlayService.value.addPolygon({
+      positions: [
+        [lon - 0.002, lat - 0.004],
+        [lon + 0.012, lat - 0.004],
+        [lon + 0.014, lat + 0.008],
+        [lon, lat + 0.01],
+      ],
+      material: Cesium.Color.RED.withAlpha(0.25),
+      outline: true,
+      outlineColor: Cesium.Color.RED,
+      outlineWidth: 10,
+      renderMode: 'primitive',
+      layerKey: 'alarm',
+      hoverHighlight: true,
+    });
+
     // Test B: primitive ❌（显式悬空 clampToGround=false，会回退到 entity）
     const polyB = overlayService.value.addPolygon({
       positions: [
@@ -864,8 +973,8 @@ export function useOverlayHelper(
     });
     logPolygon('C(init)', polyC);
 
-    markerEntities.push(polyA, polyB, polyC);
-    message.value = '已添加多边形：A primitive粗边框贴地 / B fallback悬空 / C fallback非纯色材质';
+    markerEntities.push(polyA, polyB, polyC, polyDDetect, polyDAlarm);
+    message.value = '已添加多边形：A primitive粗边框贴地 / B fallback悬空 / C fallback非纯色材质 / D 分层叠加';
     setTimeout(() => (message.value = ''), 2200);
 
     // Quick check: visible toggle（primitive/entity 都应该正常生效）

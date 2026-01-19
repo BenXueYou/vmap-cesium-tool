@@ -100,7 +100,7 @@ export class MapLayersService {
       border: 1px solid rgba(255, 255, 255, 0.2);
       border-radius: 2px;
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-      padding: 4px 8px;
+      padding: 4px;
       max-width: 520px;
       z-index: 1001;
       display: flex;
@@ -200,7 +200,7 @@ export class MapLayersService {
       height: 56px;
       position: relative;
       cursor: pointer;
-      border-radius: 4px;
+      border-radius: 2px;
       overflow: hidden;
       transition: transform 0.2s, box-shadow 0.2s, background-color 0.2s, border-color 0.2s;
       background-color: transparent;
@@ -327,7 +327,7 @@ export class MapLayersService {
       align-items: center;
       gap: 8px;
       padding: 4px 8px;
-      border-radius: 4px;
+      border-radius: 2px;
       cursor: pointer;
       padding-left: 0;
       transition: background-color 0.2s;
@@ -339,7 +339,7 @@ export class MapLayersService {
       width: 18px;
       height: 18px;
       border: 2px solid rgba(255, 255, 255, 0.5);
-      border-radius: 3px;
+      border-radius: 2px;
       background: ${isDefaultChecked ? '#023C61' : 'transparent'};
       display: flex;
       align-items: center;

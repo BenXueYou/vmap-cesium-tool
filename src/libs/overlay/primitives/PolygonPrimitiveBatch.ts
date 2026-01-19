@@ -19,7 +19,10 @@ interface PolygonPrimitiveRecord {
 
 export class PolygonPrimitiveBatch {
   private viewer: Viewer;
-  private collection: Cesium.PrimitiveCollection;
+  private fillCollection: Cesium.PrimitiveCollection;
+  private borderCollection: Cesium.PrimitiveCollection;
+  private ownsCollections: boolean;
+  private ownedRootCollection: Cesium.PrimitiveCollection | null = null;
 
   private fillPrimitive: Cesium.GroundPrimitive | null = null;
   private borderPrimitive: Cesium.GroundPolylinePrimitive | null = null;
@@ -29,26 +32,51 @@ export class PolygonPrimitiveBatch {
   private colorApplyScheduled = false;
   private pendingColorApplyIds: Set<string> = new Set();
 
-  constructor(viewer: Viewer) {
+  constructor(
+    viewer: Viewer,
+    options?: {
+      fillCollection?: Cesium.PrimitiveCollection;
+      borderCollection?: Cesium.PrimitiveCollection;
+    }
+  ) {
     this.viewer = viewer;
-    this.collection = new Cesium.PrimitiveCollection();
-    this.viewer.scene.primitives.add(this.collection);
+
+    const fillCollection = options?.fillCollection;
+    const borderCollection = options?.borderCollection;
+
+    if (fillCollection || borderCollection) {
+      // When mounted under external collections, we do not own them.
+      this.fillCollection = (fillCollection ?? borderCollection) as Cesium.PrimitiveCollection;
+      this.borderCollection = (borderCollection ?? fillCollection) as Cesium.PrimitiveCollection;
+      this.ownsCollections = false;
+    } else {
+      // Backwards-compatible: one owned collection attached to the scene.
+      const root = new Cesium.PrimitiveCollection();
+      this.ownedRootCollection = root;
+      this.fillCollection = root;
+      this.borderCollection = root;
+      this.ownsCollections = true;
+      this.viewer.scene.primitives.add(root);
+    }
   }
 
   public destroy(): void {
     try {
-      if (this.fillPrimitive) this.collection.remove(this.fillPrimitive);
-      if (this.borderPrimitive) this.collection.remove(this.borderPrimitive);
+      if (this.fillPrimitive) this.fillCollection.remove(this.fillPrimitive);
+      if (this.borderPrimitive) this.borderCollection.remove(this.borderPrimitive);
     } catch {
       // ignore
     }
     this.fillPrimitive = null;
     this.borderPrimitive = null;
 
-    try {
-      this.viewer.scene.primitives.remove(this.collection);
-    } catch {
-      // ignore
+    if (this.ownsCollections && this.ownedRootCollection) {
+      try {
+        this.viewer.scene.primitives.remove(this.ownedRootCollection);
+      } catch {
+        // ignore
+      }
+      this.ownedRootCollection = null;
     }
 
     this.records.clear();
@@ -150,11 +178,11 @@ export class PolygonPrimitiveBatch {
 
   private rebuild(): void {
     if (this.fillPrimitive) {
-      try { this.collection.remove(this.fillPrimitive); } catch {}
+      try { this.fillCollection.remove(this.fillPrimitive); } catch {}
       this.fillPrimitive = null;
     }
     if (this.borderPrimitive) {
-      try { this.collection.remove(this.borderPrimitive); } catch {}
+      try { this.borderCollection.remove(this.borderPrimitive); } catch {}
       this.borderPrimitive = null;
     }
 
@@ -208,7 +236,7 @@ export class PolygonPrimitiveBatch {
         }),
         asynchronous: true,
       });
-      this.collection.add(this.fillPrimitive);
+      this.fillCollection.add(this.fillPrimitive);
     }
 
     if (borderInstances.length > 0) {
@@ -218,7 +246,7 @@ export class PolygonPrimitiveBatch {
           translucent: true,
         }),
       });
-      this.collection.add(this.borderPrimitive);
+      this.borderCollection.add(this.borderPrimitive);
     }
 
     for (const rec of this.records.values()) {
