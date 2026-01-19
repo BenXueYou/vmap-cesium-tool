@@ -98,9 +98,9 @@ export class MapLayersService {
       margin-right: 8px;
       background: rgba(0, 40, 80, 0.95);
       border: 1px solid rgba(255, 255, 255, 0.2);
-      border-radius: 8px;
+      border-radius: 2px;
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-      padding: 10px 12px;
+      padding: 4px 8px;
       max-width: 520px;
       z-index: 1001;
       display: flex;
@@ -167,10 +167,9 @@ export class MapLayersService {
       align-items: center;
       text-align: left;
       font-weight: bold;
-      font-size: 16px;
+      font-size: 14px;
       color: #fff;
-    `;
-
+    ";`
     // 地图类型网格容器
     const mapTypeGrid = document.createElement('div');
     mapTypeGrid.style.cssText = `
@@ -197,8 +196,8 @@ export class MapLayersService {
     const mapTypeItem = document.createElement('div');
     const isCurrentType = mapType.id === this.config.currentMapType;
     mapTypeItem.style.cssText = `
-      width: 100px;
-      height: 100px;
+      width: 88px;
+      height: 56px;
       position: relative;
       cursor: pointer;
       border-radius: 4px;
@@ -219,10 +218,15 @@ export class MapLayersService {
     const label = document.createElement('div');
     label.textContent = mapType.name;
     label.style.cssText = `
+      position: absolute;
+      bottom: 0;
+      right: 0;
+      left: 0;
       font-size: 12px;
       color: #fff;
       padding: 4px 0;
-      text-align: center;
+      text-align: right;
+      padding-right: 2px;
       background: rgba(0, 0, 0, 0.3);
     `;
 
@@ -293,7 +297,7 @@ export class MapLayersService {
     overlayTitle.textContent = '叠加图层';
     overlayTitle.style.cssText = `
       font-weight: bold;
-      font-size: 16px;
+      font-size: 14px;
       color: #fff;
       margin-bottom: 4px;
     `;
@@ -322,9 +326,10 @@ export class MapLayersService {
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 4px 12px;
+      padding: 4px 8px;
       border-radius: 4px;
       cursor: pointer;
+      padding-left: 0;
       transition: background-color 0.2s;
     `;
 
