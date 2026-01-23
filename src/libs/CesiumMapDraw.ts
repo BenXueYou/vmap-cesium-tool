@@ -1494,10 +1494,6 @@ class DrawHelper {
     );
 
     // 双击结束绘制
-    const mapDoubleClickAct =
-      this.viewer.cesiumWidget.screenSpaceEventHandler.getInputAction(
-        Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK
-      );
     this.viewer.cesiumWidget.screenSpaceEventHandler.removeInputAction(
       Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK
     );
@@ -1517,14 +1513,6 @@ class DrawHelper {
         // 双击结束绘制：提前设置较长的冷却，避免随后同一/紧邻事件链触发覆盖物 pick
         this.setPickCooldown(900, 'draw-double-click-finish');
         this.finishDrawing();
-
-        // 恢复 Cesium 默认的双击行为（如果存在的话）
-        if (mapDoubleClickAct) {
-          this.viewer.cesiumWidget.screenSpaceEventHandler.setInputAction(
-            mapDoubleClickAct,
-            Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK
-          );
-        }
       },
       Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK
     );
