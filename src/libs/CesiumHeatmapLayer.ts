@@ -23,6 +23,10 @@ export interface HeatmapOptions {
   height?: number;
   /** 单个点的影响半径（像素） */
   radius?: number;
+  /** 低强度提升（伽马矫正），< 1 可增强边缘，默认 0.7 */
+  gamma?: number;
+  /** 最小可见 alpha（0~1），用于避免外圈完全消失，默认 0.03 */
+  minAlpha?: number;
   /** 最小/最大值，用于归一化 value，如果不传则自动根据数据计算 */
   minValue?: number;
   maxValue?: number;
@@ -52,6 +56,7 @@ export default class CesiumHeatmapLayer {
   private viewer: Cesium.Viewer;
   private imageryLayer: Cesium.ImageryLayer | null = null;
   private rectangle: Cesium.Rectangle | null = null;
+  private fullDataRectangle: Cesium.Rectangle | null = null;
 
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
@@ -105,6 +110,8 @@ export default class CesiumHeatmapLayer {
       width,
       height,
       radius: options.radius ?? 30,
+      gamma: options.gamma ?? 0.7,
+      minAlpha: options.minAlpha ?? 0.03,
       minValue: options.minValue ?? 0,
       maxValue: options.maxValue ?? 1,
       opacity: options.opacity ?? 1,
@@ -159,10 +166,11 @@ export default class CesiumHeatmapLayer {
     maxLat += padding;
 
     this.rectangle = Cesium.Rectangle.fromDegrees(minLon, minLat, maxLon, maxLat);
+    this.fullDataRectangle = Cesium.Rectangle.clone(this.rectangle);
 
     // 如果启用了自动更新，渲染将由 moveEnd 驱动（且采用聚合后的视域数据）。
     if (!this.autoUpdateEnabled) {
-      this.renderHeatmap(this.data, this.rectangle, { persistMinMax: true });
+      this.renderHeatmap(this.data, { persistMinMax: true });
     } else {
       this.ensureWorker();
       this.pushDataToWorker();
@@ -178,7 +186,7 @@ export default class CesiumHeatmapLayer {
     this.buildGradientLUT();
     if (this.data.length > 0) {
       if (!this.autoUpdateEnabled) {
-        if (this.rectangle) this.renderHeatmap(this.data, this.rectangle, { persistMinMax: true });
+        if (this.rectangle) this.renderHeatmap(this.data, { persistMinMax: true });
       } else {
         this.requestAutoUpdate();
       }
@@ -242,7 +250,7 @@ export default class CesiumHeatmapLayer {
     } else {
       this.stopAutoUpdate();
       if (this.data.length > 0 && this.rectangle) {
-        this.renderHeatmap(this.data, this.rectangle, { persistMinMax: true });
+        this.renderHeatmap(this.data, { persistMinMax: true });
       }
     }
   }
@@ -270,6 +278,7 @@ export default class CesiumHeatmapLayer {
       }
       this.imageryLayer = null;
     }
+    this.fullDataRectangle = null;
   }
 
   private startAutoUpdateInternal(): void {
@@ -292,6 +301,7 @@ export default class CesiumHeatmapLayer {
 
   private requestAutoUpdate(): void {
     if (!this.autoUpdateEnabled) return;
+    if (!this.fullDataRectangle) return;
     if (!this.workerReady) {
       // worker 还没 ready，先标记 pending
       this.pendingUpdate = true;
@@ -348,6 +358,9 @@ export default class CesiumHeatmapLayer {
       let lons = null;
       let lats = null;
       let values = null;
+      let originLon = 0;
+      let originLat = 0;
+      let refLat = 0;
 
       function clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
 
@@ -366,11 +379,9 @@ export default class CesiumHeatmapLayer {
         const east = bbox.east;
         const south = bbox.south;
         const north = bbox.north;
-        const lat0 = (south + north) * 0.5;
 
         const dLat = cellMeters * degLatPerMeter();
-        const dLon = cellMeters * degLonPerMeter(lat0);
-        const cols = Math.max(1, Math.ceil((east - west) / (dLon || 1e-9)));
+        const dLon = cellMeters * degLonPerMeter(refLat || 0);
 
         const sums = new Map();
         const counts = new Map();
@@ -382,9 +393,9 @@ export default class CesiumHeatmapLayer {
           if (!(lon >= west && lon <= east && lat >= south && lat <= north)) continue;
           const v = values[idx];
           if (!Number.isFinite(v)) continue;
-          const i = Math.floor((lon - west) / (dLon || 1e-9));
-          const j = Math.floor((lat - south) / (dLat || 1e-9));
-          const key = j * cols + i;
+          const i = Math.floor((lon - originLon) / (dLon || 1e-9));
+          const j = Math.floor((lat - originLat) / (dLat || 1e-9));
+          const key = i + ',' + j;
           sums.set(key, (sums.get(key) || 0) + v);
           counts.set(key, (counts.get(key) || 0) + 1);
         }
@@ -393,10 +404,11 @@ export default class CesiumHeatmapLayer {
         let minV = Infinity;
         let maxV = -Infinity;
         for (const [key, sum] of sums.entries()) {
-          const j = Math.floor(key / cols);
-          const i = key - j * cols;
-          const lonC = west + (i + 0.5) * dLon;
-          const latC = south + (j + 0.5) * dLat;
+          const parts = String(key).split(',');
+          const i = Number(parts[0]);
+          const j = Number(parts[1]);
+          const lonC = originLon + (i + 0.5) * dLon;
+          const latC = originLat + (j + 0.5) * dLat;
           const val = sum;
           if (val < minV) minV = val;
           if (val > maxV) maxV = val;
@@ -416,6 +428,9 @@ export default class CesiumHeatmapLayer {
           lons = msg.lons ? new Float64Array(msg.lons) : null;
           lats = msg.lats ? new Float64Array(msg.lats) : null;
           values = msg.values ? new Float32Array(msg.values) : null;
+          originLon = typeof msg.originLon === 'number' ? msg.originLon : 0;
+          originLat = typeof msg.originLat === 'number' ? msg.originLat : 0;
+          refLat = typeof msg.refLat === 'number' ? msg.refLat : 0;
           self.postMessage({ type: 'ready' });
           return;
         }
@@ -449,10 +464,8 @@ export default class CesiumHeatmapLayer {
         if (!this.autoUpdateEnabled) return;
         const bbox = msg.bbox as { west: number; south: number; east: number; north: number };
         const points = (msg.points as HeatPoint[]) ?? [];
-        const rect = Cesium.Rectangle.fromDegrees(bbox.west, bbox.south, bbox.east, bbox.north);
-        this.rectangle = rect;
         // 动态聚合：每次都按当前视域重新计算 min/max，不持久化到 options
-        this.renderHeatmap(points, rect, { persistMinMax: false });
+        this.renderHeatmap(points, { persistMinMax: false });
       }
     };
   }
@@ -460,6 +473,7 @@ export default class CesiumHeatmapLayer {
   private pushDataToWorker(): void {
     if (!this.aggregateWorker) return;
     if (this.data.length === 0) return;
+    if (!this.fullDataRectangle) return;
 
     // 将全量数据打包为 TypedArray，传给 worker（只在 setData 或启用 autoUpdate 时传一次）
     const n = this.data.length;
@@ -474,12 +488,21 @@ export default class CesiumHeatmapLayer {
     }
 
     this.workerReady = false;
+    const originLon = Cesium.Math.toDegrees(this.fullDataRectangle.west);
+    const originLat = Cesium.Math.toDegrees(this.fullDataRectangle.south);
+    const refLat = Cesium.Math.toDegrees(
+      (this.fullDataRectangle.south + this.fullDataRectangle.north) * 0.5
+    );
+
     this.aggregateWorker.postMessage(
       {
         type: "init",
         lons: lons.buffer,
         lats: lats.buffer,
         values: values.buffer,
+        originLon,
+        originLat,
+        refLat,
       },
       [lons.buffer, lats.buffer, values.buffer]
     );
@@ -524,14 +547,10 @@ export default class CesiumHeatmapLayer {
   /**
    * 在离屏 canvas 上绘制热力图，并更新到 Cesium 图层
    */
-  private renderHeatmap(
-    points: HeatPoint[],
-    rectangle: Cesium.Rectangle,
-    opts: { persistMinMax: boolean }
-  ): void {
-    if (!rectangle || points.length === 0) return;
+  private renderHeatmap(points: HeatPoint[], opts: { persistMinMax: boolean }): void {
+    if (!this.fullDataRectangle || points.length === 0) return;
 
-    const { width, height, radius } = this.options;
+    const { width, height, radius, gamma, minAlpha } = this.options;
     const ctx = this.ctx;
     ctx.clearRect(0, 0, width, height);
 
@@ -557,56 +576,85 @@ export default class CesiumHeatmapLayer {
       }
     }
 
-    const minLon = Cesium.Math.toDegrees(rectangle.west);
-    const maxLon = Cesium.Math.toDegrees(rectangle.east);
-    const minLat = Cesium.Math.toDegrees(rectangle.south);
-    const maxLat = Cesium.Math.toDegrees(rectangle.north);
+    const minLon = Cesium.Math.toDegrees(this.fullDataRectangle.west);
+    const maxLon = Cesium.Math.toDegrees(this.fullDataRectangle.east);
+    const minLat = Cesium.Math.toDegrees(this.fullDataRectangle.south);
+    const maxLat = Cesium.Math.toDegrees(this.fullDataRectangle.north);
 
-    // 第一阶段：用黑白（alpha）累积强度
+    const lonRange = maxLon - minLon || 1;
+    const latRange = maxLat - minLat || 1;
+
+    const intensity = new Float32Array(width * height);
+
+    // 预计算影响核
+    const r = Math.max(1, Math.round(radius));
+    const kernel: Array<{ dx: number; dy: number; w: number }> = [];
+    const r2 = r * r;
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        const d2 = dx * dx + dy * dy;
+        if (d2 > r2) continue;
+        const dist = Math.sqrt(d2);
+        const w = 1 - dist / r;
+        if (w <= 0) continue;
+        kernel.push({ dx, dy, w });
+      }
+    }
+
+    // 第一阶段：累加强度
     for (const p of points) {
       if (!Number.isFinite(p.lon) || !Number.isFinite(p.lat)) continue;
       const t = (p.value - minV) / (maxV - minV || 1);
       if (t <= 0) continue;
 
-      const x = ((p.lon - minLon) / (maxLon - minLon || 1)) * width;
-      const y = (1 - (p.lat - minLat) / (maxLat - minLat || 1)) * height;
+      const x = Math.round(((p.lon - minLon) / lonRange) * (width - 1));
+      const y = Math.round((1 - (p.lat - minLat) / latRange) * (height - 1));
+      if (x < 0 || x >= width || y < 0 || y >= height) continue;
 
-      const grd = ctx.createRadialGradient(x, y, 0, x, y, radius);
-      grd.addColorStop(0, "rgba(0,0,0,1)");
-      grd.addColorStop(1, "rgba(0,0,0,0)");
-      ctx.fillStyle = grd;
-      ctx.globalAlpha = t;
-      ctx.beginPath();
-      ctx.arc(x, y, radius, 0, Math.PI * 2);
-      ctx.fill();
+      for (const k of kernel) {
+        const nx = x + k.dx;
+        const ny = y + k.dy;
+        if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+        intensity[ny * width + nx] += t * k.w;
+      }
     }
 
-    ctx.globalAlpha = 1;
+    let maxIntensity = 0;
+    for (let i = 0; i < intensity.length; i++) {
+      if (intensity[i] > maxIntensity) maxIntensity = intensity[i];
+    }
 
-    // 第二阶段：读取灰度图的 alpha，根据梯度 LUT 重新着色
-    const img = ctx.getImageData(0, 0, width, height);
+    const img = ctx.createImageData(width, height);
     const data = img.data;
-    for (let i = 0; i < data.length; i += 4) {
-      const alpha = data[i + 3];
-      if (alpha === 0) continue;
-      const idx = Math.min(255, Math.max(0, alpha));
-      const lutIndex = idx * 4;
-      data[i] = this.gradientLUT[lutIndex];
-      data[i + 1] = this.gradientLUT[lutIndex + 1];
-      data[i + 2] = this.gradientLUT[lutIndex + 2];
-      // 使用原有 alpha，再乘以全局不透明度
-      data[i + 3] = Math.round(alpha * this.options.opacity);
+    const g = Math.max(0.01, gamma ?? 1);
+    const minA = Math.min(1, Math.max(0, minAlpha ?? 0));
+
+    for (let i = 0; i < intensity.length; i++) {
+      const val = maxIntensity > 0 ? intensity[i] / maxIntensity : 0;
+      if (val <= 0) {
+        data[i * 4 + 3] = 0;
+        continue;
+      }
+      const boosted = Math.pow(val, g);
+      const alphaN = Math.max(minA, boosted);
+      const alpha8 = Math.min(255, Math.max(0, Math.round(alphaN * 255)));
+      const lutIndex = alpha8 * 4;
+      data[i * 4] = this.gradientLUT[lutIndex];
+      data[i * 4 + 1] = this.gradientLUT[lutIndex + 1];
+      data[i * 4 + 2] = this.gradientLUT[lutIndex + 2];
+      data[i * 4 + 3] = Math.round(alpha8 * this.options.opacity);
     }
+
     ctx.putImageData(img, 0, 0);
 
-    this.updateImageryLayer(rectangle);
+    this.updateImageryLayer();
   }
 
   /**
    * 将当前 canvas 映射为 Cesium 影像图层
    */
-  private updateImageryLayer(rectangle: Cesium.Rectangle): void {
-    if (!rectangle) return;
+  private updateImageryLayer(): void {
+    if (!this.fullDataRectangle) return;
 
     // 简单处理：每次重建 SingleTileImageryProvider
     if (this.imageryLayer) {
@@ -623,7 +671,7 @@ export default class CesiumHeatmapLayer {
     const dataUrl = this.canvas.toDataURL("image/png");
     const provider = new Cesium.SingleTileImageryProvider({
       url: dataUrl,
-      rectangle,
+      rectangle: this.fullDataRectangle,
       tileWidth: this.options.width,
       tileHeight: this.options.height,
     });

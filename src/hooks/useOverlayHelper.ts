@@ -285,6 +285,44 @@ export function useOverlayHelper(
       hoverHighlight: true,
     });
 
+    // Test G: primitive ✅ 三层叠加（detect/control/alarm）
+    // 预期：三层填充都可见，且所有边框都清晰可见（ringsRoot 在 fillsRoot 之上）。
+    const rectGDetect = Cesium.Rectangle.fromDegrees(lon - 0.029, lat - 0.0125, lon - 0.022, lat - 0.009);
+    const rectangleGDetect = overlayService.value.addRectangle({
+      coordinates: rectGDetect,
+      material: Cesium.Color.CYAN.withAlpha(0.18),
+      outline: true,
+      outlineColor: Cesium.Color.CYAN,
+      outlineWidth: 14,
+      renderMode: 'primitive',
+      layerKey: 'detect',
+      hoverHighlight: true,
+    });
+
+    const rectGControl = Cesium.Rectangle.fromDegrees(lon - 0.028, lat - 0.012, lon - 0.021, lat - 0.0095);
+    const rectangleGControl = overlayService.value.addRectangle({
+      coordinates: rectGControl,
+      material: Cesium.Color.YELLOW.withAlpha(0.18),
+      outline: true,
+      outlineColor: Cesium.Color.YELLOW,
+      outlineWidth: 14,
+      renderMode: 'primitive',
+      layerKey: 'control',
+      hoverHighlight: true,
+    });
+
+    const rectGAlarm = Cesium.Rectangle.fromDegrees(lon - 0.027, lat - 0.0115, lon - 0.02, lat - 0.01);
+    const rectangleGAlarm = overlayService.value.addRectangle({
+      coordinates: rectGAlarm,
+      material: Cesium.Color.MAGENTA.withAlpha(0.18),
+      outline: true,
+      outlineColor: Cesium.Color.MAGENTA,
+      outlineWidth: 14,
+      renderMode: 'primitive',
+      layerKey: 'alarm',
+      hoverHighlight: true,
+    });
+
     // Test B: primitive ❌（非粗边框：outlineWidth<=1，会回退到 entity rectangle）
     const rectB = Cesium.Rectangle.fromDegrees(lon - 0.02, lat - 0.015, lon - 0.014, lat - 0.008);
     const rectangleB = overlayService.value.addRectangle({
@@ -367,8 +405,19 @@ export function useOverlayHelper(
     logRectangle('E(init)', rectangleE);
     lastRectangleE.value = rectangleE;
 
-    markerEntities.push(rectangleA, rectangleB, rectangleC, rectangleD, rectangleE, rectangleFDetect, rectangleFAlarm);
-    message.value = '已添加矩形：A primitive粗边框贴地 / B fallback非粗边框 / C fallback悬空 / D auto->primitive / E fallback非纯色材质 / F 分层叠加';
+    markerEntities.push(
+      rectangleA,
+      rectangleB,
+      rectangleC,
+      rectangleD,
+      rectangleE,
+      rectangleFDetect,
+      rectangleFAlarm,
+      rectangleGDetect,
+      rectangleGControl,
+      rectangleGAlarm
+    );
+    message.value = '已添加矩形：A primitive粗边框贴地 / B fallback非粗边框 / C fallback悬空 / D auto->primitive / E fallback非纯色材质 / F 分层叠加 / G 三层叠加';
     setTimeout(() => (message.value = ''), 2400);
 
     // Quick check: visible toggle（primitive/entity 都应该正常生效）
@@ -608,6 +657,7 @@ export function useOverlayHelper(
       borderId: anyE._borderEntity?.id,
       isThickOutline: anyE._isThickOutline,
       outlineWidth: anyE._outlineWidth,
+      primitiveLayerKey: (oe as any)._primitiveLayerKey,
     });
   };
 
@@ -617,6 +667,7 @@ export function useOverlayHelper(
       isRing: oe._isRing,
       innerId: oe._innerEntity?.id,
       ringThickness: oe._ringThickness,
+      primitiveLayerKey: (oe as any)._primitiveLayerKey,
     });
   };
   /**
@@ -921,6 +972,56 @@ export function useOverlayHelper(
       hoverHighlight: true,
     });
 
+    // Test E: primitive ✅ 三层叠加（detect/control/alarm）
+    // 预期：边框永远压在所有填充之上（bordersRoot 在 fillsRoot 之上）。
+    const polyEDetect = overlayService.value.addPolygon({
+      positions: [
+        [lon + 0.018, lat - 0.002],
+        [lon + 0.036, lat - 0.002],
+        [lon + 0.037, lat + 0.01],
+        [lon + 0.02, lat + 0.012],
+      ],
+      material: Cesium.Color.CYAN.withAlpha(0.18),
+      outline: true,
+      outlineColor: Cesium.Color.CYAN,
+      outlineWidth: 10,
+      renderMode: 'primitive',
+      layerKey: 'detect',
+      hoverHighlight: true,
+    });
+
+    const polyEControl = overlayService.value.addPolygon({
+      positions: [
+        [lon + 0.02, lat - 0.0035],
+        [lon + 0.034, lat - 0.0035],
+        [lon + 0.035, lat + 0.0085],
+        [lon + 0.022, lat + 0.0105],
+      ],
+      material: Cesium.Color.YELLOW.withAlpha(0.18),
+      outline: true,
+      outlineColor: Cesium.Color.YELLOW,
+      outlineWidth: 10,
+      renderMode: 'primitive',
+      layerKey: 'control',
+      hoverHighlight: true,
+    });
+
+    const polyEAlarm = overlayService.value.addPolygon({
+      positions: [
+        [lon + 0.022, lat - 0.005],
+        [lon + 0.032, lat - 0.005],
+        [lon + 0.033, lat + 0.007],
+        [lon + 0.024, lat + 0.009],
+      ],
+      material: Cesium.Color.MAGENTA.withAlpha(0.18),
+      outline: true,
+      outlineColor: Cesium.Color.MAGENTA,
+      outlineWidth: 10,
+      renderMode: 'primitive',
+      layerKey: 'alarm',
+      hoverHighlight: true,
+    });
+
     // Test B: primitive ❌（显式悬空 clampToGround=false，会回退到 entity）
     const polyB = overlayService.value.addPolygon({
       positions: [
@@ -973,8 +1074,8 @@ export function useOverlayHelper(
     });
     logPolygon('C(init)', polyC);
 
-    markerEntities.push(polyA, polyB, polyC, polyDDetect, polyDAlarm);
-    message.value = '已添加多边形：A primitive粗边框贴地 / B fallback悬空 / C fallback非纯色材质 / D 分层叠加';
+    markerEntities.push(polyA, polyB, polyC, polyDDetect, polyDAlarm, polyEDetect, polyEControl, polyEAlarm);
+    message.value = '已添加多边形：A primitive粗边框贴地 / B fallback悬空 / C fallback非纯色材质 / D 分层叠加 / E 三层叠加';
     setTimeout(() => (message.value = ''), 2200);
 
     // Quick check: visible toggle（primitive/entity 都应该正常生效）

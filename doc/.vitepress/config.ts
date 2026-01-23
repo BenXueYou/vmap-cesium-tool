@@ -1,6 +1,9 @@
 import { defineConfig } from 'vitepress';
 
-const base = process.env.DOCS_BASE ?? '/';
+// When deploying under nginx subpath (/cesium-map/), VitePress client router
+// must know the base, otherwise hydration can fall back to 404 after the
+// initial SSR HTML flashes.
+const base = process.env.DOCS_BASE ?? '/cesium-map/';
 
 export default defineConfig({
   base,
@@ -37,7 +40,7 @@ export default defineConfig({
     socialLinks: [
       {
         icon: 'github',
-        link: 'https://github.com/BenXueYou/vmap-cesium-tool',
+        link: 'https://github.com/benxueyou/vmap-cesium-toolbar',
       },
     ],
   },
