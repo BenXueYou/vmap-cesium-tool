@@ -14,7 +14,9 @@ import type {
 import { TDTMapTypes } from './config/CesiumMapConfig'
 import { formatDistance, calculatePolygonArea } from '../utils/calc';
 
-import { defaultButtonSorts, defaultButtons } from './toolBar/MapToolBarConfig'
+import { defaultButtons } from './toolBar/MapToolBarConfig'
+
+type ResolvedButtonConfig = Omit<ButtonConfig, 'icon'> & { icon: string | HTMLElement };
 
 /**
  * Cesium地图工具栏类
@@ -31,11 +33,13 @@ export class CesiumMapToolbar {
   private notFlyZonesService!: NotFlyZonesService; // 禁飞区服务实例
   private measurementCallback?: MeasurementCallback; // 测量回调函数
   private zoomCallback?: ZoomCallback; // 缩放回调函数
+  private fullscreenCallback?: (isFullscreen: boolean) => void; // 全屏状态回调函数
+  private resetLocationCallback?: () => void; // 复位位置回调函数
   private initialCenter?: { longitude: number; latitude: number; height: number }; // 初始中心点
   private currentMapType: string = 'imagery'; // 当前地图类型
   public TD_Token: string = 'your_tianditu_token_here'; // 请替换为您的天地图密钥
 
-  // 地图类型配置
+  // 地图类型配置     
   public mapTypes: MapType[] = TDTMapTypes;
 
   // 禁飞区相关状态（用于图层服务配置）
@@ -63,6 +67,8 @@ export class CesiumMapToolbar {
       search?: SearchCallback;
       measurement?: MeasurementCallback;
       zoom?: ZoomCallback;
+      fullscreen?: (isFullscreen: boolean) => void; // 全屏回调
+      resetLocation?: () => void; // 复位位置回调
     },
     initialCenter?: { longitude: number; latitude: number; height: number }
   ) {
@@ -81,7 +87,8 @@ export class CesiumMapToolbar {
     };
     this.measurementCallback = callbacks?.measurement;
     this.zoomCallback = callbacks?.zoom;
-
+    this.fullscreenCallback = callbacks?.fullscreen;
+    this.resetLocationCallback = callbacks?.resetLocation;
     // 设置初始中心点
     this.initialCenter = initialCenter;
 
@@ -149,6 +156,8 @@ export class CesiumMapToolbar {
           anyHelper.handleSceneModeChanged();
         }
       },
+      fullscreenCallback: this.fullscreenCallback, // 全屏回调
+      resetLocationCallback: this.resetLocationCallback // 复位位置回调
     });
 
     // 自动加载禁飞区（如果默认勾选）
@@ -164,6 +173,42 @@ export class CesiumMapToolbar {
     this.mapController.setupCameraZoomLimitListener();
   }
 
+  /**
+   * searchService 对外暴露的获取搜索服务方法
+   */
+  public getSearchService() {
+    return this.searchService;
+  }
+  /**
+   * notFlyZonesService 对外暴露的获取禁飞区服务方法
+   */
+  public getNotFlyZonesService() {
+    return this.notFlyZonesService;
+  }
+  /**
+   * measurementService 对外暴露的获取测量服务方法
+   */
+  public getMeasurementService() {
+    return this.measurementService;
+  }
+  /**
+   * cesmapController 对外暴露的获取地图控制器方法
+   */
+  public getCesiumMapCtrl() {
+    return this.mapController;
+  }
+
+  /**
+   * mapLayersService 对外暴露的获取图层服务方法
+   */
+  public getMapLayersService() {
+    return this.mapLayersService;
+  }
+
+  /**
+   * 设置地图类型配置
+   * @param mapTypes 
+   */
   public setMapTypes(mapTypes: MapType[]): void {
     this.mapTypes = mapTypes;
     // 同步更新图层服务配置
@@ -172,6 +217,11 @@ export class CesiumMapToolbar {
     });
   }
 
+
+  /**
+   * 设置天地图密钥
+   * @param TD_Token 
+   */
   public setTDToken(TD_Token: string): void {
     this.TD_Token = TD_Token;
     // 同步更新图层服务配置
@@ -200,7 +250,7 @@ export class CesiumMapToolbar {
    * 复位到初始位置（公共方法）
    */
   public resetToInitialLocation(): void {
-    this.resetLocation();
+    this.mapController.resetLocation();
   }
 
   /**
@@ -251,58 +301,66 @@ export class CesiumMapToolbar {
       this.config.buttons.push(config);
     }
 
-    // 获取所有按钮（包括默认按钮和自定义按钮）
-    const allButtons = this.getAllButtonsWithSort();
-
-    // 根据 sort 值排序（sort 值越小越靠前，未设置 sort 的按钮排在最后）
-    allButtons.sort((a, b) => {
-      const sortA = a.sort ?? 9999;
-      const sortB = b.sort ?? 9999;
-      return sortA - sortB;
-    });
-
     // 重新构建工具栏按钮
-    this.rebuildToolbarButtons(allButtons);
+    this.rebuildToolbarButtons(this.getButtonConfigs());
   }
 
   /**
    * 获取所有按钮配置（包括默认按钮和自定义按钮），并添加 sort 值
    */
-  private getAllButtonsWithSort(): ButtonConfig[] {    
-    // Ensure config.buttons is defined
-    const customButtons = this.config.buttons || [];
+  private resolveIcon(customIcon: CustomButtonConfig['icon'], fallbackIcon: string): string | HTMLElement {
+    if (customIcon === false) return fallbackIcon;
+    if (customIcon instanceof HTMLElement) return customIcon;
+    if (typeof customIcon === 'string') return customIcon;
+    return fallbackIcon;
+  }
 
-    // Map custom buttons to include default properties where applicable
-    const allButtons = customButtons.map(customButton => {
-      const defaultButton = defaultButtons.find(btn => btn.id === customButton.id);
+  /**
+   * 获取按钮配置（已排序，包含默认按钮兜底）
+   * - 未传 buttons：使用默认按钮
+   * - 传了 buttons：按传入按钮列表渲染，并用默认按钮补齐缺省字段
+   */
+  private getButtonConfigs(): ResolvedButtonConfig[] {
+    const hasCustomButtons = Array.isArray(this.config.buttons) && this.config.buttons.length > 0;
+    const sourceButtons: Array<ButtonConfig | CustomButtonConfig> = hasCustomButtons
+      ? (this.config.buttons as CustomButtonConfig[])
+      : (defaultButtons as ButtonConfig[]);
+
+    const resolvedButtons: ResolvedButtonConfig[] = sourceButtons.map((btn) => {
+      const isCustom = (btn as CustomButtonConfig).icon !== undefined;
+      const customButton = isCustom ? (btn as CustomButtonConfig) : undefined;
+      const defaultButton = defaultButtons.find(d => d.id === btn.id);
+
+      const resolvedIcon = customButton
+        ? this.resolveIcon(customButton.icon, defaultButton?.icon ?? '')
+        : (btn as ButtonConfig).icon;
 
       return {
-        id: customButton.id,
-        icon: typeof customButton.icon === 'string'
-          ? customButton.icon
-          : defaultButton?.icon || '',
-        title: customButton.title || defaultButton?.title || '',
-        size: customButton.size ?? defaultButton?.size,
-        backgroundColor: customButton.backgroundColor || defaultButton?.backgroundColor || '',
-        borderColor: customButton.borderColor || defaultButton?.borderColor || '',
-        borderWidth: customButton.borderWidth || defaultButton?.borderWidth || 1,
-        borderStyle: customButton.borderStyle || defaultButton?.borderStyle || 'solid',
-        callback: customButton.callback || defaultButton?.callback || (() => {}),
-        color: customButton.color || defaultButton?.color || 'rgba(66, 133, 244, 0.4)',
-        sort: customButton.sort ?? defaultButton?.sort ?? 9999,
+        id: btn.id,
+        icon: resolvedIcon,
+        title: (customButton?.title ?? (btn as ButtonConfig).title ?? defaultButton?.title ?? '') as string,
+        size: customButton?.size ?? (btn as ButtonConfig).size ?? defaultButton?.size,
+        backgroundColor: customButton?.backgroundColor ?? (btn as ButtonConfig).backgroundColor ?? defaultButton?.backgroundColor,
+        borderColor: customButton?.borderColor ?? (btn as ButtonConfig).borderColor ?? defaultButton?.borderColor,
+        borderWidth: customButton?.borderWidth ?? (btn as ButtonConfig).borderWidth ?? defaultButton?.borderWidth,
+        borderStyle: customButton?.borderStyle ?? (btn as ButtonConfig).borderStyle ?? defaultButton?.borderStyle,
+        hoverColor: customButton?.hoverColor ?? (btn as ButtonConfig).hoverColor ?? defaultButton?.hoverColor,
+        activeColor: customButton?.activeColor ?? (btn as ButtonConfig).activeColor ?? defaultButton?.activeColor,
+        color: customButton?.color ?? (btn as ButtonConfig).color ?? defaultButton?.color,
+        sort: customButton?.sort ?? (btn as ButtonConfig).sort ?? defaultButton?.sort,
+        callback: customButton?.callback ?? (btn as ButtonConfig).callback ?? defaultButton?.callback,
+        activeIcon: (customButton && customButton.activeIcon !== false ? customButton.activeIcon : (btn as ButtonConfig).activeIcon) ?? defaultButton?.activeIcon,
       };
     });
 
-    // Sort buttons based on their `sort` value
-    allButtons.sort((a, b) => (a.sort ?? Infinity) - (b.sort ?? Infinity));
-
-    return allButtons;
+    resolvedButtons.sort((a, b) => (a.sort ?? Infinity) - (b.sort ?? Infinity));
+    return resolvedButtons;
   }
 
   /**
    * 重新构建工具栏按钮
    */
-  private rebuildToolbarButtons(buttons: ButtonConfig[]): void {
+  private rebuildToolbarButtons(buttons: ResolvedButtonConfig[]): void {
     // 清除现有按钮（保留工具栏容器）
     const existingButtons = this.toolbarElement.querySelectorAll('.cesium-toolbar-button');
     existingButtons.forEach(btn => {
@@ -419,25 +477,9 @@ export class CesiumMapToolbar {
   }
 
   /**
-   * 获取按钮配置（已排序）
-   */
-  private getButtonConfigs(): ButtonConfig[] {
-    const allButtons = this.getAllButtonsWithSort();
-    const filteredButtons = allButtons.filter(button => {
-      if (this.config.buttons) {
-        return this.config.buttons.some(configButton => configButton.id === button.id);
-      }
-      return true;
-    });
-    // 按sort排序
-    filteredButtons.sort((a, b) => (a.sort ?? Infinity) - (b.sort ?? Infinity));
-    return filteredButtons;
-  }
-
-  /**
    * 创建按钮
    */
-  private createButton(config: ButtonConfig): HTMLElement {
+  private createButton(config: ResolvedButtonConfig): HTMLElement {
     const button = document.createElement('div');
     button.className = 'cesium-toolbar-button';
     button.setAttribute('data-tool', config.id);
@@ -586,7 +628,7 @@ export class CesiumMapToolbar {
   /**
    * 设置按钮事件
    */
-  private setupButtonEvents(button: HTMLElement, config: ButtonConfig): void {
+  private setupButtonEvents(button: HTMLElement, config: ResolvedButtonConfig): void {
     // 查找自定义按钮配置
     const customButton = this.config.buttons?.find(btn => btn.id === config.id);
 
@@ -600,12 +642,12 @@ export class CesiumMapToolbar {
       // 默认按钮点击事件（除了搜索、测量、图层切换按钮）
       button.addEventListener('click', (e) => {
         e.stopPropagation();
-        this.handleButtonClick(config.id, button, config.callback);
+        this.handleButtonClick(config.id, button);
       });
     } else {
       // 搜索、测量、图层切换按钮使用hover事件
       button.addEventListener('mouseenter', () => {
-        this.handleButtonClick(config.id, button, config.callback);
+        this.handleButtonClick(config.id, button);
       });
 
       // 添加鼠标离开事件来关闭菜单
@@ -660,7 +702,7 @@ export class CesiumMapToolbar {
   /**
    * 处理按钮点击
    */
-  private handleButtonClick(buttonId: string, buttonElement: HTMLElement, callback?: () => void): void {
+  private handleButtonClick(buttonId: string, buttonElement: HTMLElement): void {
     // 如果触发的是非搜索按钮，先关闭搜索框
     if (buttonId !== 'search') {
       this.closeSearchContainer();

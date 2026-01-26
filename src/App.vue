@@ -394,7 +394,7 @@ const customToolBarBtn = (mapToolbar: CesiumMapToolbar) => {
     color: '#FF4444',
     backgroundColor: 'rgba(0, 0, 0, 0.52)',
     borderColor: '#FF4444',
-    sort: -1, // 插入到搜索(0)和测量(1)之间
+    sort: 0.5, // 插入到搜索(0)和测量(1)之间
     onClick: (buttonId: string, buttonElement: HTMLElement) => {
       console.log('测试添加报警按钮被点击');
       message.value = '测试报警：这是一个测试报警信息';

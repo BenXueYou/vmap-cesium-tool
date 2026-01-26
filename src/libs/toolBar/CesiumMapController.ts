@@ -26,6 +26,10 @@ interface CesiumMapControllerOptions {
   zoomCallback?: ZoomCallback;
   /** 场景模式切换后回调（例如通知 DrawHelper 重新计算偏移） */
   onSceneModeChanged?: () => void;
+  /** 全屏切换回调 */
+  fullscreenCallback?: (isFullscreen: boolean) => void;
+  /** 复位位置回调 */
+  resetLocationCallback?: () => void;
 }
 
 /**
@@ -40,6 +44,8 @@ export class CesiumMapController {
   private getToken?: () => string;
   private zoomCallback?: ZoomCallback;
   private onSceneModeChanged?: () => void;
+  private fullscreenCallback?: (isFullscreen: boolean) => void;
+  private resetLocationCallback?: () => void;
 
   constructor(viewer: Viewer, options: CesiumMapControllerOptions = {}) {
     this.viewer = viewer;
@@ -49,6 +55,8 @@ export class CesiumMapController {
     this.getToken = options.getToken;
     this.zoomCallback = options.zoomCallback;
     this.onSceneModeChanged = options.onSceneModeChanged;
+    this.fullscreenCallback = options.fullscreenCallback;
+    this.resetLocationCallback = options.resetLocationCallback;
   }
 
   /**
@@ -271,6 +279,13 @@ export class CesiumMapController {
       ),
       duration: 1.0,
     });
+    const callback = this.resetLocationCallback;
+    if (callback) {
+      setTimeout(() => {
+        callback();
+      }, 1000);
+    }
+    
   }
 
   public setInitialCenter(center: MapInitialCenter): void {
@@ -289,6 +304,9 @@ export class CesiumMapController {
       this.exitFullscreen();
     } else {
       this.enterFullscreen();
+    }
+    if (this.fullscreenCallback) {
+      this.fullscreenCallback(this.isFullscreen());
     }
   }
 

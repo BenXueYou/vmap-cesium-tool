@@ -216,9 +216,33 @@ export declare class CesiumMapToolbar {
       search?: SearchCallback;
       measurement?: MeasurementCallback;
       zoom?: ZoomCallback;
+      fullscreen?: (isFullscreen: boolean) => void;
+      resetLocation?: () => void;
     },
     initialCenter?: { longitude: number; latitude: number; height: number }
   );
+
+  /** 天地图 Token（可直接修改或配合 setTDToken） */
+  TD_Token: string;
+
+  /** 当前可用的底图类型列表 */
+  mapTypes: MapType[];
+
+  /** 获取内部搜索服务实例 */
+  getSearchService(): SearchService;
+
+  /** 获取内部禁飞区服务实例 */
+  getNotFlyZonesService(): NotFlyZonesService;
+
+  /** 获取内部测量服务实例 */
+  getMeasurementService(): any; // MeasurementService (内部未在 d.ts 中单独暴露)
+
+  /** 获取内部地图控制器实例 */
+  getCesiumMapCtrl(): CesiumMapController;
+
+  /** 获取内部图层服务实例 */
+  getMapLayersService(): MapLayersService;
+
   setMapTypes(mapTypes: MapType[]): void;
   setTDToken(TD_Token: string): void;
   setInitialCenter(center: { longitude: number; latitude: number; height: number }): void;
@@ -685,6 +709,10 @@ export interface CesiumMapControllerOptions {
   getToken?: () => string;
   zoomCallback?: ZoomCallback;
   onSceneModeChanged?: () => void;
+    /** 全屏切换回调 */
+  fullscreenCallback?: (isFullscreen: boolean) => void;
+  /** 复位位置回调 */
+  resetLocationCallback?: () => void;
 }
 
 export declare class CesiumMapController {
