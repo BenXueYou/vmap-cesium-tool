@@ -23,6 +23,8 @@ constructor(
     search?: SearchCallback;
     measurement?: MeasurementCallback;
     zoom?: ZoomCallback;
+    fullscreen?: (isFullscreen: boolean) => void;
+    resetLocation?: () => void;
   },
   initialCenter?: { longitude: number; latitude: number; height: number }
 )
@@ -33,8 +35,16 @@ constructor(
 - `viewer` (Viewer): Cesium Viewer 实例
 - `container` (HTMLElement): 地图容器元素
 - `config` (ToolbarConfig, 可选): 工具栏配置
-- `callbacks` (对象, 可选): 回调函数配置
+- `callbacks` (对象, 可选): 回调函数配置（search/measurement/zoom/fullscreen/resetLocation）
 - `initialCenter` (对象, 可选): 初始中心点
+
+### callbacks 说明
+
+- `search`：搜索相关回调（见 SearchCallback）
+- `measurement`：测量相关回调（见 MeasurementCallback）
+- `zoom`：缩放回调（见 ZoomCallback）
+- `fullscreen`：全屏状态变化回调；当工具栏触发进入/退出全屏时会回调，参数为 `true/false`
+- `resetLocation`：点击“定位/复位”按钮后回调（复位逻辑执行后触发）
 
 ## 配置接口
 
@@ -100,6 +110,24 @@ interface SearchResult {
 }
 ```
 
+## 公开属性（可直接访问）
+
+### 1. 天地图 Token
+
+```ts
+TD_Token: string
+```
+
+图层服务切换底图时使用的鉴权 Token。
+
+### 2. 地图类型列表
+
+```ts
+mapTypes: MapType[]
+```
+
+用于图层菜单的底图列表（可通过 `setMapTypes` 覆盖）。
+
 ## 主要方法
 
 ### 1. 设置初始中心点
@@ -108,11 +136,11 @@ interface SearchResult {
 setInitialCenter(center: { longitude: number; latitude: number; height: number }): void
 ```
 
-#### 参数
+#### 参数（setInitialCenter）
 
 - `center`: 中心点坐标对象
 
-#### 使用示例
+#### 使用示例（setInitialCenter）
 
 ```typescript
 toolbar.setInitialCenter({
@@ -139,7 +167,7 @@ resetToInitialLocation(): void
 ### 4. 设置天地图 Token
 
 ```ts
-setTDToken(token: string): void
+setTDToken(TD_Token: string): void
 ```
 
 用于图层服务切换天地图底图时的鉴权。
@@ -182,6 +210,18 @@ destroy(): void
 ```
 
 销毁工具栏实例并释放事件监听器/DOM（建议在组件卸载时调用）。
+
+## 获取内部服务（高级用法）
+
+以下方法用于获取内部服务实例，便于做更深度的定制（例如：自行控制菜单开关/直接调用服务 API）。
+
+```ts
+getSearchService(): SearchService
+getMapLayersService(): MapLayersService
+getNotFlyZonesService(): NotFlyZonesService
+getCesiumMapCtrl(): CesiumMapController
+getMeasurementService(): MeasurementService
+```
 
 ## 工具栏按钮功能
 
