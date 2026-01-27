@@ -195,6 +195,7 @@ export class MapLayersService {
   private createMapTypeItem(mapType: MapType, menu: HTMLElement): HTMLElement {
     const mapTypeItem = document.createElement('div');
     const isCurrentType = mapType.id === this.config.currentMapType;
+    mapTypeItem.className = 'layers-map-type-item';
     mapTypeItem.style.cssText = `
       width: 88px;
       height: 56px;
@@ -209,6 +210,7 @@ export class MapLayersService {
 
     const thumbnail = document.createElement('img');
     thumbnail.src = mapType.thumbnail;
+    thumbnail.className = 'layers-thumbnail';
     thumbnail.style.cssText = `
       width: 100%;
       height: auto;
@@ -217,6 +219,7 @@ export class MapLayersService {
 
     const label = document.createElement('div');
     label.textContent = mapType.name;
+    label.className = 'layers-label';
     label.style.cssText = `
       position: absolute;
       bottom: 0;
@@ -234,6 +237,7 @@ export class MapLayersService {
     if (isCurrentType) {
       const checkmark = document.createElement('div');
       checkmark.innerHTML = '✓';
+      checkmark.className = 'layers-checkmark';
       checkmark.style.cssText = `
         position: absolute;
         top: 4px;

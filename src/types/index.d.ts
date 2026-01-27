@@ -198,9 +198,10 @@ export interface InitOptions {
   requestRenderMode?: boolean;
   token?: string;
   cesiumToken?: string;
-  orderIndependentTranslucency?: boolean // 无序半透明度,
-  fxaa?: boolean, // 启用FXAA后处理抗锯齿
-  msaaSamples?: number, // MSAA采样数（推荐4或8）,
+  maximumRenderTimeChange?: number; // 最大渲染时间变化
+  orderIndependentTranslucency?: boolean; // 无序半透明度,
+  fxaa?: boolean; // 启用FXAA后处理抗锯齿
+  msaaSamples?: number; // MSAA采样数（推荐4或8）
   success?: () => void;
   cancel?: () => void;
   mapCenter?: MapCenter;
