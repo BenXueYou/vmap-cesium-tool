@@ -2,6 +2,7 @@ import { ref, type Ref } from "vue";
 import * as Cesium from "cesium";
 import DrawHelper from "../libs/CesiumMapDraw";
 import type { DrawResult } from "../libs/drawHelper";
+import { i18n } from "../i18n";
 
 /**
  * 绘制相关的辅助逻辑
@@ -48,12 +49,12 @@ export function useDrawHelper(
       strokeWidth: 4,
       strokeColor: Cesium.Color.BLUE,
     });
-    message.value = "开始绘制线条：左键添加点，双击完成，右键删除最后一点";
+    message.value = i18n.t("draw.start.line");
 
     drawHelper.value.onDrawEnd(() => {
       isDrawing.value = false;
       currentDrawMode.value = null;
-      message.value = "线条绘制完成";
+      message.value = i18n.t("draw.done.line");
       setTimeout(() => {
         message.value = "";
       }, 2000);
@@ -85,12 +86,12 @@ export function useDrawHelper(
         console.log("矩形区域点击:", entity);
       },
     });
-    message.value = "开始绘制矩形区域：左键确定起点，再次左键确定终点，双击完成";
+    message.value = i18n.t("draw.start.rectangle");
 
     drawHelper.value.onDrawEnd((entity) => {
       isDrawing.value = false;
       currentDrawMode.value = null;
-      message.value = "矩形区域绘制完成";
+      message.value = i18n.t("draw.done.rectangle");
       if (entity) {
         console.log("关联标签实体:", drawHelper.value?.getEntityLabelEntities(entity));
       }
@@ -114,12 +115,12 @@ export function useDrawHelper(
       outlineWidth: 2,
       showAreaLabel: false,
     });
-    message.value = "开始绘制矩形区域（不显示面积标签）：左键确定起点，再次左键确定终点，双击完成";
+    message.value = i18n.t("draw.start.rectangle_no_label");
 
     drawHelper.value.onDrawEnd((entity) => {
       isDrawing.value = false;
       currentDrawMode.value = null;
-      message.value = "矩形区域绘制完成（不显示面积标签）";
+      message.value = i18n.t("draw.done.rectangle_no_label");
       if (entity) {
         console.log("关联标签实体:", drawHelper.value?.getEntityLabelEntities(entity));
       }
@@ -151,12 +152,12 @@ export function useDrawHelper(
       outlineWidth: 6,
       showAreaLabel: true,
     });
-    message.value = "开始绘制圆形：左键确定圆心，再次左键确定半径，双击完成";
+    message.value = i18n.t("draw.start.circle");
 
     drawHelper.value.onDrawEnd(() => {
       isDrawing.value = false;
       currentDrawMode.value = null;
-      message.value = "圆形绘制完成";
+      message.value = i18n.t("draw.done.circle");
       setTimeout(() => {
         message.value = "";
       }, 2000);
@@ -177,12 +178,12 @@ export function useDrawHelper(
       outlineWidth: 6,
       showAreaLabel: false,
     });
-    message.value = "开始绘制圆形（不显示面积标签）：左键确定圆心，再次左键确定半径，双击完成";
+    message.value = i18n.t("draw.start.circle_no_label");
 
     drawHelper.value.onDrawEnd((entity) => {
       isDrawing.value = false;
       currentDrawMode.value = null;
-      message.value = "圆形绘制完成（不显示面积标签）";
+      message.value = i18n.t("draw.done.circle_no_label");
       if (entity) {
         console.log("关联标签实体:", drawHelper.value?.getEntityLabelEntities(entity));
       }
@@ -214,13 +215,13 @@ export function useDrawHelper(
       fillColor: Cesium.Color.YELLOW.withAlpha(0.5),
       showAreaLabel: true,
     });
-    message.value = "开始绘制多边形：左键添加点，双击完成，右键删除最后一点";
+    message.value = i18n.t("draw.start.polygon");
 
     drawHelper.value.onDrawEnd((entity: Cesium.Entity | null) => {
       console.log("多边形绘制完成:", entity);
       isDrawing.value = false;
       currentDrawMode.value = null;
-      message.value = "多边形绘制完成";
+      message.value = i18n.t("draw.done.polygon");
       setTimeout  (() => {
         message.value = "";
         if (entity) {
@@ -266,13 +267,14 @@ export function useDrawHelper(
       selfIntersectionAllowContinue: false,
     });
 
-    message.value =
-      "测试-落点前拦截：尝试让“最新一条边”穿过/擦到第一条边；被拦截时不会新增红点（控制台会有 warn）。";
+    message.value = i18n.t("draw.start.polygon_point_intercept");
 
     drawHelper.value.onDrawEnd((entity: Cesium.Entity | null) => {
       isDrawing.value = false;
       currentDrawMode.value = null;
-      message.value = entity ? "[PointIntercept] 多边形绘制完成" : "[PointIntercept] 多边形绘制结束（可能被拦截/点数不足）";
+      message.value = entity
+        ? i18n.t("draw.done.polygon_point_intercept_ok")
+        : i18n.t("draw.done.polygon_point_intercept_end");
       setTimeout(() => {
         message.value = "";
       }, 2000);
@@ -302,14 +304,15 @@ export function useDrawHelper(
       selfIntersectionAllowContinue: false,
     });
 
-    message.value =
-      "测试-完成前兜底：先依次点 4 个点，保证第4点落下时不相交；但让“最后点->第1点”的闭合边穿过第2-第3条边。然后双击完成。";
+    message.value = i18n.t("draw.start.polygon_finish_fallback");
 
     drawHelper.value.onDrawEnd((entity: Cesium.Entity | null) => {
       console.log("[FinishFallback] onDrawEnd entity:", entity);
       isDrawing.value = false;
       currentDrawMode.value = null;
-      message.value = entity ? "[FinishFallback] 多边形绘制完成" : "[FinishFallback] 完成被兜底拦截（自相交）";
+      message.value = entity
+        ? i18n.t("draw.done.polygon_finish_fallback_ok")
+        : i18n.t("draw.done.polygon_finish_fallback_blocked");
       setTimeout(() => {
         message.value = "";
       }, 2500);
@@ -330,13 +333,13 @@ export function useDrawHelper(
       fillColor: Cesium.Color.YELLOW.withAlpha(0.5),
       showAreaLabel: false,
     });
-    message.value = "开始绘制多边形（不显示面积标签）：左键添加点，双击完成，右键删除最后一点";
+    message.value = i18n.t("draw.start.polygon_no_label");
 
     drawHelper.value.onDrawEnd((entity: Cesium.Entity | null) => {
       console.log("多边形绘制完成(不显示面积标签):", entity);
       isDrawing.value = false;
       currentDrawMode.value = null;
-      message.value = "多边形绘制完成（不显示面积标签）";
+      message.value = i18n.t("draw.done.polygon_no_label");
       if (entity) {
         console.log("关联标签实体:", drawHelper.value?.getEntityLabelEntities(entity));
       }

@@ -2,6 +2,7 @@ import * as Cesium from "cesium";
 import type { Primitive } from "cesium";
 import { BaseDraw, DrawLine, DrawPolygon, DrawRectangle, DrawCircle, type DrawCallbacks, type DrawOptions, type DrawEntity, toggleSelectedStyle } from './drawHelper';
 import { wouldCreatePolygonSelfIntersection } from '../utils/selfIntersection';
+import { i18n } from './i18n';
 /**
  * Cesium 绘图辅助工具类
  * 支持绘制点、线、多边形、矩形，并提供编辑和删除功能
@@ -614,12 +615,9 @@ class DrawHelper {
         if (this.isDrawing) return; // 绘制时忽略实体点击
         // 绘制刚结束/切换状态的短窗口内，禁用 pick，避免与 OverlayService 等其它 handler 争用
         if (this.isPickBlocked()) return;
-        console.log('--------------111111-------------');
         const picked = this.scene.pick(click.position as any);
-        console.log('--------------222222-------------', picked);
         const entity = picked && (picked as any).id as Cesium.Entity | undefined;
         if (!entity) return;
-        console.log('--------------333333-------------');
 
         const drawEntity = entity as DrawEntity;
 
@@ -1175,24 +1173,24 @@ class DrawHelper {
 
     switch (this.drawMode) {
       case "circle": {
-        if (pointCount === 0) return "单击确定圆心";
-        if (pointCount === 1) return "移动鼠标确定半径，单击确定半径点，双击完成，右键撤销";
-        return "双击完成，右键撤销";
+        if (pointCount === 0) return i18n.t("draw.hint.circle_start");
+        if (pointCount === 1) return i18n.t("draw.hint.circle_radius");
+        return i18n.t("draw.hint.finish_or_undo");
       }
       case "rectangle": {
-        if (pointCount === 0) return "单击确定起点";
-        if (pointCount === 1) return "移动鼠标确定终点，单击确定终点，双击完成，右键撤销";
-        return "双击完成，右键撤销";
+        if (pointCount === 0) return i18n.t("draw.hint.rectangle_start");
+        if (pointCount === 1) return i18n.t("draw.hint.rectangle_end");
+        return i18n.t("draw.hint.finish_or_undo");
       }
       case "polygon": {
-        if (pointCount === 0) return "单击绘制区域";
-        if (pointCount === 1) return "单击绘制区域，右键删除点位";
-        return "左击绘制区域，右键删除点位，双击结束绘制";
+        if (pointCount === 0) return i18n.t("draw.hint.polygon_start");
+        if (pointCount === 1) return i18n.t("draw.hint.polygon_add" );
+        return i18n.t("draw.hint.polygon_continue");
       }
       case "line": {
-        if (pointCount === 0) return "单击绘制区域";
-        if (pointCount === 1) return "单击绘制区域，右键删除点位";
-        return "左击绘制区域，右键删除点位，双击结束绘制";
+        if (pointCount === 0) return i18n.t("draw.hint.line_start");
+        if (pointCount === 1) return i18n.t("draw.hint.line_add");
+        return i18n.t("draw.hint.line_continue");
       }
       default:
         return "";
@@ -1599,7 +1597,7 @@ class DrawHelper {
             if (willSelfIntersect && !allowContinue) {
               // 阻止落点，但保持绘制状态，用户可继续选择其他点
               console.warn('Polygon self-intersection detected; point rejected.');
-              this.setDrawHintOverride('多边形不能交叉');
+              this.setDrawHintOverride(i18n.t('draw.hint.polygon_no_intersection'));
               return;
             }
           }
@@ -1664,7 +1662,7 @@ class DrawHelper {
         if (existing && existing.length >= 2) {
           const willSelfIntersect = wouldCreatePolygonSelfIntersection(existing, currentMousePosition, { allowTouch });
           if (willSelfIntersect && !allowContinue) {
-            this.setDrawHintOverride('多边形不能交叉');
+            this.setDrawHintOverride(i18n.t('draw.hint.polygon_no_intersection'));
             this.updateDrawingEntity(undefined);
             return;
           }

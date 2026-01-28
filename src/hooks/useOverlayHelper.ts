@@ -3,6 +3,7 @@ import * as Cesium from "cesium";
 import type { Entity } from "cesium";
 import type { OverlayEntity } from '../libs/overlay/types';
 import { CesiumOverlayService } from "../libs/overlay";
+import { i18n } from "../i18n";
 
 /**
  * 覆盖物相关的辅助逻辑
@@ -50,7 +51,7 @@ export function useOverlayHelper(
       return;
     }
 
-    message.value = "点击地图添加标记点，右键取消";
+    message.value = i18n.t("overlay.marker_mode");
 
     // 创建点击事件处理器
     markerHandler.value = new Cesium.ScreenSpaceEventHandler(viewer.value.scene.canvas);
@@ -78,17 +79,23 @@ export function useOverlayHelper(
           hoverHighlight: true,
           onClick: (entity) => {
             console.log("标记点被点击:", entity);
-            message.value = `标记点位置: ${longitude.toFixed(6)}, ${latitude.toFixed(6)}`;
+            message.value = i18n.t("overlay.marker_position", {
+              lon: longitude.toFixed(6),
+              lat: latitude.toFixed(6),
+            });
             setTimeout(() => {
-              message.value = "点击地图添加标记点，右键取消";
+              message.value = i18n.t("overlay.marker_mode");
             }, 2000);
           },
         });
 
         markerEntities.push(marker);
-        message.value = `已添加标记点: ${longitude.toFixed(6)}, ${latitude.toFixed(6)}`;
+        message.value = i18n.t("overlay.marker_added", {
+          lon: longitude.toFixed(6),
+          lat: latitude.toFixed(6),
+        });
         setTimeout(() => {
-          message.value = "点击地图添加标记点，右键取消";
+          message.value = i18n.t("overlay.marker_mode");
         }, 2000);
       }
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
@@ -115,12 +122,12 @@ export function useOverlayHelper(
       outlineColor: Cesium.Color.WHITE,
       outlineWidth: 2,
       hoverHighlight: true,
-      onClick: () => console.log('示例标记点被点击'),
+      onClick: () => console.log(i18n.t('overlay.sample_marker_label') + ' clicked'),
     });
 
     overlayService.value.addLabel({
       position: [lon + 0.01, lat + 0.01],
-      text: '示例标记点',
+      text: i18n.t('overlay.sample_marker_label'),
       font: '16px sans-serif',
       fillColor: Cesium.Color.WHITE,
       outlineColor: Cesium.Color.BLACK,
@@ -133,7 +140,7 @@ export function useOverlayHelper(
     });
 
     markerEntities.push(marker);
-    message.value = '已添加示例标记点';
+    message.value = i18n.t('overlay.sample_marker_added');
     setTimeout(() => (message.value = ''), 2000);
   };
 
@@ -156,14 +163,14 @@ export function useOverlayHelper(
       hoverHighlight: true,
       disableDepthTestDistance: 100, // 禁用深度测试距离
       onClick: () => {
-        console.log('示例图标被点击');
-        message.value = '示例图标被点击';
+        console.log(i18n.t('overlay.icon_clicked'));
+        message.value = i18n.t('overlay.icon_clicked');
         setTimeout(() => (message.value = ''), 2000);
       },
     });
 
     markerEntities.push(icon);
-    message.value = '已添加图标';
+    message.value = i18n.t('overlay.icon_added');
     setTimeout(() => (message.value = ''), 2000);
   };
 
@@ -188,14 +195,14 @@ export function useOverlayHelper(
       height: 40,
       hoverHighlight: true,
       onClick: () => {
-        console.log('示例SVG被点击');
-        message.value = '示例SVG被点击';
+        console.log(i18n.t('overlay.svg_clicked'));
+        message.value = i18n.t('overlay.svg_clicked');
         setTimeout(() => (message.value = ''), 2000);
       },
     });
 
     markerEntities.push(svg);
-    message.value = '已添加SVG图标';
+    message.value = i18n.t('overlay.svg_added');
     setTimeout(() => (message.value = ''), 2000);
   };
 
@@ -219,14 +226,14 @@ export function useOverlayHelper(
       material: Cesium.Color.YELLOW,
       clampToGround: true,
       onClick: () => {
-        console.log('示例折线被点击');
-        message.value = '示例折线被点击';
+        console.log(i18n.t('overlay.polyline_clicked'));
+        message.value = i18n.t('overlay.polyline_clicked');
         setTimeout(() => (message.value = ''), 2000);
       },
     });
 
     markerEntities.push(polyline);
-    message.value = '已添加折线';
+    message.value = i18n.t('overlay.polyline_added');
     setTimeout(() => (message.value = ''), 2000);
   };
 
@@ -253,7 +260,7 @@ export function useOverlayHelper(
       // clampToGround 默认 true（这里不传，验证默认行为）
       onClick: () => {
         logRectangle('A(click)', rectangleA);
-        message.value = '矩形 A(primitive, 粗边框贴地) 被点击';
+        message.value = i18n.t('overlay.rectangle_a_clicked');
         setTimeout(() => (message.value = ''), 2000);
       },
     });
@@ -335,7 +342,7 @@ export function useOverlayHelper(
       renderMode: 'primitive',
       onClick: () => {
         logRectangle('B(click)', rectangleB);
-        message.value = '矩形 B(fallback, 非粗边框) 被点击';
+        message.value = i18n.t('overlay.rectangle_b_clicked');
         setTimeout(() => (message.value = ''), 2000);
       },
     });
@@ -356,7 +363,7 @@ export function useOverlayHelper(
       hoverHighlight: true,
       onClick: () => {
         logRectangle('C(click)', rectangleC);
-        message.value = '矩形 C(fallback, 悬空) 被点击';
+        message.value = i18n.t('overlay.rectangle_c_clicked');
         setTimeout(() => (message.value = ''), 2000);
       },
     });
@@ -374,7 +381,7 @@ export function useOverlayHelper(
       renderMode: 'auto',
       onClick: () => {
         logRectangle('D(click)', rectangleD);
-        message.value = '矩形 D(auto -> primitive) 被点击';
+        message.value = i18n.t('overlay.rectangle_d_clicked');
         setTimeout(() => (message.value = ''), 2000);
       },
     });
@@ -398,7 +405,7 @@ export function useOverlayHelper(
       clickHighlight: { color: '#ffee58', fillAlpha: 0.35 },
       onClick: () => {
         logRectangle('E(click)', rectangleE);
-        message.value = '矩形 E(fallback, 非纯色材质) 被点击';
+        message.value = i18n.t('overlay.rectangle_e_clicked');
         setTimeout(() => (message.value = ''), 2000);
       },
     });
@@ -417,7 +424,7 @@ export function useOverlayHelper(
       rectangleGControl,
       rectangleGAlarm
     );
-    message.value = '已添加矩形：A primitive粗边框贴地 / B fallback非粗边框 / C fallback悬空 / D auto->primitive / E fallback非纯色材质 / F 分层叠加 / G 三层叠加';
+    message.value = i18n.t('overlay.rectangle_added');
     setTimeout(() => (message.value = ''), 2400);
 
     // Quick check: visible toggle（primitive/entity 都应该正常生效）
@@ -460,7 +467,7 @@ export function useOverlayHelper(
   const testSetOverlayHighlight = () => {
     if (!overlayService.value) return;
     if (!lastRectangleB.value) {
-      message.value = '请先添加矩形（RectB）';
+      message.value = i18n.t('overlay.highlight_need_rect_b');
       setTimeout(() => (message.value = ''), 1500);
       return;
     }
@@ -476,7 +483,7 @@ export function useOverlayHelper(
   const testToggleOverlayHighlight = () => {
     if (!overlayService.value) return;
     if (!lastRectangleE.value) {
-      message.value = '请先添加矩形（RectE）';
+      message.value = i18n.t('overlay.highlight_need_rect_e');
       setTimeout(() => (message.value = ''), 1500);
       return;
     }
@@ -512,10 +519,9 @@ export function useOverlayHelper(
       position: [lon, lat],
       content: `
         <div style="padding: 10px;">
-          <h3 style="margin: 0 0 8px 0; font-size: 16px;">示例信息窗口 (anchorPixel)</h3>
+          <h3 style="margin: 0 0 8px 0; font-size: 16px;">${i18n.t('overlay.info_window_title')}</h3>
           <p style="margin: 0; font-size: 14px; color: #666;">
-            使用 <strong>anchorPixel</strong>（像素锚点）并设置 <code>updateInterval: 200</code>。
-            拖动/缩放地图时应实时跟随（节流在移动时会被绕过）。
+            ${i18n.t('overlay.info_window_desc')}
           </p>
         </div>
       `,
@@ -531,14 +537,14 @@ export function useOverlayHelper(
       show: true,
       closable: true,
       onClick: () => {
-        console.log('Info A clicked');
-        message.value = 'Info A clicked';
+        console.log(i18n.t('overlay.info_clicked'));
+        message.value = i18n.t('overlay.info_clicked');
         setTimeout(() => (message.value = ''), 2000);
       },
     });
 
     markerEntities.push(markerA, infoA);
-    message.value = '已添加两个信息窗口（anchorPixel / anchorHeight）以供测试';
+    message.value = i18n.t('overlay.info_window_added');
     setTimeout(() => (message.value = ''), 3000);
   };
   /**
@@ -562,14 +568,14 @@ export function useOverlayHelper(
       clampToGround: true,
       onClick: () => {
         console.log('折线被点击', polyline);
-        message.value = '折线被点击';
+        message.value = i18n.t('overlay.line_clicked');
         overlayService.value!.setOverlayVisible(polyline.id, false); // 切换所有覆盖物的显示状态
         setTimeout(() => (message.value = ''), 2000);
       },
     });
 
     markerEntities.push(polyline);
-    message.value = '已添加折线';
+    message.value = i18n.t('overlay.line_added');
     setTimeout(() => (message.value = ''), 2000);
   };
 
@@ -598,7 +604,7 @@ export function useOverlayHelper(
       outlineWidth: 2,
       onClick: () => {
         console.log('区域 A(贴地) 被点击');
-        message.value = '区域 A(贴地) 被点击';
+        message.value = i18n.t('overlay.area_a_clicked');
         logPolygon('区域 A(贴地) 被点击', polygonA);
         setTimeout(() => (message.value = ''), 2000);
       },
@@ -620,14 +626,14 @@ export function useOverlayHelper(
       clampToGround: false,
       onClick: () => {
         console.log('区域 B(悬空) 被点击');
-        message.value = '区域 B(悬空) 被点击';
+        message.value = i18n.t('overlay.area_b_clicked');
         logPolygon('区域 B(悬空) 被点击', polygonB);
         setTimeout(() => (message.value = ''), 2000);
       },
     });
 
     markerEntities.push(polygonA, polygonB);
-    message.value = '已添加区域：A贴地(默认) / B悬空(clampToGround=false,height=500)';
+    message.value = i18n.t('overlay.area_added');
     setTimeout(() => (message.value = ''), 2000);
   };
 
@@ -749,7 +755,7 @@ export function useOverlayHelper(
         console.log('圆形 A 被点击=', circleOverlay.id);
         console.log('圆形 A 被点击=', circleOverlay._innerEntity?.id);
         logCircle('A(click)', circleA);
-        message.value = '圆形 A 被点击';
+        message.value = i18n.t('overlay.circle_a_clicked');
         // circleA.show = !circleA.show;
         // circleA._innerEntity.show = !circleA._innerEntity.show;
         // overlayService.value!.setOverlayVisible(circleA.id, false); 
@@ -778,7 +784,7 @@ export function useOverlayHelper(
       },
       onClick: () => {
         logCircle('B(click)', circleB);
-        message.value = '圆形 B(贴地默认) 被点击';
+        message.value = i18n.t('overlay.circle_b_clicked');
         setTimeout(() => (message.value = ''), 2000);
       },
     });
@@ -797,7 +803,7 @@ export function useOverlayHelper(
       clickHighlight: true,
       onClick: () => {
         logCircle('C(click)', circleC);
-        message.value = '圆形 C(悬空) 被点击';
+        message.value = i18n.t('overlay.circle_c_clicked');
         setTimeout(() => (message.value = ''), 2000);
       },
     });
@@ -817,7 +823,7 @@ export function useOverlayHelper(
       renderMode: 'primitive',
       onClick: () => {
         logCircle('D(click)', circleD);
-        message.value = '圆形 D(primitive, string color) 被点击';
+        message.value = i18n.t('overlay.circle_d_clicked');
         setTimeout(() => (message.value = ''), 2000);
       },
     });
@@ -841,7 +847,7 @@ export function useOverlayHelper(
       clickHighlight: { color: '#ffee58', fillAlpha: 0.35 },
       onClick: () => {
         logCircle('E(click)', circleE);
-        message.value = '圆形 E(stripe material fallback) 被点击';
+        message.value = i18n.t('overlay.circle_e_clicked');
         setTimeout(() => (message.value = ''), 2000);
       },
     });
@@ -863,7 +869,7 @@ export function useOverlayHelper(
       clickHighlight: { color: '#ffee58', fillAlpha: 0.35 },
       onClick: () => {
         logCircle('F-alarm(click)', alarmCircle);
-        message.value = '告警区(primitive, layer=alarm) 被点击';
+        message.value = i18n.t('overlay.circle_alarm_clicked');
         setTimeout(() => (message.value = ''), 2000);
       },
     });
@@ -887,7 +893,7 @@ export function useOverlayHelper(
       clickHighlight: { color: '#ffee58', fillAlpha: 0.35 },
       onClick: () => {
         logCircle('F-detect(click)', detectCircle);
-        message.value = '侦测区(primitive, layer=detect) 被点击';
+        message.value = i18n.t('overlay.circle_detect_clicked');
         setTimeout(() => (message.value = ''), 2000);
       },
     });
@@ -896,7 +902,7 @@ export function useOverlayHelper(
     addIcon({ longitude: detectCenter[0], latitude: detectCenter[1] });
 
     markerEntities.push(circleA, circleB, circleC, circleD, circleE, detectCircle, alarmCircle);
-    message.value = '已添加圆形：A primitive粗边框贴地 / B fallback非粗边框 / C fallback悬空 / D primitive字符串颜色 / E fallback非纯色材质 / F layered(侦测区+告警区)';
+    message.value = i18n.t('overlay.circle_added');
     setTimeout(() => (message.value = ''), 2200);
 
     // Quick check: visible toggle（primitive/entity 都应该正常生效）
@@ -936,7 +942,7 @@ export function useOverlayHelper(
       segments: 128,
       onClick: (entity) => {
         console.log('发光圆环被点击:', entity);
-        message.value = '发光圆环被点击';
+        message.value = i18n.t('overlay.ring_clicked');
         // 演示：点击后短暂隐藏再显示
         overlayService.value!.setOverlayVisible(entity.id, false);
         setTimeout(() => {
@@ -947,7 +953,7 @@ export function useOverlayHelper(
     });
 
     markerEntities.push(ring);
-    message.value = '已添加发光圆环';
+    message.value = i18n.t('overlay.ring_added');
     setTimeout(() => (message.value = ''), 2000);
     return ring;
   };

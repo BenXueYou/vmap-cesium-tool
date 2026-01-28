@@ -31,3 +31,4 @@ features:
 - [CesiumMapLoader API](/CesiumMapLoader_API)
 - [CesiumOverlayService API](/CesiumOverlayService_API)
 - [GeoJSON 使用说明](/GeoJSON_Usage)
+- [多语言（i18n）使用说明](/I18n_Usage)

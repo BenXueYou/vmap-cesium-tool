@@ -2,6 +2,8 @@
 export { CesiumMapToolbar } from './libs/CesiumMapToolbar';
 export { default as DrawHelper } from './libs/CesiumMapDraw';
 export { initCesium } from './libs/CesiumMapLoader';
+export { i18n } from './libs/i18n';
+export type { I18nLike } from './libs/i18n';
 
 // 类型定义
 export type {

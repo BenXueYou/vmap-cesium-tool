@@ -2,6 +2,7 @@ import * as Cesium from 'cesium';
 import type { Viewer } from 'cesium';
 import type { SearchResult, SearchCallback } from '../CesiumMapModel';
 import { TD_Map_Search_URL, China_Map_Extent } from '../../hooks/useMap';
+import { i18n, type I18nLike } from '../../libs/i18n';
 
 /**
  * 搜索服务类
@@ -12,11 +13,20 @@ export class SearchService {
   private toolbarElement: HTMLElement;
   private searchCallback?: SearchCallback;
   private searchContainer: HTMLElement | null = null;
+  private i18n: I18nLike;
+  private useI18n: boolean;
 
-  constructor(viewer: Viewer, toolbarElement: HTMLElement, searchCallback?: SearchCallback) {
+  constructor(
+    viewer: Viewer,
+    toolbarElement: HTMLElement,
+    searchCallback?: SearchCallback,
+    options?: { i18n?: I18nLike; useI18n?: boolean }
+  ) {
     this.viewer = viewer;
     this.toolbarElement = toolbarElement;
     this.searchCallback = searchCallback;
+    this.i18n = options?.i18n ?? i18n;
+    this.useI18n = options?.useI18n ?? true;
   }
 
   /**
@@ -56,7 +66,11 @@ export class SearchService {
 
     const searchInput = document.createElement('input');
     searchInput.type = 'text';
-    searchInput.placeholder = '请输入地址';
+    if (this.useI18n) {
+      this.i18n.bindElement(searchInput, 'search.placeholder', 'placeholder');
+    } else {
+      searchInput.placeholder = '请输入地址';
+    }
     searchInput.style.cssText = `
       padding: 6px 8px;
       border: 1px solid rgba(255, 255, 255, 0.2);
@@ -128,7 +142,8 @@ export class SearchService {
             this.displaySearchResults(results, resultsContainer);
           } catch (error) {
             console.error('搜索失败:', error);
-            resultsContainer.innerHTML = '<div style="padding: 8px; color: #666;">搜索失败</div>';
+            const text = this.useI18n ? this.i18n.t('search.failed') : '搜索失败';
+            resultsContainer.innerHTML = `<div style="padding: 8px; color: #666;">${text}</div>`;
           }
         } else {
           // 默认搜索逻辑：使用天地图 POI 搜索接口
@@ -137,7 +152,8 @@ export class SearchService {
             this.displaySearchResults(results, resultsContainer);
           } catch (error) {
             console.error('默认搜索失败:', error);
-            resultsContainer.innerHTML = '<div style="padding: 8px; color: #666;">搜索失败</div>';
+            const text = this.useI18n ? this.i18n.t('search.failed') : '搜索失败';
+            resultsContainer.innerHTML = `<div style="padding: 8px; color: #666;">${text}</div>`;
           }
         }
       }, 300);
@@ -272,7 +288,8 @@ export class SearchService {
     container.innerHTML = '';
 
     if (results.length === 0) {
-      container.innerHTML = '<div style="padding: 8px; color: #666;">未找到相关地址</div>';
+      const text = this.useI18n ? this.i18n.t('search.no_results') : '未找到相关地址';
+      container.innerHTML = `<div style="padding: 8px; color: #666;">${text}</div>`;
       return;
     }
 

@@ -11,6 +11,7 @@ import { TD_Map_Search_URL, China_Map_Extent } from "./useMap";
 import type { SearchResult } from "../libs/CesiumMapModel";
 import type { Viewer } from "cesium";
 import type { Ref } from "vue";
+import { i18n } from "../i18n";
 
 
 export const useToolBarConfig = (viewer: Viewer | undefined, message: Ref<string>) => {
@@ -29,6 +30,7 @@ export const useToolBarConfig = (viewer: Viewer | undefined, message: Ref<string
         id: "search",
         icon: searchIcon,
         title: "搜索",
+        titleKey: "toolbar.search",
         color: "#007BFF",
         borderColor: "#0775D1",
         backgroundColor: "rgba(0, 0, 0, 0.52)",
@@ -38,6 +40,7 @@ export const useToolBarConfig = (viewer: Viewer | undefined, message: Ref<string
         id: "measure",
         icon: measureIcon,
         title: "测量",
+        titleKey: "toolbar.measure",
         color: "#007BFF",
         backgroundColor: "rgba(0, 0, 0, 0.52)",
       },
@@ -47,6 +50,7 @@ export const useToolBarConfig = (viewer: Viewer | undefined, message: Ref<string
         icon: false,
         activeIcon: false,
         title: "2D或3D",
+        titleKey: "toolbar.view2d3d",
         color: "#007BFF",
         backgroundColor: "rgba(0, 0, 0, 0.52)",
       },
@@ -55,6 +59,7 @@ export const useToolBarConfig = (viewer: Viewer | undefined, message: Ref<string
         id: "layers",
         icon: layersIcon,
         title: "图层切换",
+        titleKey: "toolbar.layers",
         color: "#007BFF",
         borderColor: "#0775D1",
         backgroundColor: "rgba(0, 0, 0, 0.52)",
@@ -81,6 +86,7 @@ export const useToolBarConfig = (viewer: Viewer | undefined, message: Ref<string
         id: "location",
         icon: locationIcon,
         title: "定位",
+        titleKey: "toolbar.location",
         color: "#007BFF",
         borderColor: "#0775D1",
         backgroundColor: "rgba(0, 0, 0, 0.52)",
@@ -90,6 +96,7 @@ export const useToolBarConfig = (viewer: Viewer | undefined, message: Ref<string
         id: "zoom-in",
         icon: zoomInIcon,
         title: "缩小",
+        titleKey: "toolbar.zoom_in",
         color: "#007BFF",
         borderColor: "#0775D1",
         backgroundColor: "rgba(0, 0, 0, 0.52)",
@@ -99,6 +106,7 @@ export const useToolBarConfig = (viewer: Viewer | undefined, message: Ref<string
         id: "zoom-out",
         icon: zoomOutIcon,
         title: "放大",
+        titleKey: "toolbar.zoom_out",
         color: "#007BFF",
         borderColor: "#0775D1",
         backgroundColor: "rgba(0, 0, 0, 0.52)",
@@ -108,6 +116,7 @@ export const useToolBarConfig = (viewer: Viewer | undefined, message: Ref<string
         id: "fullscreen",
         icon: fullscreenIcon,
         title: "全屏",
+        titleKey: "toolbar.fullscreen",
         color: "#007BFF",
         borderColor: "#0775D1",
         backgroundColor: "rgba(0, 0, 0, 0.52)",
@@ -150,7 +159,7 @@ export const useToolBarConfig = (viewer: Viewer | undefined, message: Ref<string
         }
       },
       onSelect: (result: SearchResult) => {
-        message.value = `已定位到: ${result.name}`;
+        message.value = i18n.t("app.located", { name: result.name });
         setTimeout(() => {
           message.value = "";
         }, 3000);
@@ -162,13 +171,13 @@ export const useToolBarConfig = (viewer: Viewer | undefined, message: Ref<string
         if (viewer?.scene?.requestRenderMode) {
           viewer.scene.requestRenderMode = false;
         }
-        message.value = `开始测量`;
+        message.value = i18n.t("measurement.start");
         setTimeout(() => {
           message.value = "";
         }, 2000);
       },
       onDistanceComplete: (positions: any, distance: any) => {
-        message.value = `测距完成，总距离: ${distance.toFixed(2)} 米`;
+        message.value = i18n.t("measurement.distance_done", { distance: distance.toFixed(2) });
         if (viewer?.scene?.requestRenderMode) {
           viewer.scene.requestRenderMode = true;
           viewer.scene.requestRender();
@@ -178,7 +187,7 @@ export const useToolBarConfig = (viewer: Viewer | undefined, message: Ref<string
         }, 3000);
       },
       onAreaComplete: (positions: any, area: any) => {
-        message.value = `测面积完成，面积: ${area.toFixed(2)} 平方公里`;
+        message.value = i18n.t("measurement.area_done", { area: area.toFixed(2) });
         if (viewer?.scene?.requestRenderMode) {
           viewer.scene.requestRenderMode = true;
           viewer.scene.requestRender();
@@ -188,7 +197,7 @@ export const useToolBarConfig = (viewer: Viewer | undefined, message: Ref<string
         }, 3000);
       },
       onClear: () => {
-        message.value = "已清除所有测量内容";
+        message.value = i18n.t("measurement.cleared");
         viewer?.scene?.requestRender()
         setTimeout(() => {
           message.value = "";

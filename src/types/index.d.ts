@@ -3,6 +3,20 @@
 import type * as Cesium from 'cesium';
 import type { Viewer, Cartesian3, Entity, Color } from 'cesium';
 
+export type Locale = 'zh-CN' | 'en-US' | (string & {});
+
+export interface I18nLike {
+  getLocale(): Locale;
+  setLocale(locale: Locale, options?: { persist?: boolean }): void;
+  t(key: string, params?: Record<string, any>, localeOverride?: Locale): string;
+  onLocaleChange(cb: (locale: Locale) => void): () => void;
+  bindElement(el: HTMLElement, key: string, attr?: 'text' | 'title' | 'placeholder', params?: Record<string, any>): void;
+  updateTree(root: HTMLElement): void;
+  addMessages?(locale: Locale, dict: Record<string, any>, options?: { merge?: boolean }): void;
+  setFallbackLocale?(locale: Locale): void;
+  configure?(options: { persist?: boolean; useStoredLocale?: boolean; fallbackLocale?: Locale; locale?: Locale }): void;
+}
+
 // 工具栏配置接口（与 CesiumMapModel.ts 保持一致）
 export interface ToolbarConfig {
   position?: 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left';
@@ -15,6 +29,8 @@ export interface ToolbarConfig {
   boxShadow?: string;
   zIndex?: number;
   buttons?: CustomButtonConfig[];
+  useI18n?: boolean;
+  i18n?: I18nLike;
 }
 
 // 按钮配置接口（内部默认按钮配置使用）
@@ -23,6 +39,7 @@ export interface ButtonConfig {
   id: string;
   icon: string;
   title: string;
+  titleKey?: string;
   size?: number;
   color?: string;
   borderColor?: string;
@@ -40,6 +57,7 @@ export interface CustomButtonConfig {
   id: string;
   icon: string | HTMLElement | false;
   title: string;
+  titleKey?: string;
   enabled?: boolean;
   visible?: boolean;
   size?: number;
@@ -92,11 +110,14 @@ export interface ZoomCallback {
 export interface MapType {
   id: string;
   name: string;
+  nameKey?: string;
   thumbnail: string;
   provider: (token: string) => Cesium.ImageryProvider[];
   terrainProvider?: (token: string) => Cesium.TerrainProvider | null;
   geoWTFS?: (token: string, viewer: Cesium.Viewer) => any | null;
 }
+
+export const i18n: I18nLike;
 
 // 视锥体选项接口
 export interface FrustumOptions {

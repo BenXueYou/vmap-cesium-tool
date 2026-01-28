@@ -22,6 +22,7 @@ export const TDTMapTypes: MapType[] = [
     {
       id: 'normal',
       name: '天地图-普通',
+      nameKey: 'map_type.normal',
       thumbnail: VecImg,
       provider: (token: string) => {
         return [
@@ -52,6 +53,7 @@ export const TDTMapTypes: MapType[] = [
     {
       id: '3d',
       name: '天地图-三维',
+      nameKey: 'map_type.3d',
       thumbnail: EleImg,
       provider: (token: string) => {
         return [
@@ -206,6 +208,7 @@ export const TDTMapTypes: MapType[] = [
     {
       id: 'imagery',
       name: '天地图-影像',
+      nameKey: 'map_type.imagery',
       thumbnail: ImgImg,
       provider: (token: string) => {
         return [
@@ -239,6 +242,7 @@ export const TDTMapTypes: MapType[] = [
     {
       id: 'terrain',
       name: '天地图-地形',
+      nameKey: 'map_type.terrain',
       thumbnail: TerImg,
       provider: (token: string) => {
         return [

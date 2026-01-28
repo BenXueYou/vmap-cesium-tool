@@ -5,44 +5,49 @@
     <div v-if="message" class="message">{{ message }}</div>
     <div class="test-button-group">
       <div>
-        <button @click="addDrawLine">绘制线条</button>
-        <button @click="addDrawArea">绘制区域</button>
-        <button @click="addDrawAreaNoLabel">绘制区域(无面积)</button>
-        <button @click="addDrawCircle">绘制圆形</button>
-        <button @click="addDrawCircleNoLabel">绘制圆形(无面积)</button>
-        <button @click="addDrawPolygon">绘制多边形</button>
-        <button @click="addDrawPolygon_PointIntercept">绘制多边形(点截取)</button>
-        <button @click="addDrawPolygon_FinishFallback">绘制多边形(完成回退)</button>
-        <button @click="addDrawPolygonNoLabel">绘制多边形(无面积)</button>
+        <button @click="switchLocale('zh-CN')">{{ t('app.lang.zh') }}</button>
+        <button @click="switchLocale('en-US')">{{ t('app.lang.en') }}</button>
       </div>
       <br />
       <div>
-        <button @click="addMarker">添加点位</button>
-        <button @click="addLine">添加线条</button>
-        <button @click="addArea">添加区域</button>
-        <button @click="addCircle">添加圆形</button>
-        <button @click="addCircle123">添加圆形123</button>
-        <button @click="addPolygon">添加多边形</button>
-        <button @click="addPolyline">添加折线</button>
-        <button @click="() => addIcon()">添加图标</button>
-        <button @click="() => addSvg()">添加SVG</button>
-        <button @click="addMarkerWithLabel">添加点位带标签</button>
-        <button @click="addLabel">添加标签</button>
-        <button @click="addRectangle">添加矩形</button>
-        <button @click="testSetOverlayHighlight">测试 setOverlayHighlight</button>
-        <button @click="testToggleOverlayHighlight">测试 toggleOverlayHighlight</button>
-        <button @click="addInfoWindow">添加窗口</button>
-        <button @click="() => addRing()">添加圆环</button>
-        <button @click="addRingTest">测试添加圆环性能</button>
+        <button @click="addDrawLine">{{ t('ui.draw.line') }}</button>
+        <button @click="addDrawArea">{{ t('ui.draw.area') }}</button>
+        <button @click="addDrawAreaNoLabel">{{ t('ui.draw.area_no_label') }}</button>
+        <button @click="addDrawCircle">{{ t('ui.draw.circle') }}</button>
+        <button @click="addDrawCircleNoLabel">{{ t('ui.draw.circle_no_label') }}</button>
+        <button @click="addDrawPolygon">{{ t('ui.draw.polygon') }}</button>
+        <button @click="addDrawPolygon_PointIntercept">{{ t('ui.draw.polygon_point_intercept') }}</button>
+        <button @click="addDrawPolygon_FinishFallback">{{ t('ui.draw.polygon_finish_fallback') }}</button>
+        <button @click="addDrawPolygonNoLabel">{{ t('ui.draw.polygon_no_label') }}</button>
       </div>
       <br />
       <div>
-        <button @click="addHeatMap">添加热力图</button>
-        <button @click="enableHeatmapAuto">开启热力图动态聚合</button>
-        <button @click="disableHeatmapAuto">关闭热力图动态聚合</button>
-        <button @click="setHeatmapLodCoarse">聚合档位：粗</button>
-        <button @click="setHeatmapLodMedium">聚合档位：中</button>
-        <button @click="setHeatmapLodFine">聚合档位：细</button>
+        <button @click="addMarker">{{ t('ui.add.marker') }}</button>
+        <button @click="addLine">{{ t('ui.add.line') }}</button>
+        <button @click="addArea">{{ t('ui.add.area') }}</button>
+        <button @click="addCircle">{{ t('ui.add.circle') }}</button>
+        <button @click="addCircle123">{{ t('ui.add.circle123') }}</button>
+        <button @click="addPolygon">{{ t('ui.add.polygon') }}</button>
+        <button @click="addPolyline">{{ t('ui.add.polyline') }}</button>
+        <button @click="() => addIcon()">{{ t('ui.add.icon') }}</button>
+        <button @click="() => addSvg()">{{ t('ui.add.svg') }}</button>
+        <button @click="addMarkerWithLabel">{{ t('ui.add.marker_with_label') }}</button>
+        <button @click="addLabel">{{ t('ui.add.label') }}</button>
+        <button @click="addRectangle">{{ t('ui.add.rectangle') }}</button>
+        <button @click="testSetOverlayHighlight">{{ t('ui.test.set_highlight') }}</button>
+        <button @click="testToggleOverlayHighlight">{{ t('ui.test.toggle_highlight') }}</button>
+        <button @click="addInfoWindow">{{ t('ui.add.info_window') }}</button>
+        <button @click="() => addRing()">{{ t('ui.add.ring') }}</button>
+        <button @click="addRingTest">{{ t('ui.add.ring_test') }}</button>
+      </div>
+      <br />
+      <div>
+        <button @click="addHeatMap">{{ t('ui.add.heatmap') }}</button>
+        <button @click="enableHeatmapAuto">{{ t('ui.heatmap.auto_on') }}</button>
+        <button @click="disableHeatmapAuto">{{ t('ui.heatmap.auto_off') }}</button>
+        <button @click="setHeatmapLodCoarse">{{ t('ui.heatmap.lod_coarse') }}</button>
+        <button @click="setHeatmapLodMedium">{{ t('ui.heatmap.lod_medium') }}</button>
+        <button @click="setHeatmapLodFine">{{ t('ui.heatmap.lod_fine') }}</button>
       </div>
     </div>
   </div>
@@ -60,9 +65,15 @@ import { getViteTdToken, getViteCesiumToken } from "./utils/common";
 import * as Cesium from "cesium";
 import { useHeatmapHelper } from "./hooks/useHeatmapHelper";
 import { defaultHeatmapData, defaultHeatmapColors, defaultHeatmapOpacity } from "./z.const";
+import { i18n } from "./i18n";
 let viewer = ref<Cesium.Viewer>();
 const message = ref("");
 let mapToolbar: CesiumMapToolbar | null = null;
+i18n.configure({ persist: true, useStoredLocale: true });
+const currentLocale = ref(i18n.getLocale());
+const t = (key: string, params?: Record<string, any>) => i18n.t(key, params, currentLocale.value);
+const switchLocale = (locale: "zh-CN" | "en-US") => i18n.setLocale(locale, { persist: true });
+i18n.onLocaleChange((locale) => (currentLocale.value = locale));
 const TDT_TK = getViteTdToken();
 const { toolbarConfig, toolbarCallback } = useToolBarConfig(viewer.value, message);
 
@@ -130,13 +141,15 @@ const addRingTest = () => {
     for (let i = 0; i < totalRings; i++) {
       arr.push(addRing(i + Math.random() * 10));
     }
-    message.value = `已添加 ${totalRings} 个发光圆环`;
+    message.value = t("app.ring_test_added", { count: totalRings });
     setTimeout(() => {
       message.value = '';
       console.log('开始移除圆环');
       arr.forEach(ring => {
         console.log('移除圆环', ring);
-        overlayService.value?.removeOverlay(ring?.id);
+        if (ring?.id) {
+          overlayService.value?.removeOverlay(ring.id);
+        }
       });
     }, 3000);
   }
@@ -178,7 +191,7 @@ const addHeatMap = () => {
 
   const allPoints = frames.flat();
   if (allPoints.length === 0) {
-    message.value = "热力图数据为空";
+    message.value = t("app.heatmap_empty");
     return;
   }
 
@@ -236,7 +249,7 @@ const addHeatMap = () => {
 // 热力图：动态聚合（方格聚合 + moveEnd + WebWorker）测试
 const enableHeatmapAuto = () => {
   if (!heatmapLayer.value) {
-    message.value = "请先添加热力图";
+    message.value = t("app.heatmap_need_add");
     return;
   }
   setHeatmapAutoUpdate({
@@ -244,20 +257,20 @@ const enableHeatmapAuto = () => {
     // 可按需要调整：视域 padding 越大，边缘变化越不明显但计算更重
     viewPaddingRatio: 0.15,
   });
-  message.value = "已开启热力图动态聚合（拖动/缩放后更新）";
+  message.value = t("app.heatmap_auto_on");
   setTimeout(() => (message.value = ""), 2000);
 };
 
 const disableHeatmapAuto = () => {
   if (!heatmapLayer.value) return;
   stopHeatmapAutoUpdate();
-  message.value = "已关闭热力图动态聚合";
+  message.value = t("app.heatmap_auto_off");
   setTimeout(() => (message.value = ""), 1500);
 };
 
 const ensureHeatmapForAuto = (): boolean => {
   if (!heatmapLayer.value) {
-    message.value = "请先添加热力图";
+    message.value = t("app.heatmap_need_add");
     return false;
   }
   return true;
@@ -280,7 +293,7 @@ const setHeatmapLodCoarse = () => {
       return 1_000;
     },
   });
-  message.value = "已切换：聚合档位=粗";
+  message.value = t("app.heatmap_lod_coarse");
   setTimeout(() => (message.value = ""), 1500);
 };
 
@@ -300,7 +313,7 @@ const setHeatmapLodMedium = () => {
       return 300;
     },
   });
-  message.value = "已切换：聚合档位=中";
+  message.value = t("app.heatmap_lod_medium");
   setTimeout(() => (message.value = ""), 1500);
 };
 
@@ -320,7 +333,7 @@ const setHeatmapLodFine = () => {
       return 150;
     },
   });
-  message.value = "已切换：聚合档位=细";
+  message.value = t("app.heatmap_lod_fine");
   setTimeout(() => (message.value = ""), 1500);
 };
 
@@ -348,7 +361,7 @@ onMounted(async () => {
       scene3DOnly: false,
       msaaSamples: 4, // MSAA采样数（推荐4或8）
       success: () => {
-        console.log('初始化地图成功');
+        console.log(t('app.init_success'));
       }
     },
   );
@@ -391,7 +404,8 @@ const customToolBarBtn = (mapToolbar: CesiumMapToolbar) => {
   mapToolbar.addCustomButton({
     id: 'test-alert',
     icon: '🚨',
-    title: '测试添加报警',
+    title: t('app.custom_alert_title'),
+    titleKey: 'app.custom_alert_title',
     size: 36,
     color: '#FF4444',
     backgroundColor: 'rgba(0, 0, 0, 0.52)',
@@ -399,7 +413,7 @@ const customToolBarBtn = (mapToolbar: CesiumMapToolbar) => {
     sort: 0.5, // 插入到搜索(0)和测量(1)之间
     onClick: (buttonId: string, buttonElement: HTMLElement) => {
       console.log('测试添加报警按钮被点击');
-      message.value = '测试报警：这是一个测试报警信息';
+      message.value = t('app.custom_alert');
       setTimeout(() => {
         message.value = '';
       }, 3000);
@@ -410,7 +424,8 @@ const customToolBarBtn = (mapToolbar: CesiumMapToolbar) => {
   mapToolbar.addCustomButton({
     id: 'data-statistics',
     icon: '📊',
-    title: '数据统计',
+    title: t('app.custom_stats_title'),
+    titleKey: 'app.custom_stats_title',
     size: 36,
     color: '#007BFF',
     backgroundColor: 'rgba(0, 0, 0, 0.52)',
@@ -418,7 +433,7 @@ const customToolBarBtn = (mapToolbar: CesiumMapToolbar) => {
     sort: -3, // 插入到图层切换(3)和定位(4)之间
     onClick: (buttonId: string, buttonElement: HTMLElement) => {
       console.log('数据统计按钮被点击');
-      message.value = '数据统计功能：显示统计数据';
+      message.value = t('app.custom_stats');
       setTimeout(() => {
         message.value = '';
       }, 3000);
@@ -429,7 +444,8 @@ const customToolBarBtn = (mapToolbar: CesiumMapToolbar) => {
   mapToolbar.addCustomButton({
     id: 'visibility-config',
     icon: '⚙️',
-    title: '可见配置项',
+    title: t('app.custom_visibility_title'),
+    titleKey: 'app.custom_visibility_title',
     size: 36,
     color: '#28A745',
     backgroundColor: 'rgba(0, 0, 0, 0.52)',
@@ -437,7 +453,7 @@ const customToolBarBtn = (mapToolbar: CesiumMapToolbar) => {
     sort: -2, // 插入到定位(4)和缩放(5)之间
     onClick: (buttonId: string, buttonElement: HTMLElement) => {
       console.log('可见配置项按钮被点击');
-      message.value = '可见配置项：配置图层可见性';
+      message.value = t('app.custom_visibility');
       setTimeout(() => {
         message.value = '';
       }, 3000);

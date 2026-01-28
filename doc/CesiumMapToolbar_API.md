@@ -62,6 +62,8 @@ interface ToolbarConfig {
   boxShadow?: string;           // 阴影
   zIndex?: number;              // 层级
   buttons?: CustomButtonConfig[]; // 按钮配置（可用于“只显示部分按钮”或“加入自定义按钮”）
+  useI18n?: boolean;             // 是否启用内置多语言（默认 true）
+  i18n?: I18nLike;               // 注入自定义 i18n 实例
 }
 ```
 
@@ -107,6 +109,36 @@ interface SearchResult {
   longitude: number;   // 经度
   latitude: number;    // 纬度
   height?: number;     // 高度
+}
+```
+
+### ButtonConfig / CustomButtonConfig
+
+```typescript
+interface ButtonConfig {
+  id: string;
+  icon: string;
+  title: string;        // 兜底标题
+  titleKey?: string;    // i18n key（可选）
+}
+
+interface CustomButtonConfig {
+  id: string;
+  icon: string | HTMLElement | false;
+  title: string;        // 兜底标题
+  titleKey?: string;    // i18n key（可选）
+}
+```
+
+### MapType
+
+```typescript
+interface MapType {
+  id: string;
+  name: string;        // 兜底名称
+  nameKey?: string;    // i18n key（可选）
+  thumbnail: string;
+  provider: (token: string) => Cesium.ImageryProvider[];
 }
 ```
 
@@ -399,6 +431,33 @@ const toolbar = new CesiumMapToolbar(
     height: 1000
   }
 );
+```
+
+### 多语言（i18n）用法示例
+
+```typescript
+import { CesiumMapToolbar, i18n } from 'vmap-cesium-tool';
+
+// 建议：插件/库使用时默认不持久化
+i18n.configure({ persist: false, useStoredLocale: false });
+
+// 可选：注入自定义词典
+i18n.addMessages('en-US', {
+  toolbar: { search: 'Search' }
+});
+
+// 切换语言
+i18n.setLocale('en-US');
+
+const toolbar = new CesiumMapToolbar(viewer, container, {
+  useI18n: true,
+  i18n
+});
+
+// 或：完全关闭内置 i18n，使用纯文本 title
+const toolbarNoI18n = new CesiumMapToolbar(viewer, container, {
+  useI18n: false
+});
 ```
 
 ### 动态设置初始中心点

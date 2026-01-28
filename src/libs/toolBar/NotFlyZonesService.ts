@@ -1,6 +1,7 @@
 import * as Cesium from 'cesium';
 import type { Viewer, Cartesian3 } from 'cesium';
 import { loadAllAirportNoFlyZones, type AirportNoFlyZone } from '../../utils/geojson';
+import { i18n, type I18nLike } from '../../libs/i18n';
 
 /**
  * 禁飞区服务配置接口
@@ -8,6 +9,8 @@ import { loadAllAirportNoFlyZones, type AirportNoFlyZone } from '../../utils/geo
 export interface NotFlyZonesServiceConfig {
   extrudedHeight?: number; // 3D模式下的拉伸高度，默认1000米
   autoLoad?: boolean; // 是否自动加载，默认true
+  i18n?: I18nLike;
+  useI18n?: boolean;
 }
 
 /**
@@ -20,10 +23,14 @@ export class NotFlyZonesService {
   private isNoFlyZoneVisible: boolean = false;
   private isNoFlyZoneLoading: boolean = false;
   private readonly extrudedHeight: number;
+  private i18n: I18nLike;
+  private useI18n: boolean;
 
   constructor(viewer: Viewer, config: NotFlyZonesServiceConfig = {}) {
     this.viewer = viewer;
     this.extrudedHeight = config.extrudedHeight ?? 1000;
+    this.i18n = config.i18n ?? i18n;
+    this.useI18n = config.useI18n ?? true;
 
     // 如果配置了自动加载，则延迟加载
     if (config.autoLoad !== false) {
@@ -67,7 +74,9 @@ export class NotFlyZonesService {
         const entity = this.viewer.entities.add({
           name: zone.name,
           polygon: polygonOptions,
-          description: `机场禁飞区: ${zone.name}`,
+          description: this.useI18n
+            ? this.i18n.t('no_fly.description', { name: zone.name })
+            : `机场禁飞区: ${zone.name}`,
         });
         (entity as any).disableDepthTestDistance = Number.POSITIVE_INFINITY;
 

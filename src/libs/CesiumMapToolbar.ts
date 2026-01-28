@@ -15,8 +15,9 @@ import { TDTMapTypes } from './config/CesiumMapConfig'
 import { formatDistance, calculatePolygonArea } from '../utils/calc';
 
 import { defaultButtons } from './toolBar/MapToolBarConfig'
+import { i18n, type I18nLike } from '../libs/i18n';
 
-type ResolvedButtonConfig = Omit<ButtonConfig, 'icon'> & { icon: string | HTMLElement };
+type ResolvedButtonConfig = Omit<ButtonConfig, 'icon'> & { icon: string | HTMLElement } & { titleKey?: string };
 
 /**
  * Cesium地图工具栏类
@@ -50,6 +51,9 @@ export class CesiumMapToolbar {
 
   // 当前测量模式：none（未测量）、distance（测距）、area（测面）
   private measurementService!: MeasurementService;
+  private unsubscribeI18n?: () => void;
+  private i18n: I18nLike;
+  private useI18n: boolean;
 
   // 对外暴露的测量相关 API
   public readonly measurement = {
@@ -85,6 +89,8 @@ export class CesiumMapToolbar {
       zIndex: 1000,
       ...config
     };
+    this.useI18n = config.useI18n ?? true;
+    this.i18n = config.i18n ?? i18n;
     this.measurementCallback = callbacks?.measurement;
     this.zoomCallback = callbacks?.zoom;
     this.fullscreenCallback = callbacks?.fullscreen;
@@ -99,12 +105,17 @@ export class CesiumMapToolbar {
     this.createToolbar();
 
     // 初始化搜索服务
-    this.searchService = new SearchService(viewer, this.toolbarElement, callbacks?.search);
+    this.searchService = new SearchService(viewer, this.toolbarElement, callbacks?.search, {
+      i18n: this.i18n,
+      useI18n: this.useI18n,
+    });
 
     // 初始化禁飞区服务
     this.notFlyZonesService = new NotFlyZonesService(viewer, {
       extrudedHeight: 1000,
-      autoLoad: false // 由图层服务控制加载时机
+      autoLoad: false, // 由图层服务控制加载时机
+      i18n: this.i18n,
+      useI18n: this.useI18n,
     });
 
     // 初始化图层服务
@@ -114,6 +125,8 @@ export class CesiumMapToolbar {
       token: this.TD_Token,
       isNoFlyZoneChecked: this.isNoFlyZoneChecked,
       isNoFlyZoneVisible: this.notFlyZonesService.getNoFlyZoneVisible(),
+      i18n: this.i18n,
+      useI18n: this.useI18n,
       onMapTypeChange: (mapTypeId: string) => {
         this.currentMapType = mapTypeId;
       },
@@ -171,6 +184,15 @@ export class CesiumMapToolbar {
 
     // 监听相机缩放，限制层级范围
     this.mapController.setupCameraZoomLimitListener();
+
+    // i18n：监听语言切换，刷新工具栏内部文案
+    if (this.useI18n) {
+      this.unsubscribeI18n = this.i18n.onLocaleChange(() => {
+        if (this.toolbarElement) {
+          this.i18n.updateTree(this.toolbarElement);
+        }
+      });
+    }
   }
 
   /**
@@ -262,6 +284,9 @@ export class CesiumMapToolbar {
 
     // 更新按钮属性
     if (config.title) button.title = config.title;
+    if (config.titleKey && this.useI18n) {
+      this.i18n.bindElement(button, config.titleKey, 'title');
+    }
     if (config.icon) this.setButtonIcon(button, config.icon);
     if (config.size) {
       button.style.width = `${config.size}px`;
@@ -339,6 +364,7 @@ export class CesiumMapToolbar {
         id: btn.id,
         icon: resolvedIcon,
         title: (customButton?.title ?? (btn as ButtonConfig).title ?? defaultButton?.title ?? '') as string,
+        titleKey: customButton?.titleKey ?? (btn as ButtonConfig).titleKey ?? defaultButton?.titleKey,
         size: customButton?.size ?? (btn as ButtonConfig).size ?? defaultButton?.size,
         backgroundColor: customButton?.backgroundColor ?? (btn as ButtonConfig).backgroundColor ?? defaultButton?.backgroundColor,
         borderColor: customButton?.borderColor ?? (btn as ButtonConfig).borderColor ?? defaultButton?.borderColor,
@@ -483,7 +509,11 @@ export class CesiumMapToolbar {
     const button = document.createElement('div');
     button.className = 'cesium-toolbar-button';
     button.setAttribute('data-tool', config.id);
-    button.title = config.title;
+    if (config.titleKey && this.useI18n) {
+      this.i18n.bindElement(button, config.titleKey, 'title');
+    } else {
+      button.title = config.title;
+    }
 
     const buttonSize = config.size || this.config.buttonSize;
     const buttonColor = config.color || 'rgba(66, 133, 244, 0.4)';
@@ -768,9 +798,9 @@ export class CesiumMapToolbar {
     `;
 
     const menuItems = [
-      { id: 'measure-area', text: '测面积', icon: '📐' },
-      { id: 'measure-distance', text: '测距', icon: '📏' },
-      { id: 'clear-measurement', text: '清除', icon: '🗑️' }
+      { id: 'measure-area', text: '测面积', textKey: 'measurement.menu.area', icon: '📐' },
+      { id: 'measure-distance', text: '测距', textKey: 'measurement.menu.distance', icon: '📏' },
+      { id: 'clear-measurement', text: '清除', textKey: 'measurement.menu.clear', icon: '🗑️' }
     ];
 
     menuItems.forEach(item => {
@@ -785,7 +815,13 @@ export class CesiumMapToolbar {
         transition: background-color 0.2s;
       `;
 
-      menuItem.innerHTML = `${item.icon} ${item.text}`;
+      const label = document.createElement('span');
+      if (this.useI18n) {
+        this.i18n.bindElement(label, item.textKey, 'text');
+      } else {
+        label.textContent = item.text;
+      }
+      menuItem.append(item.icon, ' ', label);
       menuItem.addEventListener('mouseenter', () => {
         menuItem.style.backgroundColor = '#023C61';
         menuItem.style.transform = 'scale(1.02)';
@@ -917,6 +953,10 @@ export class CesiumMapToolbar {
    * 销毁工具栏
    */
   destroy(): void {
+    if (this.unsubscribeI18n) {
+      this.unsubscribeI18n();
+      this.unsubscribeI18n = undefined;
+    }
     // 清理禁飞区服务
     this.notFlyZonesService.destroy();
 

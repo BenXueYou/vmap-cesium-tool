@@ -1,5 +1,6 @@
 import * as Cesium from 'cesium';
 import type { Cartesian3, Cartographic, Color } from 'cesium';
+import type { I18nLike } from '../libs/i18n';
 // 工具栏配置接口
 export interface ToolbarConfig {
   position?: 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left';
@@ -12,6 +13,8 @@ export interface ToolbarConfig {
   boxShadow?: string;
   zIndex?: number;
   buttons?: CustomButtonConfig[];
+  useI18n?: boolean;
+  i18n?: I18nLike;
 }
 
 // 按钮配置接口
@@ -20,6 +23,7 @@ export interface ButtonConfig {
   id: string;
   icon: string;
   title: string;
+  titleKey?: string;
   size?: number;
   color?: string;
   borderColor?: string;
@@ -37,6 +41,7 @@ export interface CustomButtonConfig {
   id: string;
   icon: string | HTMLElement | false;
   title: string;
+  titleKey?: string;
   enabled?: boolean;
   visible?: boolean;
   size?: number;
@@ -89,6 +94,7 @@ export interface ZoomCallback {
 export interface MapType {
   id: string;
   name: string;
+  nameKey?: string;
   thumbnail: string;
   provider: (token: string) => Cesium.ImageryProvider[];
   // 三维地图专用：地形提供者

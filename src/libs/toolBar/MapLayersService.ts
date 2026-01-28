@@ -1,6 +1,7 @@
 import * as Cesium from 'cesium';
 import type { Viewer } from 'cesium';
 import type { MapType } from '../CesiumMapModel';
+import { i18n, type I18nLike } from '../../libs/i18n';
 
 /**
  * 图层服务配置接口
@@ -11,6 +12,8 @@ export interface MapLayersServiceConfig {
   token: string;
   isNoFlyZoneChecked: boolean;
   isNoFlyZoneVisible: boolean;
+  i18n?: I18nLike;
+  useI18n?: boolean;
   onMapTypeChange?: (mapTypeId: string) => void;
   onNoFlyZoneToggle?: (isChecked: boolean) => void;
   onShowNoFlyZones?: () => Promise<void> | void;
@@ -25,11 +28,15 @@ export class MapLayersService {
   private toolbarElement: HTMLElement;
   private config: MapLayersServiceConfig;
   private currentGeoWTFS: any = null;
+  private i18n: I18nLike;
+  private useI18n: boolean;
 
   constructor(viewer: Viewer, toolbarElement: HTMLElement, config: MapLayersServiceConfig) {
     this.viewer = viewer;
     this.toolbarElement = toolbarElement;
     this.config = config;
+    this.i18n = config.i18n ?? i18n;
+    this.useI18n = config.useI18n ?? true;
   }
 
   /**
@@ -37,6 +44,12 @@ export class MapLayersService {
    */
   public updateConfig(config: Partial<MapLayersServiceConfig>): void {
     this.config = { ...this.config, ...config };
+    if (config.i18n) {
+      this.i18n = config.i18n;
+    }
+    if (typeof config.useI18n === 'boolean') {
+      this.useI18n = config.useI18n;
+    }
   }
 
   // --- 屏幕边缘避让：防止图层菜单超出可视区域 ---
@@ -159,7 +172,11 @@ export class MapLayersService {
 
     // 地图类型标题栏
     const mapTypeHeader = document.createElement('div');
-    mapTypeHeader.textContent = '地图类型';
+    if (this.useI18n) {
+      this.i18n.bindElement(mapTypeHeader, 'layers.title', 'text');
+    } else {
+      mapTypeHeader.textContent = '地图类型';
+    }
     mapTypeHeader.style.cssText = `
       display: flex;
       width: 100%;
@@ -218,7 +235,11 @@ export class MapLayersService {
     `;
 
     const label = document.createElement('div');
-    label.textContent = mapType.name;
+    if (mapType.nameKey && this.useI18n) {
+      this.i18n.bindElement(label, mapType.nameKey, 'text');
+    } else {
+      label.textContent = mapType.name;
+    }
     label.className = 'layers-label';
     label.style.cssText = `
       position: absolute;
@@ -298,7 +319,11 @@ export class MapLayersService {
     `;
 
     const overlayTitle = document.createElement('div');
-    overlayTitle.textContent = '叠加图层';
+    if (this.useI18n) {
+      this.i18n.bindElement(overlayTitle, 'layers.overlay_title', 'text');
+    } else {
+      overlayTitle.textContent = '叠加图层';
+    }
     overlayTitle.style.cssText = `
       font-weight: bold;
       font-size: 14px;
@@ -309,7 +334,7 @@ export class MapLayersService {
 
     // 叠加图层选项
     const overlayOptions = [
-      { id: 'airport', name: '机场禁飞区', icon: '🔴' }
+      { id: 'airport', name: '机场禁飞区', nameKey: 'layers.overlay.airport', icon: '🔴' }
       // 可以添加更多叠加图层选项
     ];
 
@@ -324,7 +349,7 @@ export class MapLayersService {
   /**
    * 创建叠加图层项
    */
-  private createOverlayItem(option: { id: string; name: string; icon: string }): HTMLElement {
+  private createOverlayItem(option: { id: string; name: string; nameKey?: string; icon: string }): HTMLElement {
     const overlayItem = document.createElement('div');
     overlayItem.style.cssText = `
       display: flex;
@@ -367,7 +392,11 @@ export class MapLayersService {
     `;
 
     const name = document.createElement('span');
-    name.textContent = option.name;
+    if (option.nameKey && this.useI18n) {
+      this.i18n.bindElement(name, option.nameKey, 'text');
+    } else {
+      name.textContent = option.name;
+    }
     name.style.cssText = `
       font-size: 14px;
       color: #fff;
