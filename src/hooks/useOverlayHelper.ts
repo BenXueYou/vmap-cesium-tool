@@ -670,6 +670,54 @@ export function useOverlayHelper(
       primitiveLayerKey: (oe as any)._primitiveLayerKey,
     });
   };
+
+
+  // 按照了添加的顺序叠加的三个圆形
+  const addCircle123 = () => {
+    if (!viewer.value || !overlayService.value) return;
+
+    const circle3 = overlayService.value.addCircle({
+      position: [120.19656308, 30.18640485],
+      radius: 100.73,
+      outlineWidth: 6,
+      outline: true,
+      material: Cesium.Color.fromCssColorString('#18d17e').withAlpha(0.6),
+      outlineColor: Cesium.Color.fromCssColorString('#18d17e').withAlpha(1),
+      renderMode: 'primitive',
+      layerKey: `circleLayer3`, 
+      onClick: () => {
+        console.log(circle3, "圆形circle3被点击");
+      },
+    });
+    const circle2 = overlayService.value.addCircle({
+      position: [120.19656308, 30.18640485],
+      radius: 52.73,
+      outlineWidth: 6,
+      material: Cesium.Color.fromCssColorString('#ff9900').withAlpha(0.6) ,
+      outlineColor: Cesium.Color.fromCssColorString('#ff9900').withAlpha(1),
+      renderMode: 'primitive',
+      layerKey: `circleLayer2`,
+      outline: true,
+      onClick: () => {
+        console.log(circle2, "圆形circle2被点击");
+      }, 
+    })
+
+    const circle1 = overlayService.value.addCircle({
+      position: [120.19656308, 30.18640485],
+      radius: 30.73,
+      outlineWidth: 6,
+      material: Cesium.Color.fromCssColorString('#d32f2f').withAlpha(0.6),
+      outlineColor: Cesium.Color.fromCssColorString('#d32f2f').withAlpha(1),
+      renderMode: 'primitive',
+      layerKey: `circleLayer1`, 
+      outline: true,
+      onClick: () => {
+        console.log(circle1, "圆形circle1被点击");
+      },
+    })
+  }
+
   /**
    * 添加圆形
    */
@@ -1124,6 +1172,7 @@ export function useOverlayHelper(
     addLine,
     addArea,
     addCircle,
+    addCircle123,
     addRing,
     addPolygon,
     addRectangle,

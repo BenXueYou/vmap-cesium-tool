@@ -21,6 +21,7 @@
         <button @click="addLine">添加线条</button>
         <button @click="addArea">添加区域</button>
         <button @click="addCircle">添加圆形</button>
+        <button @click="addCircle123">添加圆形123</button>
         <button @click="addPolygon">添加多边形</button>
         <button @click="addPolyline">添加折线</button>
         <button @click="() => addIcon()">添加图标</button>
@@ -92,6 +93,7 @@ const {
   addLine,
   addArea,
   addCircle,
+  addCircle123,
   addPolygon,
   addPolyline,
   addIcon,
