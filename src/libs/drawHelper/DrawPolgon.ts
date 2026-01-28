@@ -2,6 +2,7 @@ import * as Cesium from "cesium";
 import type { Entity, Cartesian3 } from "cesium";
 import { BaseDraw, type DrawResult, type DrawOptions, type DrawEntity } from './BaseDraw';
 import { isValidCartesian3, calculatePolygonArea, calculatePolygonCenter, formatArea } from '../../utils/calc';
+import { i18n } from '../i18n';
 import { isClosedPolygonSelfIntersecting } from '../../utils/selfIntersection';
 
 /**
@@ -407,7 +408,7 @@ export class DrawPolygon extends BaseDraw {
             }
           }
 
-          const areaText = `面积: ${formatArea(area)}`;
+          const areaText = i18n.t('draw.label.area', { value: formatArea(area) });
           const areaImage = this.createTotalLengthBillboardImage(areaText);
 
           const areaLabelEntity = this.entities.add({

@@ -2,6 +2,7 @@ import * as Cesium from "cesium";
 import type { Entity, Cartesian3 } from "cesium";
 import { BaseDraw, type DrawResult, type DrawOptions, type DrawEntity } from './BaseDraw';
 import { calculateRectangle, calculateRectangleArea, formatArea, isValidCartesian3 } from '../../utils/calc';
+import { i18n } from '../i18n';
 
 /**
  * 画矩形绘制类
@@ -188,7 +189,7 @@ export class DrawRectangle extends BaseDraw {
         );
       }
 
-      const areaText = `面积: ${formatArea(area)}`;
+      const areaText = i18n.t('draw.label.area', { value: formatArea(area) });
       const areaImage = this.createTotalLengthBillboardImage(areaText);
 
       const rectAreaLabelEntity = this.entities.add({

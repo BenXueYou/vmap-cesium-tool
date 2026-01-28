@@ -57,6 +57,10 @@ const enUS = {
       line_continue: "Left click to add points, right click to remove, double click to finish",
       polygon_no_intersection: "Polygon cannot self-intersect",
     },
+    label: {
+      total_length: "Total length: {value}",
+      area: "Area: {value}",
+    },
   },
 };
 

@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       cesium:
-        specifier: ^1.133.0
-        version: 1.133.1
+        specifier: 1.134.1
+        version: 1.134.1
       vmap-cesium-toolbar:
         specifier: file:../../dist
         version: '@xingm/vmap-cesium-toolbar@file:../../dist(vue@3.5.21)'
@@ -44,15 +44,15 @@ packages:
     resolution: {integrity: sha512-bkFqkLhh3pMBUQQkpVgWDWq/lqzc2678eUyDlTBhRqhCHFguYYGM0Efga7tYk4TogG/3x0EEl66/OQ+WGbWB/Q==}
     engines: {node: '>=6.9.0'}
 
-  '@cesium/engine@20.0.1':
-    resolution: {integrity: sha512-B2TQ9VtVb791dUJatgx6SCRZg3tFPcRi8QseWg9flovaFOHJY0o+LX5BN2J5plFKRO5r5v7g+M2OyjcUYwaRDQ==}
+  '@cesium/engine@21.0.1':
+    resolution: {integrity: sha512-V4MEHOcYMcg+zCxrPjPAVpUyJxmIw6K9qPz5Fd2fnYPoMSPV7FJsiZYoFns03yoPHOPIeqnXQNspZKLX5Xzgfw==}
     engines: {node: '>=20.19.0'}
 
   '@cesium/wasm-splats@0.1.0-alpha.2':
     resolution: {integrity: sha512-t9pMkknv31hhIbLpMa8yPvmqfpvs5UkUjgqlQv9SeO8VerCXOYnyP8/486BDaFrztM0A7FMbRjsXtNeKvqQghA==}
 
-  '@cesium/widgets@13.1.1':
-    resolution: {integrity: sha512-EIZCSLLJzG0BeNcKjDfQcNv+9KiI9TqqN0RveuZIu++FCs2kL29neImicWEZlSfX38xxQLaogmhZLh2pO73NPg==}
+  '@cesium/widgets@13.2.1':
+    resolution: {integrity: sha512-VwJvw4UmEyK9slrDUImVcz3GFs5FDITH21BOiTVMSWuSsoqVDtMV0vTsoggFpIIqdYj6usHZjKuDnD9BT3vZAQ==}
     engines: {node: '>=20.19.0'}
 
   '@esbuild/aix-ppc64@0.25.10':
@@ -414,9 +414,9 @@ packages:
     peerDependencies:
       vue: ^3.0.0
 
-  '@zip.js/zip.js@2.7.73':
-    resolution: {integrity: sha512-I2UP8/rdQE5hTtVVL08B7P8XuwXiKuuMUPjNuFOVL/9b+8IsExR9S5jz2H58u0rJjU4M1BikLgqEMG8gZJZVBw==}
-    engines: {bun: '>=0.7.0', deno: '>=1.0.0', node: '>=16.5.0'}
+  '@zip.js/zip.js@2.8.15':
+    resolution: {integrity: sha512-HZKJLFe4eGVgCe9J87PnijY7T1Zn638bEHS+Fm/ygHZozRpefzWcOYfPaP52S8pqk9g4xN3+LzMDl3Lv9dLglA==}
+    engines: {bun: '>=0.7.0', deno: '>=1.0.0', node: '>=18.0.0'}
 
   autolinker@4.1.5:
     resolution: {integrity: sha512-vEfYZPmvVOIuE567XBVCsx8SBgOYtjB2+S1iAaJ+HgH+DNjAcrHem2hmAeC9yaNGWayicv4yR+9UaJlkF3pvtw==}
@@ -425,8 +425,8 @@ packages:
   bitmap-sdf@1.0.4:
     resolution: {integrity: sha512-1G3U4n5JE6RAiALMxu0p1XmeZkTeCwGKykzsLTCqVzfSDaN6S7fKnkIkfejogz+iwqBWc0UYAIKnKHNN7pSfDg==}
 
-  cesium@1.133.1:
-    resolution: {integrity: sha512-cbxsvAii7GE1D9OQIFjCKtkjDxm5WIVz5R47jswkhJ11sI3dEgSqZJi/e+C4PIulpdchwij+PEWE7nI0IQX7yw==}
+  cesium@1.134.1:
+    resolution: {integrity: sha512-5gbpwdFRV4zwujGeX/xlrItx2xbI20ZM+rKMUwdKc5dfLqt3uVEVzFewm+lOKLGLRJRBcH7XbDgqtmD63l18Yw==}
     engines: {node: '>=20.19.0'}
 
   commander@2.20.3:
@@ -619,12 +619,12 @@ snapshots:
       '@babel/helper-string-parser': 7.27.1
       '@babel/helper-validator-identifier': 7.27.1
 
-  '@cesium/engine@20.0.1':
+  '@cesium/engine@21.0.1':
     dependencies:
       '@cesium/wasm-splats': 0.1.0-alpha.2
       '@spz-loader/core': 0.3.0
       '@tweenjs/tween.js': 25.0.0
-      '@zip.js/zip.js': 2.7.73
+      '@zip.js/zip.js': 2.8.15
       autolinker: 4.1.5
       bitmap-sdf: 1.0.4
       dompurify: 3.2.7
@@ -645,9 +645,9 @@ snapshots:
 
   '@cesium/wasm-splats@0.1.0-alpha.2': {}
 
-  '@cesium/widgets@13.1.1':
+  '@cesium/widgets@13.2.1':
     dependencies:
-      '@cesium/engine': 20.0.1
+      '@cesium/engine': 21.0.1
       nosleep.js: 0.12.0
 
   '@esbuild/aix-ppc64@0.25.10':
@@ -898,7 +898,7 @@ snapshots:
     dependencies:
       vue: 3.5.21
 
-  '@zip.js/zip.js@2.7.73': {}
+  '@zip.js/zip.js@2.8.15': {}
 
   autolinker@4.1.5:
     dependencies:
@@ -906,10 +906,10 @@ snapshots:
 
   bitmap-sdf@1.0.4: {}
 
-  cesium@1.133.1:
+  cesium@1.134.1:
     dependencies:
-      '@cesium/engine': 20.0.1
-      '@cesium/widgets': 13.1.1
+      '@cesium/engine': 21.0.1
+      '@cesium/widgets': 13.2.1
 
   commander@2.20.3: {}
 

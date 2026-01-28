@@ -2,6 +2,7 @@ import * as Cesium from "cesium";
 import type { Entity, Cartesian3 } from "cesium";
 import { BaseDraw, type DrawResult, type DrawOptions } from './BaseDraw';
 import { formatDistance, isValidCartesian3 } from '../../utils/calc';
+import { i18n } from '../i18n';
 
 /**
  * 画线绘制类
@@ -417,7 +418,7 @@ export class DrawLine extends BaseDraw {
       }
 
       const formattedDistance = formatDistance(totalDistance);
-      const labelText = `总长: ${formattedDistance}`;
+      const labelText = i18n.t('draw.label.total_length', { value: formattedDistance });
       const image = this.createTotalLengthBillboardImage(labelText);
 
       if (this.currentTotalLabel && this.currentTotalLabel.billboard) {
@@ -479,7 +480,7 @@ export class DrawLine extends BaseDraw {
     const warmupLabel = this.entities.add({
       position,
       label: {
-        text: "总长: 0.00 m",
+        text: i18n.t('draw.label.total_length', { value: '0.00 m' }),
         font: "bold 16px 'Microsoft YaHei', 'PingFang SC', sans-serif",
         fillColor: Cesium.Color.WHITE,
         outlineColor: Cesium.Color.BLACK,

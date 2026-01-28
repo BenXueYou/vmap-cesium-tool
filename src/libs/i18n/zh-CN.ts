@@ -57,6 +57,10 @@ const zhCN = {
       line_continue: "左击绘制区域，右键删除点位，双击结束绘制",
       polygon_no_intersection: "多边形不能交叉",
     },
+    label: {
+      total_length: "总长: {value}",
+      area: "面积: {value}",
+    },
   },
 };
 
