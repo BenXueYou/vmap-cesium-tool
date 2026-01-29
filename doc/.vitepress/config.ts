@@ -33,14 +33,14 @@ export default defineConfig({
       },
       {
         text: '使用说明',
-        items: [{ text: 'GeoJSON', link: '/GeoJSON_Usage' }],
+        items: [{ text: 'GeoJSON', link: '/GeoJSON_Usage' }, { text: '多语言（i18n）', link: '/I18n_Usage' }],
       },
     ],
 
     socialLinks: [
       {
         icon: 'github',
-        link: 'https://github.com/benxueyou/vmap-cesium-toolbar',
+        link: 'https://github.com/BenXueYou/vmap-cesium-tool',
       },
     ],
   },

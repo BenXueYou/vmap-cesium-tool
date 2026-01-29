@@ -46,36 +46,6 @@ onMounted(async () => {
     fallbackLocale: "zh-CN",
   });
 
-  // i18n.addMessages("zh-CN", {
-  //   demo: {
-  //     title: "多语言示例",
-  //     language: "语言",
-  //     zh: "中文",
-  //     en: "英文",
-  //     located: "已定位到: {name}",
-  //     distance_done: "测距完成，总距离: {distance} 米",
-  //     area_done: "测面积完成，面积: {area} 平方米",
-  //     cleared: "已清除测量内容",
-  //     zoom_in: "放大: {before}m -> {after}m",
-  //     zoom_out: "缩小: {before}m -> {after}m",
-  //   },
-  // });
-
-  // i18n.addMessages("en-US", {
-  //   demo: {
-  //     title: "I18n Demo",
-  //     language: "Language",
-  //     zh: "Chinese",
-  //     en: "English",
-  //     located: "Located: {name}",
-  //     distance_done: "Distance: {distance} m",
-  //     area_done: "Area: {area} m²",
-  //     cleared: "Measurements cleared",
-  //     zoom_in: "Zoom in: {before}m -> {after}m",
-  //     zoom_out: "Zoom out: {before}m -> {after}m",
-  //   },
-  // });
-
   locale.value = i18n.getLocale();
 
   unsubscribeI18n = i18n.onLocaleChange((next) => {
