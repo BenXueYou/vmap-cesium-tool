@@ -21,6 +21,8 @@ export interface HeatmapOptions {
   /** Canvas 分辨率，越大越清晰但开销越大 */
   width?: number;
   height?: number;
+  /** 渲染模式：heat 为热力渐变（默认）；discrete 为严格分段纯色 */
+  mode?: "heat" | "discrete";
   /** 单个点的影响半径（像素） */
   radius?: number;
   /** 低强度提升（伽马矫正），< 1 可增强边缘，默认 0.7 */
@@ -34,6 +36,21 @@ export interface HeatmapOptions {
   opacity?: number;
   /** 颜色梯度 */
   gradient?: HeatmapGradient;
+
+  /**
+   * 严格分段（仅 mode=discrete 生效）：
+   * thresholds.length + 1 必须等于 colors.length。
+   * 例如 thresholds=[40,60,90,110] colors=[蓝,青,绿,黄,红]
+   * - value < 40 -> colors[0]
+   * - 40 <= value < 60 -> colors[1]
+   * - 60 <= value < 90 -> colors[2]
+   * - 90 <= value < 110 -> colors[3]
+   * - value >= 110 -> colors[4]
+   */
+  discreteThresholds?: number[];
+  discreteColors?: string[];
+  /** 重叠像素的决策：max=取更高分段（默认）；last=后绘制覆盖 */
+  discreteOverlap?: "max" | "last";
 }
 
 export interface HeatmapAutoUpdateOptions {
@@ -109,6 +126,7 @@ export default class CesiumHeatmapLayer {
     this.options = {
       width,
       height,
+      mode: options.mode ?? "heat",
       radius: options.radius ?? 30,
       gamma: options.gamma ?? 0.7,
       minAlpha: options.minAlpha ?? 0.03,
@@ -123,10 +141,147 @@ export default class CesiumHeatmapLayer {
           0.7: "#ffff00",
           1.0: "#ff0000",
         },
+      discreteThresholds: options.discreteThresholds ?? [],
+      discreteColors: options.discreteColors ?? [],
+      discreteOverlap: options.discreteOverlap ?? "max",
     };
 
     this.gradientLUT = new Uint8ClampedArray(256 * 4);
     this.buildGradientLUT();
+  }
+
+  private parseColorToRGBA(color: string): { r: number; g: number; b: number; a: number } | null {
+    const c = String(color || "").trim();
+    if (!c) return null;
+
+    // #RRGGBB or #RGB or #RRGGBBAA
+    if (c[0] === "#") {
+      const hex = c.slice(1);
+      if (hex.length === 3) {
+        const r = parseInt(hex[0] + hex[0], 16);
+        const g = parseInt(hex[1] + hex[1], 16);
+        const b = parseInt(hex[2] + hex[2], 16);
+        if ([r, g, b].some((v) => Number.isNaN(v))) return null;
+        return { r, g, b, a: 255 };
+      }
+      if (hex.length === 6 || hex.length === 8) {
+        const r = parseInt(hex.slice(0, 2), 16);
+        const g = parseInt(hex.slice(2, 4), 16);
+        const b = parseInt(hex.slice(4, 6), 16);
+        if ([r, g, b].some((v) => Number.isNaN(v))) return null;
+        const a = hex.length === 8 ? parseInt(hex.slice(6, 8), 16) : 255;
+        return { r, g, b, a: Number.isNaN(a) ? 255 : a };
+      }
+    }
+
+    // rgb()/rgba()
+    const m = c
+      .replace(/\s+/g, "")
+      .match(/^rgba?\((\d{1,3}),(\d{1,3}),(\d{1,3})(?:,(\d*\.?\d+))?\)$/i);
+    if (m) {
+      const r = Math.min(255, Math.max(0, Number(m[1])));
+      const g = Math.min(255, Math.max(0, Number(m[2])));
+      const b = Math.min(255, Math.max(0, Number(m[3])));
+      const aF = m[4] != null ? Math.min(1, Math.max(0, Number(m[4]))) : 1;
+      if ([r, g, b, aF].some((v) => !Number.isFinite(v))) return null;
+      return { r: Math.round(r), g: Math.round(g), b: Math.round(b), a: Math.round(aF * 255) };
+    }
+
+    return null;
+  }
+
+  private getDiscreteBucketIndex(value: number): number {
+    const thresholds = this.options.discreteThresholds;
+    if (!Array.isArray(thresholds) || thresholds.length === 0) return 0;
+    for (let i = 0; i < thresholds.length; i++) {
+      const t = thresholds[i];
+      if (!Number.isFinite(t)) continue;
+      if (value < t) return i;
+    }
+    return thresholds.length;
+  }
+
+  private renderDiscrete(points: HeatPoint[]): void {
+    if (!this.fullDataRectangle || points.length === 0) return;
+
+    const { width, height, radius } = this.options;
+    const ctx = this.ctx;
+    ctx.clearRect(0, 0, width, height);
+
+    const thresholds = this.options.discreteThresholds;
+    const colors = this.options.discreteColors;
+    if (!Array.isArray(thresholds) || !Array.isArray(colors) || colors.length !== thresholds.length + 1) {
+      // 配置不完整则回退为 heat
+      this.renderHeatmap(points, { persistMinMax: false });
+      return;
+    }
+
+    const rgbaPalette = colors
+      .map((c) => this.parseColorToRGBA(c))
+      .map((c) => c ?? { r: 255, g: 0, b: 0, a: 255 });
+
+    const minLon = Cesium.Math.toDegrees(this.fullDataRectangle.west);
+    const maxLon = Cesium.Math.toDegrees(this.fullDataRectangle.east);
+    const minLat = Cesium.Math.toDegrees(this.fullDataRectangle.south);
+    const maxLat = Cesium.Math.toDegrees(this.fullDataRectangle.north);
+    const lonRange = maxLon - minLon || 1;
+    const latRange = maxLat - minLat || 1;
+
+    const r = Math.max(1, Math.round(radius));
+    const offsets: Array<{ dx: number; dy: number }> = [];
+    const r2 = r * r;
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (dx * dx + dy * dy > r2) continue;
+        offsets.push({ dx, dy });
+      }
+    }
+
+    // 每个像素一个 bucket index，-1 表示透明
+    const buckets = new Int16Array(width * height);
+    buckets.fill(-1);
+    const overlap = this.options.discreteOverlap;
+
+    for (const p of points) {
+      if (!Number.isFinite(p.lon) || !Number.isFinite(p.lat) || !Number.isFinite(p.value)) continue;
+      const bucket = this.getDiscreteBucketIndex(p.value);
+      const x = Math.round(((p.lon - minLon) / lonRange) * (width - 1));
+      const y = Math.round((1 - (p.lat - minLat) / latRange) * (height - 1));
+      if (x < 0 || x >= width || y < 0 || y >= height) continue;
+
+      for (const o of offsets) {
+        const nx = x + o.dx;
+        const ny = y + o.dy;
+        if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+        const idx = ny * width + nx;
+        if (overlap === "last") {
+          buckets[idx] = bucket;
+        } else {
+          if (bucket > buckets[idx]) buckets[idx] = bucket;
+        }
+      }
+    }
+
+    const img = ctx.createImageData(width, height);
+    const data = img.data;
+    const outAlpha = Math.min(255, Math.max(0, Math.round(255 * this.options.opacity)));
+
+    for (let i = 0; i < buckets.length; i++) {
+      const b = buckets[i];
+      if (b < 0) {
+        data[i * 4 + 3] = 0;
+        continue;
+      }
+      const c = rgbaPalette[Math.min(rgbaPalette.length - 1, Math.max(0, b))];
+      data[i * 4] = c.r;
+      data[i * 4 + 1] = c.g;
+      data[i * 4 + 2] = c.b;
+      // 颜色自带 alpha * 全局 opacity
+      data[i * 4 + 3] = Math.round((c.a / 255) * outAlpha);
+    }
+
+    ctx.putImageData(img, 0, 0);
+    this.updateImageryLayer();
   }
 
   /**
@@ -159,7 +314,7 @@ export default class CesiumHeatmapLayer {
     }
 
     // 给范围稍微扩一点，避免刚好落在边缘
-    const padding = 1e-3; // 约 0.001 度
+    const padding = 1e-2; // 约 0.01 度，单点也可见
     minLon -= padding;
     maxLon += padding;
     minLat -= padding;
@@ -548,6 +703,10 @@ export default class CesiumHeatmapLayer {
    * 在离屏 canvas 上绘制热力图，并更新到 Cesium 图层
    */
   private renderHeatmap(points: HeatPoint[], opts: { persistMinMax: boolean }): void {
+    if (this.options.mode === "discrete") {
+      this.renderDiscrete(points);
+      return;
+    }
     if (!this.fullDataRectangle || points.length === 0) return;
 
     const { width, height, radius, gamma, minAlpha } = this.options;
@@ -619,18 +778,13 @@ export default class CesiumHeatmapLayer {
       }
     }
 
-    let maxIntensity = 0;
-    for (let i = 0; i < intensity.length; i++) {
-      if (intensity[i] > maxIntensity) maxIntensity = intensity[i];
-    }
-
     const img = ctx.createImageData(width, height);
     const data = img.data;
     const g = Math.max(0.01, gamma ?? 1);
     const minA = Math.min(1, Math.max(0, minAlpha ?? 0));
 
     for (let i = 0; i < intensity.length; i++) {
-      const val = maxIntensity > 0 ? intensity[i] / maxIntensity : 0;
+      const val = Math.min(1, Math.max(0, intensity[i]));
       if (val <= 0) {
         data[i * 4 + 3] = 0;
         continue;
@@ -638,7 +792,7 @@ export default class CesiumHeatmapLayer {
       const boosted = Math.pow(val, g);
       const alphaN = Math.max(minA, boosted);
       const alpha8 = Math.min(255, Math.max(0, Math.round(alphaN * 255)));
-      const lutIndex = alpha8 * 4;
+      const lutIndex = Math.min(255, Math.max(0, Math.round(val * 255))) * 4;
       data[i * 4] = this.gradientLUT[lutIndex];
       data[i * 4 + 1] = this.gradientLUT[lutIndex + 1];
       data[i * 4 + 2] = this.gradientLUT[lutIndex + 2];

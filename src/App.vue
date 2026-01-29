@@ -64,7 +64,6 @@ import { useOverlayHelper } from "./hooks/useOverlayHelper";
 import { getViteTdToken, getViteCesiumToken } from "./utils/common";
 import * as Cesium from "cesium";
 import { useHeatmapHelper } from "./hooks/useHeatmapHelper";
-import { defaultHeatmapData, defaultHeatmapColors, defaultHeatmapOpacity } from "./z.const";
 import { i18n } from "./i18n";
 let viewer = ref<Cesium.Viewer>();
 const message = ref("");
@@ -132,6 +131,37 @@ const {
   destroyHeatmap,
 } = useHeatmapHelper(viewer);
 
+// 模拟热力点位数据：覆盖所有分级区间（<40, 40-60, 60-90, 90-110, >=110）
+const defaultHeatmapData = [
+  // < 40 (蓝)
+  { lon: 120.1979675, lat: 30.1856803, height: 200 },
+  // { lon: 120.1976514, lat: 30.1856604, height: 30 },
+  { lon: 120.198971, lat: 30.1863338, height: 12 },
+  // { lon: 100.6, lat: 30.6, height: 20 },
+  // { lon: 101.0, lat: 31.0, height: 39 },
+
+  // // 40 - 60 (青)
+  // { lon: 101.4, lat: 31.4, height: 40 },
+  // { lon: 101.8, lat: 31.8, height: 50 },
+  // { lon: 102.2, lat: 32.2, height: 60 },
+
+  // // 60 - 90 (绿)
+  // { lon: 102.6, lat: 32.6, height: 61 },
+  // { lon: 103.0, lat: 33.0, height: 75 },
+  // { lon: 103.4, lat: 33.4, height: 90 },
+
+  // // 90 - 110 (黄)
+  // { lon: 103.8, lat: 33.8, height: 91 },
+  // { lon: 104.2, lat: 34.2, height: 100 },
+  // { lon: 104.6, lat: 34.6, height: 110 },
+
+  // // >= 110 (红)
+  // { lon: 105.0, lat: 35.0, height: 111 },
+  // { lon: 105.4, lat: 35.4, height: 400 },
+  // { lon: 105.8, lat: 35.8, height: 1000 },
+  // { lon: 106.2, lat: 36.2, height: 4000 },
+  // { lon: 106.6, lat: 36.6, height: 10000 },
+];
 
 // 测试添加大量圆环性能
 const addRingTest = () => {
@@ -195,41 +225,38 @@ const addHeatMap = () => {
     return;
   }
 
-  // 计算最大强度，用于设置 max 和构建颜色梯度
-  const maxValue = Math.max(...allPoints.map((p: any) => p.value));
-  const baseMax = Math.max(maxValue, 110); // 至少覆盖到 110 的档位
+  // 固定分级上限为 110，确保 >=110 都映射为红色
+  const baseMax = 110;
 
-  // 依据原天地图方案的分级：<40, 40-60, 60-90, 90-110, >=110
+  // 严格分段：按 value 直接决定每个点的纯色（非热力渐变）
   const thresholds = [40, 60, 90, 110];
   const colors = ["#0033ff", "#00ffff", "#00b800", "#ffff00", "#ff0000"]; // 蓝-青-绿-黄-红
-  const gradient: Record<number, string> = {};
-  gradient[0] = colors[0];
-  thresholds.forEach((t, idx) => {
-    const stop = Math.min(1, t / baseMax);
-    gradient[stop] = colors[idx + 1];
-  });
-  gradient[1] = colors[colors.length - 1];
 
   // 初始化热力图图层
   initHeatmap({
-    radius: 20,
-    opacity: 0.9,
+    mode: "heat",
+    // mode: "discrete",
+    radius: 10,
+    opacity: 0.8,
     minValue: 0,
     maxValue: baseMax,
-    gradient,
+    discreteThresholds: thresholds,
+    discreteColors: colors,
+    discreteOverlap: "last",
+    // discreteOverlap: "max",
   });
 
   // 目前先一次性加载所有点（如果后续需要逐帧动画，可以基于 frames 实现）
   const heatmapData = allPoints.map((p: any) => ({
     lon: p.lon,
     lat: p.lat,
-    value: p.value,
+    value: Math.min(p.value, baseMax),
   }));
 
   updateHeatmapData(heatmapData);
-  setHeatmapVisible(true);
-  setHeatmapOpacity(0.9);
-  setHeatmapGradient(gradient);
+  // setHeatmapVisible(true);
+  // setHeatmapOpacity(0.9);
+  // discrete 模式不需要 setHeatmapGradient
 
 
   // 简单用所有点的平均值作为视角中心
