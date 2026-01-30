@@ -2,6 +2,45 @@
 
 本文档展示了如何使用 CesiumMapToolbar 的自定义按钮和搜索功能，以及 DrawHelper 的地图绘制功能。
 
+## 0. 自动恢复（最小接入：onRecovered 重绑 toolbar/overlay/heatmap）
+
+当遇到偶现 `Rendering has stopped` / `NaN render error` 时，可以在 `initCesium` 里启用 `autoRecover`。
+
+关键点：恢复会重建 `viewer`，所以必须在 `onRecovered` 中把所有依赖 viewer 的实例重新创建/绑定。
+
+可直接参考示例文件：`examples/demo-auto-recover.html`。
+
+```ts
+import { initCesium, CesiumMapToolbar, CesiumOverlayService, HeatmapLayer } from '@xingm/vmap-cesium-toolbar';
+
+let toolbar: CesiumMapToolbar | null = null;
+let overlay: CesiumOverlayService | null = null;
+let heatmap: any = null;
+
+function bindAll(viewer: any, container: HTMLElement) {
+  toolbar?.destroy?.();
+  toolbar = new CesiumMapToolbar(viewer, container);
+
+  overlay?.destroy?.();
+  overlay = new CesiumOverlayService(viewer);
+
+  heatmap?.destroy?.();
+  heatmap = new HeatmapLayer(viewer, { width: 512, height: 512 });
+}
+
+const containerId = 'cesiumContainer';
+const container = document.getElementById(containerId)!;
+
+const { viewer } = await initCesium(containerId, {
+  autoRecover: {
+    enabled: true,
+    onRecovered: ({ newViewer }) => bindAll(newViewer, container),
+  },
+});
+
+bindAll(viewer, container);
+```
+
 ## 1. 自定义按钮配置
 
 ### 1.1 基本自定义按钮

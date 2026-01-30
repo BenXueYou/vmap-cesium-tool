@@ -3,6 +3,7 @@ import { getViteTdToken } from '../utils/common'
 import type { Viewer as CesiumViewer } from 'cesium'
 import { TDTMapTypes } from './config/CesiumMapConfig'
 import { Ion, Viewer, createWorldTerrainAsync, Terrain, TerrainProvider } from 'cesium'
+import { enableCesiumAutoRecover, type CesiumAutoRecoverOptions } from './CesiumAutoRecover'
 interface InitOptions {
   // 其他相关配置
   orderIndependentTranslucency?: boolean // 无序半透明度,
@@ -54,6 +55,9 @@ interface InitOptions {
   success?: () => void // flyTo动画完成回调
   cancel?: () => void // flyTo动画取消回调
   mapCenter?: MapCenter // 地图中心点
+
+  /** 渲染异常自动恢复（可选）：会重建 Viewer，需在回调里替换引用 */
+  autoRecover?: CesiumAutoRecoverOptions
 }
 
 interface MapCenter {
@@ -140,40 +144,56 @@ export async function initCesium(
       : options.mapCenter) || (defaultMapOptions.mapCenter as MapCenter)
 
   Ion.defaultAccessToken = resolvedToken
-  const viewer = new Viewer(containerId, {
-    ...defaultMapOptions,
-    ...options
-  });
-  (viewer.cesiumWidget.creditContainer as HTMLElement).style.display = 'none';
-  viewer.scene.postProcessStages.fxaa.enabled = options.fxaa || true;
-  viewer.scene.globe.depthTestAgainstTerrain = options.depthTestAgainstTerrain || false; // 启用地形深度测
-  // 地形提供者
-  if (!options.terrainProvider && !options.terrain) {
-    viewer.terrainProvider = await createWorldTerrainAsync();
-  } else {
-    viewer.imageryLayers.remove(viewer.imageryLayers.get(0))
-  }
-  const token = options.token || getViteTdToken();
-  // 添加天地图影像图层
-  if (options.mapType === 'tiandi') {
-    viewer.imageryLayers.removeAll();
-    TDTMapTypes.find((type: { id: string }) => type.id === 'imagery')?.provider(token).forEach((provider: Cesium.ImageryProvider) => {
-      viewer.imageryLayers.addImageryProvider(provider);
+
+  const createViewer = async (): Promise<CesiumViewer> => {
+    const viewer = new Viewer(containerId, {
+      ...defaultMapOptions,
+      ...options
     });
+    (viewer.cesiumWidget.creditContainer as HTMLElement).style.display = 'none';
+    viewer.scene.postProcessStages.fxaa.enabled = options.fxaa ?? true;
+    viewer.scene.globe.depthTestAgainstTerrain = options.depthTestAgainstTerrain ?? false; // 启用地形深度测试
+    // 地形提供者
+    if (!options.terrainProvider && !options.terrain) {
+      viewer.terrainProvider = await createWorldTerrainAsync();
+    } else {
+      viewer.imageryLayers.remove(viewer.imageryLayers.get(0))
+    }
+    const token = options.token || getViteTdToken();
+    // 添加天地图影像图层
+    if (options.mapType === 'tiandi') {
+      viewer.imageryLayers.removeAll();
+      TDTMapTypes.find((type: { id: string }) => type.id === 'imagery')?.provider(token).forEach((provider: Cesium.ImageryProvider) => {
+        viewer.imageryLayers.addImageryProvider(provider);
+      });
+    }
+
+    if (resolvedCenter && !options.isFly) {
+      setCameraView(viewer, resolvedCenter);
+    }
+    if (resolvedCenter && options.isFly) {
+      setCameraFlyTo(viewer, resolvedCenter, options);
+    }
+    return viewer;
   }
-  if (resolvedCenter && !options.isFly) {
-    // 设置初始视角为中国区域 (经度, 纬度, 高度)
-    setCameraView(viewer, resolvedCenter);
-    viewer.camera.setView({
-      destination: Cesium.Cartesian3.fromDegrees(resolvedCenter.longitude, resolvedCenter.latitude, resolvedCenter.height), // 中国中心坐标
-      orientation: {
-        heading: Cesium.Math.toRadians(resolvedCenter.heading || 0), // 方向角度
-        pitch: Cesium.Math.toRadians(resolvedCenter.pitch || 0), // 俯
+
+  const viewer = await createViewer();
+
+  if (options.autoRecover?.enabled) {
+    const disposer = enableCesiumAutoRecover(
+      viewer as any,
+      createViewer as any,
+      {
+        ...options.autoRecover,
+        // 默认：requestRenderMode 下不开 watchdog，避免误判
+        watchdog:
+          options.autoRecover.watchdog?.enabled
+            ? options.autoRecover.watchdog
+            : (options.requestRenderMode ? { enabled: false } : options.autoRecover.watchdog),
       }
-    });
+    );
+    (viewer as any).__vmapAutoRecoverDispose = disposer.dispose;
   }
-  if (resolvedCenter && options.isFly) {
-    setCameraFlyTo(viewer, resolvedCenter, options);
-  }
+
   return { viewer, initialCenter: resolvedCenter }
 }

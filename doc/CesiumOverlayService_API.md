@@ -151,7 +151,7 @@ addRing(options: RingOptions): Cesium.Entity
 - `pixelOffset?: Cesium.Cartesian2`：像素偏移
 - `eyeOffset?: Cesium.Cartesian3` ：视角偏移
 - `horizontalOrigin?: Cesium.HorizontalOrigin` ：水平对齐（默认 `Cesium.HorizontalOrigin.CENTER`）
-- `verticalOrigin?: Cesium.VerticalOrigin` ：垂直对齐（默认 `Cesium.VerticalOrigin.CENTER`） 
+- `verticalOrigin?: Cesium.VerticalOrigin` ：垂直对齐（默认 `Cesium.VerticalOrigin.CENTER`）
 - `heightReference?: Cesium.HeightReference` ：高度参考（默认 `Cesium.HeightReference.CLAMP_TO_GROUND`）
 - `scale?: number` ：整体缩放
 - `showBackground?: boolean` ：是否显示背景

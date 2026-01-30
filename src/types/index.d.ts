@@ -226,6 +226,27 @@ export interface InitOptions {
   success?: () => void;
   cancel?: () => void;
   mapCenter?: MapCenter;
+
+  /** 渲染异常自动恢复：遇到 NaN/renderError 等会重建 Viewer，需在回调里替换引用 */
+  autoRecover?: {
+    enabled?: boolean;
+    maxRetries?: number;
+    cooldownMs?: number;
+    preserveCamera?: boolean;
+    onRecovering?: (ctx: { reason: string; error?: unknown; attempt: number }) => void;
+    onRecovered?: (ctx: {
+      reason: string;
+      error?: unknown;
+      attempt: number;
+      oldViewer: Viewer;
+      newViewer: Viewer;
+    }) => void;
+    watchdog?: {
+      enabled?: boolean;
+      staleMs?: number;
+      checkIntervalMs?: number;
+    };
+  };
 }
 
 // 主要类声明

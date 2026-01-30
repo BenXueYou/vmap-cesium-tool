@@ -106,6 +106,31 @@ export default class CesiumHeatmapLayer {
   private pendingUpdate = false;
   private lastUpdateKey = "";
 
+  private handleWorkerFault(stage: string, error: unknown): void {
+    // DataCloneError 通常发生在 postMessage 复制失败（包含不可克隆对象 / 原生内部对象）
+    // 这里选择“降级”而不是抛出，避免主线程逻辑被打断。
+    try {
+      // eslint-disable-next-line no-console
+      console.error(`[HeatmapLayer] worker fault at ${stage}`, error);
+    } catch {
+      // ignore
+    }
+    this.stopAutoUpdate();
+    if (this.aggregateWorker) {
+      try {
+        this.aggregateWorker.terminate();
+      } catch {
+        // ignore
+      }
+      this.aggregateWorker = null;
+      this.workerReady = false;
+    }
+    // 降级为全量渲染（如果有数据）
+    if (this.data.length > 0 && this.rectangle) {
+      this.renderHeatmap(this.data, { persistMinMax: true });
+    }
+  }
+
   constructor(viewer: Cesium.Viewer, options: HeatmapOptions = {}) {
     this.viewer = viewer;
 
@@ -477,11 +502,15 @@ export default class CesiumHeatmapLayer {
     if (key === this.lastUpdateKey) return;
     this.lastUpdateKey = key;
 
-    this.aggregateWorker?.postMessage({
-      type: "aggregate",
-      bbox: view,
-      cellMeters,
-    });
+    try {
+      this.aggregateWorker?.postMessage({
+        type: "aggregate",
+        bbox: view,
+        cellMeters,
+      });
+    } catch (e) {
+      this.handleWorkerFault('postMessage(aggregate)', e);
+    }
   }
 
   private getPaddedViewRectangleDegrees(paddingRatio: number): { west: number; south: number; east: number; north: number } | null {
@@ -604,6 +633,13 @@ export default class CesiumHeatmapLayer {
     this.aggregateWorker = new Worker(url);
     URL.revokeObjectURL(url);
 
+    this.aggregateWorker.onerror = (e: any) => {
+      this.handleWorkerFault('worker.onerror', e);
+    };
+    (this.aggregateWorker as any).onmessageerror = (e: any) => {
+      this.handleWorkerFault('worker.onmessageerror', e);
+    };
+
     this.aggregateWorker.onmessage = (e: MessageEvent) => {
       const msg = e.data as any;
       if (!msg || !msg.type) return;
@@ -649,18 +685,22 @@ export default class CesiumHeatmapLayer {
       (this.fullDataRectangle.south + this.fullDataRectangle.north) * 0.5
     );
 
-    this.aggregateWorker.postMessage(
-      {
-        type: "init",
-        lons: lons.buffer,
-        lats: lats.buffer,
-        values: values.buffer,
-        originLon,
-        originLat,
-        refLat,
-      },
-      [lons.buffer, lats.buffer, values.buffer]
-    );
+    try {
+      this.aggregateWorker.postMessage(
+        {
+          type: "init",
+          lons: lons.buffer,
+          lats: lats.buffer,
+          values: values.buffer,
+          originLon,
+          originLat,
+          refLat,
+        },
+        [lons.buffer, lats.buffer, values.buffer]
+      );
+    } catch (e) {
+      this.handleWorkerFault('postMessage(init)', e);
+    }
   }
 
   /**

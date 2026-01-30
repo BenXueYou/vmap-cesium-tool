@@ -32,3 +32,7 @@ features:
 - [CesiumOverlayService API](/CesiumOverlayService_API)
 - [GeoJSON 使用说明](/GeoJSON_Usage)
 - [多语言（i18n）使用说明](/I18n_Usage)
+
+## 常见问题
+
+- 渲染偶现 `Rendering has stopped` / `NaN render error` 时的自动恢复：见 `CesiumMapLoader API` 中的“自动恢复（最小接入示例）”。

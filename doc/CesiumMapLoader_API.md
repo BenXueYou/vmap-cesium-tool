@@ -151,3 +151,63 @@ try {
 2. **Cesium Token**：使用世界地形（Ion）等资源时需要有效的 Cesium Ion Token。
 3. **天地图 Token**：当 `options.mapType === 'tiandi'` 时，需要传 `options.token`（天地图 token）。
 4. **内存管理**：不再使用时调用 `viewer.destroy()` 释放 WebGL 资源。
+
+## 自动恢复（最小接入示例）
+
+当遇到偶现的 `Rendering has stopped` / `NaN render error` 等导致渲染停止的情况，可以启用 `autoRecover`。
+
+关键点：**恢复会重建新的 `viewer` 实例**，业务必须在 `onRecovered` 里把依赖 viewer 的模块（例如 toolbar / overlay / heatmap）重新绑定到 `newViewer`。
+
+```ts
+import { initCesium, CesiumMapToolbar, CesiumOverlayService, HeatmapLayer } from '@xingm/vmap-cesium-toolbar';
+
+const containerId = 'cesiumContainer';
+const container = document.getElementById(containerId)!;
+
+let viewer: any;
+let toolbar: any;
+let overlay: any;
+let heatmap: any;
+
+function bindAll(v: any) {
+  viewer = v;
+
+  // 1) Toolbar
+  toolbar?.destroy?.();
+  toolbar = new CesiumMapToolbar(viewer, container);
+
+  // 2) Overlay
+  overlay?.destroy?.();
+  overlay = new CesiumOverlayService(viewer);
+  overlay.addMarker({ id: 'm1', position: [116.3974, 39.9093], pixelSize: 10 });
+
+  // 3) Heatmap
+  heatmap?.destroy?.();
+  heatmap = new HeatmapLayer(viewer, { width: 512, height: 512 });
+  heatmap.setData([
+    { lon: 116.40, lat: 39.90, value: 10 },
+    { lon: 116.41, lat: 39.91, value: 30 },
+  ]);
+  heatmap.setAutoUpdate({ enabled: true });
+}
+
+const { viewer: v } = await initCesium(containerId, {
+  cesiumToken: 'your_cesium_ion_token',
+  autoRecover: {
+    enabled: true,
+    maxRetries: 3,
+    cooldownMs: 5000,
+    preserveCamera: true,
+    onRecovering: ({ reason, attempt, error }) => {
+      console.warn('[autoRecover] recovering...', { reason, attempt, error });
+    },
+    onRecovered: ({ newViewer, reason, attempt, error }) => {
+      console.warn('[autoRecover] recovered', { reason, attempt, error });
+      bindAll(newViewer);
+    },
+  },
+});
+
+bindAll(v);
+```
+
