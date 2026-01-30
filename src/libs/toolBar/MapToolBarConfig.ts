@@ -1,4 +1,4 @@
-import type { ButtonConfig } from '../CesiumMapModel';
+import type { ButtonConfig, ToolbarConfig } from '../CesiumMapModel';
 export const defaultButtonSorts: Record<string, number> = {
     'search': 0,
     'measure': 1,
@@ -21,3 +21,24 @@ export const defaultButtons: ButtonConfig[] = [
     { id: 'zoom-out', icon: '🔍+', title: '放大', titleKey: 'toolbar.zoom_out', sort: defaultButtonSorts['zoom-out'] },
     { id: 'fullscreen', icon: '⛶', title: '全屏', titleKey: 'toolbar.fullscreen', sort: defaultButtonSorts['fullscreen'] }
 ];
+
+// 测量菜单
+export const defaultMeasureItems = [
+    { id: 'measure-area', text: '测面积', textKey: 'measurement.menu.area', icon: '📐' },
+    { id: 'measure-distance', text: '测距', textKey: 'measurement.menu.distance', icon: '📏' },
+    { id: 'clear-measurement', text: '清除', textKey: 'measurement.menu.clear', icon: '🗑️' }
+]
+
+// 测量绘制
+export const defaultToolBarStyle: ToolbarConfig = {
+    position: 'bottom-right',
+    buttonSize: 40,
+    buttonSpacing: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderColor: '#e0e0e0',
+    borderRadius: 6,
+    boxShadow: '0 2px 10px rgba(0, 0, 0, 0.1)',
+    zIndex: 1000,
+}
+
+
