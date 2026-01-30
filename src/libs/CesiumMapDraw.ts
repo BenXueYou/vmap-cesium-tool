@@ -1065,7 +1065,28 @@ class DrawHelper {
             }
 
             anyViewer.__vmapDrawHelperLastGroundUpdaterThrow = snapshot;
-            console.error('[DrawHelper] GroundGeometryUpdater throw snapshot:', snapshot);
+
+            // 默认不刷屏：该 hook 的主要目的是在 showErrorPanel/renderError 时提供诊断快照。
+            // 如需实时输出，将 viewer.__vmapDrawHelperDebugGroundUpdater = true（或 window.__VMAP_DRAWHELPER_DEBUG__ = true）。
+            try {
+              const enableVerbose =
+                !!anyViewer.__vmapDrawHelperDebugGroundUpdater || !!(globalThis as any).__VMAP_DRAWHELPER_DEBUG__;
+              const isDrawing = !!anyViewer.__vmapDrawHelperIsDrawing;
+              const entityId = snapshot?.entityId ? String(snapshot.entityId) : '';
+              const key = `${String(propertyName || '')}|${entityId}`;
+              const lastAt = Number(anyViewer.__vmapDrawHelperGroundUpdaterThrowLastLogAt) || 0;
+              const lastKey = String(anyViewer.__vmapDrawHelperGroundUpdaterThrowLastLogKey || '');
+              const nowAt = Date.now();
+              const throttled = nowAt - lastAt < 2000 && lastKey === key;
+
+              if (enableVerbose || (!isDrawing && !throttled)) {
+                anyViewer.__vmapDrawHelperGroundUpdaterThrowLastLogAt = nowAt;
+                anyViewer.__vmapDrawHelperGroundUpdaterThrowLastLogKey = key;
+                console.error('[DrawHelper] GroundGeometryUpdater throw snapshot:', snapshot);
+              }
+            } catch {
+              // ignore
+            }
           } catch {
             // ignore
           }

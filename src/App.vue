@@ -395,8 +395,6 @@ onMounted(async () => {
   // 调试用：挂到全局
   (window as any).cesiumViewer = cesiumViewer;
   viewer.value = cesiumViewer;
-  // viewer.value.scene.globe.depthTestAgainstTerrain = true; // 启用地形深度测
-  (viewer.value.cesiumWidget.creditContainer as HTMLElement).style.display = "none"; // 去掉左下角的Cesium商标
 
   // 初始化覆盖物服务
   initOverlayService();
