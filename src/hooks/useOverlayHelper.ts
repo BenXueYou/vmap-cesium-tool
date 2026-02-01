@@ -690,7 +690,7 @@ export function useOverlayHelper(
       material: Cesium.Color.fromCssColorString('#18d17e').withAlpha(0.6),
       outlineColor: Cesium.Color.fromCssColorString('#18d17e').withAlpha(1),
       renderMode: 'primitive',
-      layerKey: `circleLayer3`, 
+      layerKey: `circleLayer3`,
       onClick: () => {
         console.log(circle3, "圆形circle3被点击");
       },
@@ -699,14 +699,14 @@ export function useOverlayHelper(
       position: [120.19656308, 30.18640485],
       radius: 52.73,
       outlineWidth: 6,
-      material: Cesium.Color.fromCssColorString('#ff9900').withAlpha(0.6) ,
+      material: Cesium.Color.fromCssColorString('#ff9900').withAlpha(0.6),
       outlineColor: Cesium.Color.fromCssColorString('#ff9900').withAlpha(1),
       renderMode: 'primitive',
       layerKey: `circleLayer2`,
       outline: true,
       onClick: () => {
         console.log(circle2, "圆形circle2被点击");
-      }, 
+      },
     })
 
     const circle1 = overlayService.value.addCircle({
@@ -716,12 +716,28 @@ export function useOverlayHelper(
       material: Cesium.Color.fromCssColorString('#d32f2f').withAlpha(0.6),
       outlineColor: Cesium.Color.fromCssColorString('#d32f2f').withAlpha(1),
       renderMode: 'primitive',
-      layerKey: `circleLayer1`, 
+      layerKey: `circleLayer1`,
       outline: true,
       onClick: () => {
         console.log(circle1, "圆形circle1被点击");
       },
     })
+  }
+
+
+  const removeEntitys = (entity: Cesium.Entity) => {
+    if (!viewer.value || !entity) return
+    viewer.value.entities.remove(entity)
+    const innerEntity = (entity as any)._innerEntity
+    const borderEntity = (entity as any)._borderEntity
+    const labelEntities = (entity as any)._labelEntities
+    if (innerEntity) viewer.value.entities.remove(innerEntity)
+    if (borderEntity) viewer.value.entities.remove(borderEntity)
+    if (labelEntities) {
+      labelEntities.forEach((labelEntity: Cesium.Entity) => {
+        viewer.value?.entities.remove(labelEntity)
+      })
+    }
   }
 
   /**
@@ -869,13 +885,15 @@ export function useOverlayHelper(
       clickHighlight: { color: '#ffee58', fillAlpha: 0.35 },
       onClick: () => {
         logCircle('F-alarm(click)', alarmCircle);
+        // viewer.value!.entities.remove(alarmCircle);
+        overlayService.value!.removeOverlay(alarmCircle.id);
         message.value = i18n.t('overlay.circle_alarm_clicked');
         setTimeout(() => (message.value = ''), 2000);
       },
     });
     logCircle('F-alarm(init)', alarmCircle);
 
-        // Test F: primitive ✅（分层叠加：侦测区 vs 告警区）
+    // Test F: primitive ✅（分层叠加：侦测区 vs 告警区）
     // 目标：两个区域都填充、且边界始终清晰可见。
     // 关键：为 primitive circle 提供 layerKey，按业务顺序创建即可确定上下层。
 

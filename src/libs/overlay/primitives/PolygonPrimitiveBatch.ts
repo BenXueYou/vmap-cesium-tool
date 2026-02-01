@@ -2,8 +2,8 @@ import * as Cesium from 'cesium';
 import type { Viewer, Entity } from 'cesium';
 
 export interface PolygonPrimitiveParts {
-  fill: Entity; // fill proxy entity (pick id)
-  border: Entity; // border proxy entity (pick id)
+  fill: Entity; // 填充代理实体（用于拾取标识）
+  border: Entity; // 边框代理实体（用于拾取标识）
 }
 
 interface PolygonPrimitiveRecord {
@@ -45,12 +45,12 @@ export class PolygonPrimitiveBatch {
     const borderCollection = options?.borderCollection;
 
     if (fillCollection || borderCollection) {
-      // When mounted under external collections, we do not own them.
+      // 当挂载到外部集合下时，这些集合不由本类负责销毁。
       this.fillCollection = (fillCollection ?? borderCollection) as Cesium.PrimitiveCollection;
       this.borderCollection = (borderCollection ?? fillCollection) as Cesium.PrimitiveCollection;
       this.ownsCollections = false;
     } else {
-      // Backwards-compatible: one owned collection attached to the scene.
+      // 兼容旧用法：创建并持有一个根集合，直接挂到场景上。
       const root = new Cesium.PrimitiveCollection();
       this.ownedRootCollection = root;
       this.fillCollection = root;
@@ -65,7 +65,7 @@ export class PolygonPrimitiveBatch {
       if (this.fillPrimitive) this.fillCollection.remove(this.fillPrimitive);
       if (this.borderPrimitive) this.borderCollection.remove(this.borderPrimitive);
     } catch {
-      // ignore
+      // 忽略异常
     }
     this.fillPrimitive = null;
     this.borderPrimitive = null;
@@ -74,7 +74,7 @@ export class PolygonPrimitiveBatch {
       try {
         this.viewer.scene.primitives.remove(this.ownedRootCollection);
       } catch {
-        // ignore
+        // 忽略异常
       }
       this.ownedRootCollection = null;
     }
@@ -256,7 +256,7 @@ export class PolygonPrimitiveBatch {
     try {
       this.viewer.scene.requestRender?.();
     } catch {
-      // ignore
+      // 忽略异常
     }
   }
 
@@ -284,7 +284,7 @@ export class PolygonPrimitiveBatch {
         }
       }
     } catch {
-      // ignore
+      // 忽略异常
     }
 
     try {
@@ -299,7 +299,7 @@ export class PolygonPrimitiveBatch {
         }
       }
     } catch {
-      // ignore
+      // 忽略异常
     }
 
     if (needRetry) {
@@ -309,7 +309,7 @@ export class PolygonPrimitiveBatch {
     try {
       this.viewer.scene.requestRender?.();
     } catch {
-      // ignore
+      // 忽略异常
     }
   }
 }
