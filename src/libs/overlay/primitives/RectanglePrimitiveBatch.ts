@@ -9,6 +9,7 @@ export interface RectanglePrimitiveParts {
 interface RectanglePrimitiveRecord {
   rectangleId: string;
   parts: RectanglePrimitiveParts;
+  instanceIds: { outer: string; inner: string };
   outerPositions: Cesium.Cartesian3[];
   innerPositions: Cesium.Cartesian3[];
   ringColor: Cesium.Color;
@@ -93,6 +94,10 @@ export class RectanglePrimitiveBatch {
     this.records.set(args.rectangleId, {
       rectangleId: args.rectangleId,
       parts: args.parts,
+      instanceIds: {
+        outer: `${args.rectangleId}__outer`,
+        inner: `${args.rectangleId}__fill`,
+      },
       outerPositions: args.outerPositions,
       innerPositions: args.innerPositions,
       ringColor: args.ringColor,
@@ -194,7 +199,7 @@ export class RectanglePrimitiveBatch {
       ringInstances.push(
         new Cesium.GeometryInstance({
           geometry: ringGeom,
-          id: rec.parts.outer,
+          id: rec.instanceIds.outer,
           attributes: {
             color: Cesium.ColorGeometryInstanceAttribute.fromColor(ringColor),
           },
@@ -209,7 +214,7 @@ export class RectanglePrimitiveBatch {
       fillInstances.push(
         new Cesium.GeometryInstance({
           geometry: fillGeom,
-          id: rec.parts.inner,
+          id: rec.instanceIds.inner,
           attributes: {
             color: Cesium.ColorGeometryInstanceAttribute.fromColor(fillColor),
           },
@@ -268,7 +273,7 @@ export class RectanglePrimitiveBatch {
     try {
       if (this.ringPrimitive) {
         if ((this.ringPrimitive as any).ready) {
-          const attrs: any = (this.ringPrimitive as any).getGeometryInstanceAttributes(rec.parts.outer);
+          const attrs: any = (this.ringPrimitive as any).getGeometryInstanceAttributes(rec.instanceIds.outer);
           if (attrs && attrs.color) {
             attrs.color = Cesium.ColorGeometryInstanceAttribute.toValue(ringColor);
           }
@@ -283,7 +288,7 @@ export class RectanglePrimitiveBatch {
     try {
       if (this.fillPrimitive) {
         if ((this.fillPrimitive as any).ready) {
-          const attrs: any = (this.fillPrimitive as any).getGeometryInstanceAttributes(rec.parts.inner);
+          const attrs: any = (this.fillPrimitive as any).getGeometryInstanceAttributes(rec.instanceIds.inner);
           if (attrs && attrs.color) {
             attrs.color = Cesium.ColorGeometryInstanceAttribute.toValue(fillColor);
           }

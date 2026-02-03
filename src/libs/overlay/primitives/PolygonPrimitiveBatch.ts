@@ -9,6 +9,7 @@ export interface PolygonPrimitiveParts {
 interface PolygonPrimitiveRecord {
   polygonId: string;
   parts: PolygonPrimitiveParts;
+  instanceIds: { fill: string; border: string };
   fillPositions: Cesium.Cartesian3[];
   borderPositions: Cesium.Cartesian3[];
   borderWidth: number;
@@ -95,6 +96,10 @@ export class PolygonPrimitiveBatch {
     this.records.set(args.polygonId, {
       polygonId: args.polygonId,
       parts: args.parts,
+      instanceIds: {
+        fill: `${args.polygonId}__fill`,
+        border: `${args.polygonId}__border`,
+      },
       fillPositions: args.fillPositions,
       borderPositions: args.borderPositions,
       borderWidth: Math.max(1, Number(args.borderWidth) || 1),
@@ -204,7 +209,7 @@ export class PolygonPrimitiveBatch {
       fillInstances.push(
         new Cesium.GeometryInstance({
           geometry: fillGeom,
-          id: rec.parts.fill,
+          id: rec.instanceIds.fill,
           attributes: {
             color: Cesium.ColorGeometryInstanceAttribute.fromColor(fillColor),
           },
@@ -219,7 +224,7 @@ export class PolygonPrimitiveBatch {
       borderInstances.push(
         new Cesium.GeometryInstance({
           geometry: borderGeom,
-          id: rec.parts.border,
+          id: rec.instanceIds.border,
           attributes: {
             color: Cesium.ColorGeometryInstanceAttribute.fromColor(borderColor),
           },
@@ -275,7 +280,7 @@ export class PolygonPrimitiveBatch {
     try {
       if (this.fillPrimitive) {
         if ((this.fillPrimitive as any).ready) {
-          const attrs: any = (this.fillPrimitive as any).getGeometryInstanceAttributes(rec.parts.fill);
+          const attrs: any = (this.fillPrimitive as any).getGeometryInstanceAttributes(rec.instanceIds.fill);
           if (attrs && attrs.color) {
             attrs.color = Cesium.ColorGeometryInstanceAttribute.toValue(fillColor);
           }
@@ -290,7 +295,7 @@ export class PolygonPrimitiveBatch {
     try {
       if (this.borderPrimitive) {
         if ((this.borderPrimitive as any).ready) {
-          const attrs: any = (this.borderPrimitive as any).getGeometryInstanceAttributes(rec.parts.border);
+          const attrs: any = (this.borderPrimitive as any).getGeometryInstanceAttributes(rec.instanceIds.border);
           if (attrs && attrs.color) {
             attrs.color = Cesium.ColorGeometryInstanceAttribute.toValue(borderColor);
           }

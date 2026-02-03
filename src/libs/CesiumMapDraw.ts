@@ -1819,6 +1819,9 @@ class DrawHelper {
 
     // 防御：finish 后也清理一次，避免遗留实体在 render/update 中持续触发 NaN
     this.removeEntitiesWithInvalidPositions();
+
+    // 退出绘制后恢复 entities.add（startDrawing 时安装了拦截钩子）
+    this.uninstallEntitiesAddHook();
   }
 
   /**
@@ -1848,6 +1851,16 @@ class DrawHelper {
         // ignore
       }
       this.lastPreviewPosition = null;
+
+      // 如果绘制类在 end 时仍然修改了 requestRenderMode，尝试恢复
+      try {
+        if (this.currentDrawer && (this.currentDrawer as any).restoreRequestRenderModeIfNeeded) {
+          (this.currentDrawer as any).restoreRequestRenderModeIfNeeded();
+        }
+      } catch (e) {
+        // 安全忽略
+      }
+
       this.currentDrawer = null;
       this.deactivateDrawingHandlers();
 
@@ -1857,15 +1870,6 @@ class DrawHelper {
       if (this.originalDepthTestAgainstTerrain !== null) {
         this.scene.globe.depthTestAgainstTerrain = this.originalDepthTestAgainstTerrain;
         this.originalDepthTestAgainstTerrain = null;
-      }
-
-      // 如果绘制类在 end 时仍然修改了 requestRenderMode，尝试恢复
-      try {
-        if (this.currentDrawer && (this.currentDrawer as any).restoreRequestRenderModeIfNeeded) {
-          (this.currentDrawer as any).restoreRequestRenderModeIfNeeded();
-        }
-      } catch (e) {
-        // 安全忽略
       }
 
       if (DrawHelper.activeDrawingHelper === this) {

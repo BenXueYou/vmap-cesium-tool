@@ -31,6 +31,71 @@ export class CesiumOverlayService {
   private static readonly DEFAULT_HIGHLIGHT_COLOR = Cesium.Color.YELLOW;
   private static readonly DEFAULT_HIGHLIGHT_FILL_ALPHA = 0.35;
 
+  /**
+   * Primitive 模式下，GeometryInstance.id 会是字符串（structured-cloneable），
+   * 需要映射回 overlayMap 内的根覆盖物 id。
+   */
+  private normalizeOverlayPickId(raw: any): string | null {
+    try {
+      if (raw === null || raw === undefined) return null;
+      if (typeof raw === 'string' || typeof raw === 'number') return String(raw);
+      if (raw instanceof Cesium.Entity) return String((raw as any).id);
+
+      // Cesium pick 结果有时把 entity 放在 { id: Entity } 或 { entity: Entity }
+      const anyRaw: any = raw as any;
+      if (anyRaw && anyRaw.id instanceof Cesium.Entity) return String((anyRaw.id as any).id);
+      if (anyRaw && anyRaw.entity instanceof Cesium.Entity) return String((anyRaw.entity as any).id);
+      if (anyRaw && (typeof anyRaw.id === 'string' || typeof anyRaw.id === 'number')) return String(anyRaw.id);
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  private resolveOverlayByPickId(raw: any): (DrawEntity & OverlayEntity) | null {
+    const id = this.normalizeOverlayPickId(raw);
+    if (!id) return null;
+
+    const direct = this.overlayMap.get(id);
+    if (direct) return direct as DrawEntity & OverlayEntity;
+
+    // primitive 子部件：__outer/__fill/__border -> 根 id
+    const rootId = id.replace(/__(fill|border|outer)$/, '');
+    if (rootId !== id) {
+      const root = this.overlayMap.get(rootId);
+      if (root) return root as DrawEntity & OverlayEntity;
+    }
+
+    return null;
+  }
+
+  private resolvePickedOverlayEntity(pickedObject: any): (DrawEntity & OverlayEntity) | null {
+    if (!pickedObject) return null;
+
+    // 1) 正常 entity pick：pickedObject.id === Entity
+    try {
+      if (Cesium.defined((pickedObject as any).id) && (pickedObject as any).id instanceof Cesium.Entity) {
+        return (pickedObject as any).id as DrawEntity & OverlayEntity;
+      }
+    } catch {
+      // ignore
+    }
+
+    // 2) primitive instance pick：pickedObject.id === string（GeometryInstance.id）
+    if (Cesium.defined((pickedObject as any).id)) {
+      const byId = this.resolveOverlayByPickId((pickedObject as any).id);
+      if (byId) return byId;
+    }
+
+    // 3) 有时挂在 primitive 字段上
+    if (Cesium.defined((pickedObject as any).primitive)) {
+      const byPrim = this.resolveOverlayByPickId((pickedObject as any).primitive);
+      if (byPrim) return byPrim;
+    }
+
+    return null;
+  }
+
   // 各种覆盖物工具类实例
   public readonly marker: MapMarker;
   public readonly label: MapLabel;
@@ -268,8 +333,8 @@ export class CesiumOverlayService {
       }
 
       const pickedObject = this.viewer.scene.pick(click.position);
-      if (pickedObject && Cesium.defined(pickedObject.id) && pickedObject.id instanceof Cesium.Entity) {
-        const entity = pickedObject.id as DrawEntity & OverlayEntity;
+      const entity = this.resolvePickedOverlayEntity(pickedObject);
+      if (entity) {
         if (entity.show === false) {
           return;
         }
@@ -347,13 +412,18 @@ export class CesiumOverlayService {
           let pickedEntity: (DrawEntity & OverlayEntity) | null = null;
 
           const asHoverableOverlayEntity = (id: any): (DrawEntity & OverlayEntity) | null => {
+            // primitive GeometryInstance.id 可能是字符串，需要映射回 overlayMap 的根实体
             let entity: Cesium.Entity | null = null;
             if (id instanceof Cesium.Entity) {
               entity = id;
-            } else if (id && (id as any).id instanceof Cesium.Entity) {
-              entity = (id as any).id as Cesium.Entity;
-            } else if (id && (id as any).entity instanceof Cesium.Entity) {
-              entity = (id as any).entity as Cesium.Entity;
+            } else {
+              const mapped = this.resolveOverlayByPickId(id);
+              if (mapped) entity = mapped as unknown as Cesium.Entity;
+              else if (id && (id as any).id instanceof Cesium.Entity) {
+                entity = (id as any).id as Cesium.Entity;
+              } else if (id && (id as any).entity instanceof Cesium.Entity) {
+                entity = (id as any).entity as Cesium.Entity;
+              }
             }
             if (!entity) return null;
             const e = entity as DrawEntity & OverlayEntity;

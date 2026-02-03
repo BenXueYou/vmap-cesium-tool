@@ -9,6 +9,7 @@ export interface CirclePrimitiveParts {
 interface CirclePrimitiveRecord {
   circleId: string;
   parts: CirclePrimitiveParts;
+  instanceIds: { outer: string; inner: string };
   ringPositions: Cesium.Cartesian3[];
   fillPositions: Cesium.Cartesian3[];
   ringColor: Cesium.Color;
@@ -98,6 +99,12 @@ export class CirclePrimitiveBatch {
     this.records.set(args.circleId, {
       circleId: args.circleId,
       parts: args.parts,
+      // IMPORTANT: GeometryInstance.id must be structured-cloneable when GroundPrimitive is asynchronous.
+      // Use pure string ids here; picking will resolve them back to proxy entities via suffix normalization.
+      instanceIds: {
+        outer: `${args.circleId}__outer`,
+        inner: `${args.circleId}__fill`,
+      },
       ringPositions: args.ringPositions,
       fillPositions: args.fillPositions,
       ringColor: args.ringColor,
@@ -200,7 +207,7 @@ export class CirclePrimitiveBatch {
       ringInstances.push(
         new Cesium.GeometryInstance({
           geometry: ringGeom,
-          id: rec.parts.outer,
+          id: rec.instanceIds.outer,
           attributes: {
             color: Cesium.ColorGeometryInstanceAttribute.fromColor(ringColor),
           },
@@ -215,7 +222,7 @@ export class CirclePrimitiveBatch {
       fillInstances.push(
         new Cesium.GeometryInstance({
           geometry: fillGeom,
-          id: rec.parts.inner,
+          id: rec.instanceIds.inner,
           attributes: {
             color: Cesium.ColorGeometryInstanceAttribute.fromColor(fillColor),
           },
@@ -276,7 +283,7 @@ export class CirclePrimitiveBatch {
     try {
       if (this.ringPrimitive) {
         if ((this.ringPrimitive as any).ready) {
-          const attrs: any = (this.ringPrimitive as any).getGeometryInstanceAttributes(rec.parts.outer);
+          const attrs: any = (this.ringPrimitive as any).getGeometryInstanceAttributes(rec.instanceIds.outer);
           if (attrs && attrs.color) {
             attrs.color = Cesium.ColorGeometryInstanceAttribute.toValue(ringColor);
           }
@@ -291,7 +298,7 @@ export class CirclePrimitiveBatch {
     try {
       if (this.fillPrimitive) {
         if ((this.fillPrimitive as any).ready) {
-          const attrs: any = (this.fillPrimitive as any).getGeometryInstanceAttributes(rec.parts.inner);
+          const attrs: any = (this.fillPrimitive as any).getGeometryInstanceAttributes(rec.instanceIds.inner);
           if (attrs && attrs.color) {
             attrs.color = Cesium.ColorGeometryInstanceAttribute.toValue(fillColor);
           }
