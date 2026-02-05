@@ -89,6 +89,16 @@ export class MapPolygon {
     if (!material) return Cesium.Color.BLUE.withAlpha(0.5);
     if (typeof material === 'string') return this.resolveColor(material);
     if (material instanceof Cesium.Color) return material;
+    if (material instanceof Cesium.ColorMaterialProperty) {
+      try {
+        const c: any = (material as any).color;
+        const v = c && typeof c.getValue === 'function' ? c.getValue(Cesium.JulianDate.now()) : c;
+        if (v instanceof Cesium.Color) return v;
+        if (typeof v === 'string') return this.resolveColor(String(v));
+      } catch {
+        // ignore
+      }
+    }
     return null;
   }
 

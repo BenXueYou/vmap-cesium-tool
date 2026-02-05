@@ -99,6 +99,17 @@ export class MapCircle {
     if (!material) return Cesium.Color.BLUE.withAlpha(0.5);
     if (typeof material === 'string') return this.resolveColor(material);
     if (material instanceof Cesium.Color) return material;
+    // 支持常见的纯色材质：ColorMaterialProperty
+    if (material instanceof Cesium.ColorMaterialProperty) {
+      try {
+        const c: any = (material as any).color;
+        const v = c && typeof c.getValue === 'function' ? c.getValue(Cesium.JulianDate.now()) : c;
+        if (v instanceof Cesium.Color) return v;
+        if (typeof v === 'string') return this.resolveColor(String(v));
+      } catch {
+        // ignore
+      }
+    }
     // Primitive 模式仅支持纯色（Color / css string）。复杂材质无法用 PerInstanceColorAppearance 表达。
     return null;
   }

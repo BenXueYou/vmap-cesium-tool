@@ -28,8 +28,71 @@ export class CesiumOverlayService {
   private hoverPickRAF: number | null = null;
   private hoverPickPos: Cesium.Cartesian2 | null = null;
 
+  // hover pick 的负载控制：在“批量增删覆盖物 / ground primitive 异步重建”窗口期内，减少 pick 频率以避免触发 Cesium worker/update 的边界问题
+  private overlayMutationRevision = 0;
+  private hoverSuspendUntil = 0;
+  private lastHoverPickTime = 0;
+  private lastHoverPickPos: Cesium.Cartesian2 | null = null;
+
+  private bulkUpdateDepth = 0;
+
   private static readonly DEFAULT_HIGHLIGHT_COLOR = Cesium.Color.YELLOW;
   private static readonly DEFAULT_HIGHLIGHT_FILL_ALPHA = 0.35;
+
+  // 鼠标 hover 时最多每隔一段时间 pick 一次（降低 pick pass 对 primitive.update 的压力）
+  private static readonly HOVER_PICK_MIN_INTERVAL_MS = 66; // ~15fps
+  // 鼠标在很小范围抖动时不做 pick
+  private static readonly HOVER_PICK_MIN_MOVE_PX = 2;
+  // 每次覆盖物发生结构性变更（add/remove）后，暂停 hover pick 一小段时间
+  private static readonly HOVER_SUSPEND_AFTER_MUTATION_MS = 180;
+
+  private markOverlayMutated(): void {
+    this.overlayMutationRevision++;
+    // 批量增删时会连续调用多次：这里始终把暂停窗口往后推
+    this.hoverSuspendUntil = Date.now() + CesiumOverlayService.HOVER_SUSPEND_AFTER_MUTATION_MS;
+  }
+
+  /**
+   * 显式开始一次批量更新：在 begin/end 期间暂停 hover pick。
+   * 建议 websocket 批量 add/remove 覆盖物时包裹使用，降低 Cesium GroundPrimitive 异步重建窗口期的 pick/update 压力。
+   */
+  public beginBulkUpdate(): void {
+    this.bulkUpdateDepth++;
+    // 进入批量窗口：立即清理 hover 高亮，避免 hover 状态在批量变更时“粘住”
+    if (this.lastHoverTargets && this.lastHoverTargets.length > 0) {
+      try {
+        this.setOverlayHighlightReason(this.lastHoverTargets, 'hover', false);
+      } catch {
+        // ignore
+      }
+    }
+    this.lastHoverTargets = null;
+    // 也暂停一小段时间，让 ground primitive 的异步任务先启动/稳定
+    this.hoverSuspendUntil = Math.max(this.hoverSuspendUntil, Date.now() + CesiumOverlayService.HOVER_SUSPEND_AFTER_MUTATION_MS);
+  }
+
+  /**
+   * 结束一次批量更新。
+   */
+  public endBulkUpdate(): void {
+    this.bulkUpdateDepth = Math.max(0, this.bulkUpdateDepth - 1);
+    if (this.bulkUpdateDepth === 0) {
+      // 批量更新结束后的短窗口内仍暂停 pick，让异步构建收尾
+      this.hoverSuspendUntil = Math.max(this.hoverSuspendUntil, Date.now() + CesiumOverlayService.HOVER_SUSPEND_AFTER_MUTATION_MS);
+    }
+  }
+
+  /**
+   * 批量更新包裹器（自动 begin/end）。
+   */
+  public bulkUpdate<T>(fn: () => T): T {
+    this.beginBulkUpdate();
+    try {
+      return fn();
+    } finally {
+      this.endBulkUpdate();
+    }
+  }
 
   /**
    * Primitive 模式下，GeometryInstance.id 会是字符串（structured-cloneable），
@@ -385,6 +448,12 @@ export class CesiumOverlayService {
           return;
         }
 
+        // 显式批量更新期间不做 hover pick
+        if (this.bulkUpdateDepth > 0) {
+          clearHover();
+          return;
+        }
+
         const blockUntil = Number(anyViewer.__vmapDrawHelperBlockPickUntil) || 0;
         if (Date.now() < blockUntil) {
           clearHover();
@@ -393,6 +462,13 @@ export class CesiumOverlayService {
 
         const pos: any = (movement as any).endPosition;
         if (!pos || !Number.isFinite(pos.x) || !Number.isFinite(pos.y)) {
+          clearHover();
+          return;
+        }
+
+        // 覆盖物正处于批量更新/primitive 异步重建窗口期：暂停 hover pick，避免每帧 pick 放大 Cesium 的 worker/update 边界问题
+        const now = Date.now();
+        if (now < this.hoverSuspendUntil) {
           clearHover();
           return;
         }
@@ -408,7 +484,29 @@ export class CesiumOverlayService {
             return;
           }
 
-          const pickedObject = this.viewer.scene.pick(pickPos);
+          const t = Date.now();
+          if (t - this.lastHoverPickTime < CesiumOverlayService.HOVER_PICK_MIN_INTERVAL_MS) {
+            return;
+          }
+          if (this.lastHoverPickPos) {
+            const dx = pickPos.x - this.lastHoverPickPos.x;
+            const dy = pickPos.y - this.lastHoverPickPos.y;
+            const min = CesiumOverlayService.HOVER_PICK_MIN_MOVE_PX;
+            if ((dx * dx + dy * dy) < (min * min)) {
+              return;
+            }
+          }
+          this.lastHoverPickTime = t;
+          this.lastHoverPickPos = new Cesium.Cartesian2(pickPos.x, pickPos.y);
+
+          let pickedObject: any = null;
+          try {
+            pickedObject = this.viewer.scene.pick(pickPos);
+          } catch {
+            // pick pass 偶发会在 ground primitive 重建窗口期抛异常：避免异常向外冒泡导致渲染中断/黑屏
+            clearHover();
+            return;
+          }
           let pickedEntity: (DrawEntity & OverlayEntity) | null = null;
 
           const asHoverableOverlayEntity = (id: any): (DrawEntity & OverlayEntity) | null => {
@@ -882,6 +980,7 @@ export class CesiumOverlayService {
     const id = options.id || this.generateId('marker');
     const entity = this.marker.add({ ...options, id });
     this.overlayMap.set(id, entity);
+    this.markOverlayMutated();
     return entity;
   }
 
@@ -892,6 +991,7 @@ export class CesiumOverlayService {
     const id = options.id || this.generateId('label');
     const entity = this.label.add({ ...options, id });
     this.overlayMap.set(id, entity);
+    this.markOverlayMutated();
     return entity;
   }
 
@@ -902,6 +1002,7 @@ export class CesiumOverlayService {
     const id = options.id || this.generateId('icon');
     const entity = this.icon.add({ ...options, id });
     this.overlayMap.set(id, entity);
+    this.markOverlayMutated();
     return entity;
   }
 
@@ -912,6 +1013,7 @@ export class CesiumOverlayService {
     const id = options.id || this.generateId('svg');
     const entity = this.svg.add({ ...options, id });
     this.overlayMap.set(id, entity);
+    this.markOverlayMutated();
     return entity;
   }
 
@@ -922,6 +1024,7 @@ export class CesiumOverlayService {
     const id = options.id || this.generateId('infowindow');
     const entity = this.infoWindow.add({ ...options, id });
     this.overlayMap.set(id, entity);
+    this.markOverlayMutated();
     return entity;
   }
 
@@ -932,6 +1035,7 @@ export class CesiumOverlayService {
     const id = options.id || this.generateId('polyline');
     const entity = this.polyline.add({ ...options, id });
     this.overlayMap.set(id, entity);
+    this.markOverlayMutated();
     return entity;
   }
 
@@ -942,6 +1046,7 @@ export class CesiumOverlayService {
     const id = options.id || this.generateId('polygon');
     const entity = this.polygon.add({ ...options, id });
     this.overlayMap.set(id, entity);
+    this.markOverlayMutated();
     return entity;
   }
 
@@ -952,6 +1057,7 @@ export class CesiumOverlayService {
     const id = options.id || this.generateId('rectangle');
     const entity = this.rectangle.add({ ...options, id });
     this.overlayMap.set(id, entity);
+    this.markOverlayMutated();
     return entity;
   }
 
@@ -962,6 +1068,7 @@ export class CesiumOverlayService {
     const id = options.id || this.generateId('circle');
     const entity = this.circle.add({ ...options, id });
     this.overlayMap.set(id, entity);
+    this.markOverlayMutated();
     return entity;
   }
 
@@ -972,6 +1079,7 @@ export class CesiumOverlayService {
     const id = options.id || this.generateId('ring');
     const entity = this.ring.add({ ...options, id });
     this.overlayMap.set(id, entity);
+    this.markOverlayMutated();
     return entity;
   }
 
@@ -1005,6 +1113,7 @@ export class CesiumOverlayService {
           // ignore
         }
         this.overlayMap.delete(id);
+        this.markOverlayMutated();
         return true;
       }
 
@@ -1016,6 +1125,7 @@ export class CesiumOverlayService {
           // ignore
         }
         this.overlayMap.delete(id);
+        this.markOverlayMutated();
         return true;
       }
 
@@ -1027,6 +1137,7 @@ export class CesiumOverlayService {
           // ignore
         }
         this.overlayMap.delete(id);
+        this.markOverlayMutated();
         return true;
       }
 
@@ -1042,6 +1153,7 @@ export class CesiumOverlayService {
 
       this.entities.remove(entity);
       this.overlayMap.delete(id);
+      this.markOverlayMutated();
       return true;
     }
     return false;
