@@ -47,6 +47,7 @@ export function useDrawHelper(
     });
     drawHelper.value.startDrawingLine({
       strokeWidth: 4,
+      showDistanceLabel: false, // 不显示距离标签
       strokeColor: Cesium.Color.BLUE,
     });
     message.value = i18n.t("draw.start.line");
