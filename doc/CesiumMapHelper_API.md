@@ -41,7 +41,7 @@ startDrawingRectangle(options?: DrawOptions): void
 startDrawingCircle(options?: DrawOptions): void
 ```
 
-其中 `options` 用于控制样式、选中态、面积标签显示，以及多边形自相交校验等。
+其中 `options` 用于控制样式、选中态、面积/长度标签显示，以及多边形自相交校验等。
 
 ### 2) 结束/取消绘制
 
@@ -125,6 +125,10 @@ interface DrawOptions {
   // polygon/rectangle/circle：是否显示面积标签（默认 true）
   showAreaLabel?: boolean;
 
+  // line：是否显示长度标签（默认 true）。包含“分段长度”与“总长度”标签。
+  // 说明：显式传入 false 才会关闭。
+  showDistanceLabel?: boolean;
+
   // 多边形自相交校验
   selfIntersectionEnabled?: boolean;
   selfIntersectionAllowTouch?: boolean;
@@ -152,6 +156,12 @@ drawHelper.startDrawingPolygon({
   showAreaLabel: true,
   selfIntersectionEnabled: true,
   selfIntersectionAllowTouch: true,
+});
+
+// 画线时关闭长度标签
+drawHelper.startDrawingLine({
+  strokeWidth: 3,
+  showDistanceLabel: false,
 });
 ```
 
