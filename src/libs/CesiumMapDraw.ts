@@ -809,12 +809,20 @@ class DrawHelper {
     return report;
   }
 
+  /**
+   * 对新创建的实体进行净化处理，确保其符合渲染要求
+   * @param entity - 需要净化的 Cesium.Entity 对象
+   * @param tag - 用于标识来源的标签，会在控制台警告时显示
+   */
   private sanitizeNewEntity(entity: Cesium.Entity, tag: string): void {
     try {
+      // 如果实体不存在，直接返回
       if (!entity) return;
+      // 获取当前时间
       const now = Cesium.JulianDate.now();
 
       // 1) 禁止触发 TerrainOffsetProperty：把所有 CLAMP/RELATIVE 降级为 NONE
+      // 处理多边形的高度参考
       if (entity.polygon && (entity.polygon as any).heightReference) {
         const hrProp: any = (entity.polygon as any).heightReference;
         const hr = hrProp?.getValue ? hrProp.getValue(now) : hrProp;
@@ -824,6 +832,7 @@ class DrawHelper {
         }
       }
 
+      // 处理多边形的拉伸高度参考
       if (entity.polygon && (entity.polygon as any).extrudedHeightReference) {
         const ehrProp: any = (entity.polygon as any).extrudedHeightReference;
         const ehr = ehrProp?.getValue ? ehrProp.getValue(now) : ehrProp;
@@ -832,6 +841,7 @@ class DrawHelper {
           console.warn(`[DrawHelper] sanitized polygon extrudedHeightReference (${tag})`, entity.id);
         }
       }
+      // 处理矩形的高度参考
       if (entity.rectangle && (entity.rectangle as any).heightReference) {
         const hrProp: any = (entity.rectangle as any).heightReference;
         const hr = hrProp?.getValue ? hrProp.getValue(now) : hrProp;
@@ -841,6 +851,7 @@ class DrawHelper {
         }
       }
 
+      // 处理矩形的拉伸高度参考
       if (entity.rectangle && (entity.rectangle as any).extrudedHeightReference) {
         const ehrProp: any = (entity.rectangle as any).extrudedHeightReference;
         const ehr = ehrProp?.getValue ? ehrProp.getValue(now) : ehrProp;
@@ -849,6 +860,7 @@ class DrawHelper {
           console.warn(`[DrawHelper] sanitized rectangle extrudedHeightReference (${tag})`, entity.id);
         }
       }
+      // 处理椭圆的高度参考
       if (entity.ellipse && (entity.ellipse as any).heightReference) {
         const hrProp: any = (entity.ellipse as any).heightReference;
         const hr = hrProp?.getValue ? hrProp.getValue(now) : hrProp;
@@ -858,6 +870,7 @@ class DrawHelper {
         }
       }
 
+      // 处理椭圆的拉伸高度参考
       if (entity.ellipse && (entity.ellipse as any).extrudedHeightReference) {
         const ehrProp: any = (entity.ellipse as any).extrudedHeightReference;
         const ehr = ehrProp?.getValue ? ehrProp.getValue(now) : ehrProp;
@@ -866,6 +879,7 @@ class DrawHelper {
           console.warn(`[DrawHelper] sanitized ellipse extrudedHeightReference (${tag})`, entity.id);
         }
       }
+      // 处理折线的贴地属性
       if (entity.polyline && (entity.polyline as any).clampToGround) {
         const ctgProp: any = (entity.polyline as any).clampToGround;
         const ctg = ctgProp?.getValue ? ctgProp.getValue(now) : ctgProp;
@@ -875,6 +889,7 @@ class DrawHelper {
         }
       }
 
+      // 处理点的高度参考
       if (entity.point && (entity.point as any).heightReference) {
         const hrProp: any = (entity.point as any).heightReference;
         const hr = hrProp?.getValue ? hrProp.getValue(now) : hrProp;
@@ -883,6 +898,7 @@ class DrawHelper {
           console.warn(`[DrawHelper] sanitized point heightReference (${tag})`, entity.id);
         }
       }
+      // 处理标签的高度参考
       if (entity.label && (entity.label as any).heightReference) {
         const hrProp: any = (entity.label as any).heightReference;
         const hr = hrProp?.getValue ? hrProp.getValue(now) : hrProp;
@@ -942,20 +958,34 @@ class DrawHelper {
     this.entityCollectionAddHookInstalled = false;
   }
 
+  /**
+   * 安装地面几何更新器调试钩子
+   * 此方法用于在Cesium GroundGeometryUpdater中安装一个调试钩子，用于捕获和处理渲染错误
+   */
   private installGroundGeometryUpdaterDebugHook(): void {
     try {
+      // 将viewer转换为any类型，以便访问内部属性
       const anyViewer: any = this.viewer as any;
+      // 检查钩子是否已经安装，避免重复安装
       if (anyViewer.__vmapDrawHelperGroundUpdaterHookInstalled) return;
 
+      // 获取Cesium的GroundGeometryUpdater类
       const GG: any = (Cesium as any).GroundGeometryUpdater;
+      // 获取原型对象
       const proto: any = GG?.prototype;
+      // 获取原始的_onEntityPropertyChanged方法
       const original: any = proto?._onEntityPropertyChanged;
+      // 检查原型和方法是否存在
       if (!proto || typeof original !== 'function') return;
 
+      // 标记钩子已安装
       anyViewer.__vmapDrawHelperGroundUpdaterHookInstalled = true;
+      // 保存当前实例引用
       const self = this;
 
+      // 重写_onEntityPropertyChanged方法
       proto._onEntityPropertyChanged = function (...args: any[]) {
+        // 获取实体和属性名
         const entity: any = args?.[0];
         const propertyName: any = args?.[1];
 
@@ -1123,31 +1153,6 @@ class DrawHelper {
     }
   }
 
-  // 扩展日志记录
-  private logRenderErrorDetails(error: any): void {
-    console.error("[CesiumMapDraw] Render error detected:", error);
-
-    // 记录当前所有实体的状态
-    const entities = this.viewer.entities.values;
-    entities.forEach((entity, index) => {
-      const position = entity.position ? entity.position.getValue(this.viewer.clock.currentTime) : null;
-      console.log(`[Entity ${index}]`, {
-        id: entity.id,
-        name: entity.name,
-        position,
-        polygon: entity.polygon,
-        polyline: entity.polyline,
-        billboard: entity.billboard,
-      });
-    });
-
-    // 记录当前场景的状态
-    console.log("[CesiumMapDraw] Scene state:", {
-      primitivesLength: this.viewer.scene.primitives.length,
-      groundPrimitivesLength: this.viewer.scene.groundPrimitives.length,
-    });
-  }
-
   /**
    * 外部调用：在场景模式（2D/3D）切换后，更新偏移高度并重算已完成实体
    */
@@ -1218,10 +1223,15 @@ class DrawHelper {
     }
   }
 
+  /**
+   * 设置绘制提示覆盖文本及其持续时间
+   * @param text 要显示的提示文本
+   * @param ms 提示文本显示的持续时间（毫秒），默认为1200毫秒
+   */
   private setDrawHintOverride(text: string, ms: number = 1200): void {
-    this.drawHintOverrideText = text;
-    this.drawHintOverrideUntil = Date.now() + Math.max(0, ms);
-    this.refreshDrawHintTextOnly();
+    this.drawHintOverrideText = text; // 设置提示覆盖文本
+    this.drawHintOverrideUntil = Date.now() + Math.max(0, ms); // 设置提示文本的过期时间，确保不小于0
+    this.refreshDrawHintTextOnly(); // 仅刷新提示文本
   }
 
   /**

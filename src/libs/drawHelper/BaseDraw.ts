@@ -65,6 +65,9 @@ export interface DrawOptions {
   /** 是否显示面积标签（多边形/矩形）。默认 true */
   showAreaLabel?: boolean;
 
+  /** 是否显示长度标签（线条）。默认 true */
+  showDistanceLabel?: boolean;
+
   /**
    * 是否启用多边形自相交校验。
    * - false/未设置：默认允许交叉（不做校验）
