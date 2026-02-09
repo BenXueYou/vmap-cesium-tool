@@ -21,20 +21,7 @@ try {
   console.log('📦 构建库文件...');
   execSync('npm run build', { stdio: 'inherit' });
 
-  // 复制类型定义文件
-  console.log('📝 复制类型定义文件...');
-  if (fs.existsSync('src/types/index.d.ts')) {
-    fs.copyFileSync('src/types/index.d.ts', 'dist/index.d.ts');
-  }
-
-  // 重命名构建文件
-  console.log('🔄 重命名构建文件...');
-  if (fs.existsSync('dist/index.es.js')) {
-    fs.renameSync('dist/index.es.js', 'dist/index.js');
-  }
-  if (fs.existsSync('dist/index.es.js.map')) {
-    fs.renameSync('dist/index.es.js.map', 'dist/index.js.map');
-  }
+  // 保持 Vite lib 模式默认命名（index.es.js / index.umd.js），不再强行重命名
 
   // 复制样式文件
   console.log('🎨 复制样式文件...');
@@ -87,14 +74,14 @@ try {
     version: packageJson.version,
     description: packageJson.description,
     type: packageJson.type,
-    main: 'index.js',
-    module: 'index.js',
+    main: 'index.es.js',
+    module: 'index.es.js',
     types: 'index.d.ts',
-    files: ['index.js', 'index.d.ts', 'style.css', 'README.md', 'geojson'],
+    files: ['index.es.js', 'index.umd.js', 'index.d.ts', 'style.css', 'README.md', 'geojson'],
     exports: {
       ".": {
-        "import": "./index.js",
-        "types": "./index.d.ts"
+        "import": "./index.es.js",
+        "default": "./index.es.js"
       },
       "./style": "./style.css"
     },
@@ -112,7 +99,8 @@ try {
   console.log('✅ 插件构建完成！');
   console.log('📁 输出目录: dist/');
   console.log('📦 发布文件:');
-  console.log('   - index.js (ES模块)');
+  console.log('   - index.es.js (ES模块)');
+  console.log('   - index.umd.js (UMD)');
   console.log('   - index.d.ts (类型定义)');
   console.log('   - style.css (样式文件)');
   console.log('   - README.md (使用文档)');
