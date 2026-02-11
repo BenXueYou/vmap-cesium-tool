@@ -64,10 +64,10 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/benxueyou/vmap-cesium-toolbar.git"
+    "url": "git+https://github.com/BenXueYou/vmap-cesium-tool.git"
   },
   "bugs": {
-    "url": "https://github.com/benxueyou/vmap-cesium-toolbar/issues"
+    "url": "https://github.com/BenXueYou/vmap-cesium-tool/issues"
   },
-  "homepage": "https://github.com/benxueyou/vmap-cesium-toolbar#readme"
+  "homepage": "https://github.com/BenXueYou/vmap-cesium-tool#readme"
 }

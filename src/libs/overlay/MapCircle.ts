@@ -31,9 +31,9 @@ export interface CircleOptions {
    * - true：填充与边框都贴地。
    * - false：填充与边框都使用 position 高度悬空。
    */
-  clampToGround?: boolean;
-  heightReference?: HeightReference;
-  extrudedHeight?: number;
+  clampToGround?: boolean; // 仅在 entity 模式下有效, 是否贴地
+  heightReference?: HeightReference; // 几何体高度，绝对高度（默认）NONE: 0；贴地：CLAMP_TO_GROUND: 1; 相对地面:RELATIVE_TO_GROUND: 2
+  extrudedHeight?: number; // 拉伸高度（仅 entity 模式）
   heightEpsilon?: number; // 高度容差，用于环形方案
   /** 点击该覆盖物时是否高亮显示（默认 false）。支持传入自定义颜色等参数 */
   clickHighlight?: boolean | { color?: Color | string; fillAlpha?: number };
@@ -124,32 +124,46 @@ export class MapCircle {
     return true;
   }
 
+  /**
+   * 添加一个基础的圆形图元
+   * @param options 圆形配置选项
+   * @returns 返回创建的实体对象
+   */
   private addPrimitiveCircle(options: CircleOptions): Entity {
+    // 生成唯一ID，如果未提供则使用时间戳和随机字符串组合
     const id = options.id || `circle_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const layerKey = options.layerKey;
 
     // 仅支持：粗边框 + 贴地 + 纯色
-    const ringThickness = (options.outlineWidth && options.outlineWidth > 1) ? options.outlineWidth : 0;
-    const clampToGround = options.clampToGround ?? true;
-    const fillColor = this.resolveMaterialColor(options.material);
+    const ringThickness = (options.outlineWidth && options.outlineWidth > 1) ? options.outlineWidth : 0; // 边框厚度
+    const clampToGround = options.clampToGround ?? true; // 是否贴地
+    const fillColor = this.resolveMaterialColor(options.material); // 解析填充颜色
+    // 检查是否满足primitive支持条件，如果不满足则回退到entity模式
     if (!(ringThickness > 0) || !clampToGround || !fillColor) {
       // 兜底：不满足 primitive 支持条件时，回退到 entity（并尽量不抛错）
       console.warn('[vmap-cesium-tool] Circle renderMode=primitive is not supported for the given options; falling back to Entity.');
       return this.add({ ...options, renderMode: 'entity' });
     }
 
+    // 转换位置坐标
     const position = this.convertPosition(options.position);
-    const baseCartoRaw = Cesium.Cartographic.fromCartesian(position);
-    const baseCarto0 = new Cesium.Cartographic(baseCartoRaw.longitude, baseCartoRaw.latitude, 0);
+    const baseCartoRaw = Cesium.Cartographic.fromCartesian(position); // 转换为地理坐标
+    const baseCarto0 = new Cesium.Cartographic(baseCartoRaw.longitude, baseCartoRaw.latitude, 0); // 设置高度为0
 
-    const outerRadius = options.radius;
-    const ringSegments = Math.max(16, Math.floor(options.segments ?? this.getDefaultSegmentsForRadius(outerRadius)));
-    const innerRadius = Math.max(0, options.radius - ringThickness);
 
-    const ringPositions = this.generateCirclePositions(baseCarto0, outerRadius, 0, ringSegments);
-    const fillPositions = this.generateCirclePositions(baseCarto0, innerRadius, 0, ringSegments);
 
-    const ringColor = options.outlineColor ? this.resolveColor(options.outlineColor) : Cesium.Color.BLACK;
+    // 设置圆形参数
+    const outerRadius = options.radius; // 外半径
+    const ringSegments = Math.max(16, Math.floor(options.segments ?? this.getDefaultSegmentsForRadius(outerRadius))); // 环段数
+    const innerRadius = Math.max(0, options.radius - ringThickness); // 内半径
+
+
+
+    // 生成圆形位置点
+    const ringPositions = this.generateCirclePositions(baseCarto0, outerRadius, 0, ringSegments); // 外环位置点
+    const fillPositions = this.generateCirclePositions(baseCarto0, innerRadius, 0, ringSegments); // 内填充位置点
+
+    const ringColor = options.outlineColor ? this.resolveColor(options.outlineColor) : Cesium.Color.BLACK; // 环颜色
 
     // Primitive pick 需要稳定的 id：这里用两个“代理 Entity”（不加入 viewer.entities）
     const outer = new Cesium.Entity({ id });
@@ -457,20 +471,36 @@ export class MapCircle {
     return positions;
   }
 
+  /**
+   * 获取方位角查找表，用于存储正弦和余弦值
+   * @param segments 分段数量，用于确定查找表的精度
+   * @returns 返回一个包含正弦和余弦数组的对象
+   */
   private getBearingTable(segments: number): { sin: Float64Array; cos: Float64Array } {
+    // 确保分段数至少为3，并向下取整
     const seg = Math.max(3, Math.floor(segments));
+    // 检查缓存中是否已存在对应分段数的查找表
     const cached = MapCircle.bearingTableCache.get(seg);
+    // 如果缓存中存在，直接返回缓存的结果
     if (cached) return cached;
 
+    // 创建两个Float64Array数组，分别用于存储正弦和余弦值
     const sin = new Float64Array(seg);
     const cos = new Float64Array(seg);
+    // 遍历每个分段，计算对应角度的正弦和余弦值
     for (let i = 0; i < seg; i++) {
+      // 计算当前角度（弧度制）
       const bearing = (i / seg) * Cesium.Math.TWO_PI;
+      // 存储计算得到的正弦值
       sin[i] = Math.sin(bearing);
+      // 存储计算得到的余弦值
       cos[i] = Math.cos(bearing);
     }
+    // 创建查找表对象
     const table = { sin, cos };
+    // 将计算结果存入缓存，以便后续使用
     MapCircle.bearingTableCache.set(seg, table);
+    // 返回查找表
     return table;
   }
 
