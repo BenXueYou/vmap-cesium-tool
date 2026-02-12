@@ -61,6 +61,11 @@ const zhCN = {
       lod_medium: "聚合档位：中",
       lod_fine: "聚合档位：细",
     },
+    overlay_edit: {
+      enable: "开启覆盖物编辑模式",
+      disable: "关闭覆盖物编辑模式",
+      stop: "退出当前编辑",
+    },
   },
   draw: {
     start: {
@@ -127,6 +132,9 @@ const zhCN = {
     info_window_desc: "使用 <strong>anchorPixel</strong>（像素锚点）并设置 <code>updateInterval: 200</code>。拖动/缩放地图时应实时跟随（节流在移动时会被绕过）。",
     ring_added: "已添加发光圆环",
     ring_clicked: "发光圆环被点击",
+    edit_mode_on: "覆盖物编辑模式：已开启（点击覆盖物进入编辑，拖拽控制点修改形状）",
+    edit_mode_off: "覆盖物编辑模式：已关闭",
+    edit_stopped: "已退出当前覆盖物编辑",
   },
 };
 

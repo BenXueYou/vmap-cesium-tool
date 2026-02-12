@@ -42,6 +42,12 @@
       </div>
       <br />
       <div>
+        <button @click="enableOverlayEditMode">{{ t('ui.overlay_edit.enable') }}</button>
+        <button @click="disableOverlayEditMode">{{ t('ui.overlay_edit.disable') }}</button>
+        <button @click="stopOverlayEdit">{{ t('ui.overlay_edit.stop') }}</button>
+      </div>
+      <br />
+      <div>
         <button @click="addHeatMap">{{ t('ui.add.heatmap') }}</button>
         <button @click="enableHeatmapAuto">{{ t('ui.heatmap.auto_on') }}</button>
         <button @click="disableHeatmapAuto">{{ t('ui.heatmap.auto_off') }}</button>
@@ -117,6 +123,21 @@ const {
   testSetOverlayHighlight,
   testToggleOverlayHighlight,
 } = useOverlayHelper(viewer, message);
+
+const enableOverlayEditMode = () => {
+  overlayService.value?.setOverlayEditMode(true);
+  message.value = t('overlay.edit_mode_on');
+};
+
+const disableOverlayEditMode = () => {
+  overlayService.value?.setOverlayEditMode(false);
+  message.value = t('overlay.edit_mode_off');
+};
+
+const stopOverlayEdit = () => {
+  overlayService.value?.stopOverlayEdit();
+  message.value = t('overlay.edit_stopped');
+};
 
 const {
   heatmapLayer,

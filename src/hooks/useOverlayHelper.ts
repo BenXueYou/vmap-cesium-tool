@@ -750,7 +750,6 @@ export function useOverlayHelper(
     const lon = Cesium.Math.toDegrees(center.longitude);
     const lat = Cesium.Math.toDegrees(center.latitude);
 
-
     // Test A: primitive ✅（粗边框 + 贴地 + 纯色材质）
     const circleA = overlayService.value.addCircle({
       position: [120.09747987, 30.12573937],
@@ -779,10 +778,6 @@ export function useOverlayHelper(
         setTimeout(() => (message.value = ''), 2000);
       },
     });
-
-    // 初始化时打印一次，确认是否走了 primitive
-    logCircle('A(init)', circleA);
-
     addIcon({ longitude: 120.09747987, latitude: 30.12573937 });
 
     // Test B: primitive ❌（非粗边框：outlineWidth<=1，会回退到 entity ellipse）
@@ -834,8 +829,9 @@ export function useOverlayHelper(
       outlineColor: '#2519d2ff',
       outlineWidth: 15,
       segments: 256,
-      clickHighlight: { color: '#ffee58', fillAlpha: 0.35 },
+      // clickHighlight: { color: '#ffee58', fillAlpha: 0.35 },
       hoverHighlight: true,
+      clickHighlight: true,
       renderMode: 'primitive',
       onClick: () => {
         logCircle('D(click)', circleD);
@@ -886,12 +882,11 @@ export function useOverlayHelper(
       onClick: () => {
         logCircle('F-alarm(click)', alarmCircle);
         // viewer.value!.entities.remove(alarmCircle);
-        overlayService.value!.removeOverlay(alarmCircle.id);
-        message.value = i18n.t('overlay.circle_alarm_clicked');
-        setTimeout(() => (message.value = ''), 2000);
+        // overlayService.value!.removeOverlay(alarmCircle.id);
+        // message.value = i18n.t('overlay.circle_alarm_clicked');
+        // setTimeout(() => (message.value = ''), 2000);
       },
     });
-    logCircle('F-alarm(init)', alarmCircle);
 
     // Test F: primitive ✅（分层叠加：侦测区 vs 告警区）
     // 目标：两个区域都填充、且边界始终清晰可见。
@@ -907,15 +902,16 @@ export function useOverlayHelper(
       outlineWidth: 20,
       renderMode: 'primitive',
       layerKey: 'detect222',
-      hoverHighlight: { color: '#0be967ff', fillAlpha: 0.35 },
-      clickHighlight: { color: '#ffee58', fillAlpha: 0.35 },
+      hoverHighlight: true,
+      clickHighlight: true,
+      // hoverHighlight: { color: '#0be967ff', fillAlpha: 0.35 },
+      // clickHighlight: { color: '#ffee58', fillAlpha: 0.35 },
       onClick: () => {
         logCircle('F-detect(click)', detectCircle);
         message.value = i18n.t('overlay.circle_detect_clicked');
         setTimeout(() => (message.value = ''), 2000);
       },
     });
-    logCircle('F-detect(init)', detectCircle);
 
     addIcon({ longitude: detectCenter[0], latitude: detectCenter[1] });
 

@@ -96,6 +96,91 @@ hoverHighlight?: boolean | { color?: Cesium.Color | string; fillAlpha?: number }
 - `color`：高亮主色（默认 yellow）
 - `fillAlpha`：面填充高亮透明度（默认 0.35）
 
+## 覆盖物编辑模式（Overlay Edit Mode）
+
+覆盖物编辑模式用于**编辑已存在的覆盖物几何形状**（不是绘制新图形）。
+
+当前支持：
+
+- `Polygon`（含 primitive/entity）：拖拽顶点修改形状、拖拽边中点新增顶点、右键顶点删除、中心点拖拽整体移动
+- `Rectangle`（含 primitive/entity）：拖拽角点修改范围
+- `Circle`（含 primitive/entity）：拖拽中心点移动、拖拽半径点修改半径
+
+### API
+
+#### setOverlayEditMode
+
+```ts
+setOverlayEditMode(enabled: boolean): void
+```
+
+- `true`：开启编辑模式。此时点击覆盖物会进入编辑并显示控制点。
+- `false`：关闭编辑模式。会退出当前编辑、移除控制点，并销毁编辑事件处理器。
+
+#### getOverlayEditModeEnabled
+
+```ts
+getOverlayEditModeEnabled(): boolean
+```
+
+返回全局编辑模式是否开启。
+
+#### startOverlayEdit
+
+```ts
+startOverlayEdit(entityOrId: OverlayEntity | string): boolean
+```
+
+主动开始编辑某个覆盖物（也可依赖“开启编辑模式后点击覆盖物自动进入编辑”）。
+
+- 返回 `true`：进入编辑成功并创建控制点
+- 返回 `false`：该覆盖物当前不支持编辑或无法解析其几何
+
+#### stopOverlayEdit
+
+```ts
+stopOverlayEdit(): void
+```
+
+退出当前正在编辑的覆盖物，但**不关闭全局编辑模式**。
+
+适用场景：你希望“编辑模式仍保持开启”，但暂时取消当前对象的编辑（例如准备点击其它覆盖物继续编辑）。
+
+### 基本用法示例
+
+```ts
+const overlay = new CesiumOverlayService(viewer);
+
+// 开启编辑模式（此后点击覆盖物会进入编辑）
+overlay.setOverlayEditMode(true);
+
+// 或者：主动指定某个覆盖物进入编辑
+overlay.startOverlayEdit('polygon_1');
+
+// 退出当前编辑（编辑模式仍开启）
+overlay.stopOverlayEdit();
+
+// 关闭编辑模式（完全关闭）
+overlay.setOverlayEditMode(false);
+```
+
+### 交互说明与注意事项
+
+- 控制点是内部创建的临时实体（不会写入 `overlayMap`），只用于编辑交互。
+- 拖拽控制点期间会临时禁用相机控制（防止“拖点”和“拖地图”同时触发）。鼠标松开后会自动恢复。
+- 进入编辑时会清理该覆盖物已有的 hover/click 高亮（包括 glow outline），避免出现“叠加边框”。
+
+#### Polygon 控制点说明
+
+- 蓝色点：顶点控制点（拖拽修改顶点位置）
+- 粉色点：边中点（拖拽会新增一个顶点，并继续拖拽该新顶点）
+- 绿色点：中心移动点（拖拽整体移动多边形）
+
+#### Polygon 右键删除顶点
+
+- 在编辑状态下，**右键点击蓝色顶点控制点**可删除该顶点
+- 最少保留 3 个点（当点数 ≤ 3 时不再允许删除）
+
 ## 创建覆盖物（add 系列）
 
 > 以下方法都会把最终 id 写入内部 `overlayMap`，便于后续用 id 更新/删除。
