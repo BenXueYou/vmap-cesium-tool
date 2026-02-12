@@ -211,9 +211,15 @@ export class MapCircle {
     outerEntity._primitiveRingBaseColor = ringColor;
     outerEntity._primitiveFillBaseColor = fillColor;
 
+    // 记录外圈边界（闭合），供高亮时绘制 glow 边框使用
+    const ringClosed = ringPositions.slice();
+    if (ringClosed.length >= 2) ringClosed.push(ringClosed[0]);
+    outerEntity._primitiveOutlinePositions = ringClosed;
+
     // inner 也写一份，方便从任意命中对象恢复
     innerEntity._primitiveRingBaseColor = ringColor;
     innerEntity._primitiveFillBaseColor = fillColor;
+    innerEntity._primitiveOutlinePositions = outerEntity._primitiveOutlinePositions;
 
     // 入 batch（若提供 layerKey，则进入分层渲染栈）
     const batch = layerKey ? this.getLayeredPrimitiveBatch(layerKey) : this.getPrimitiveBatch();
@@ -540,6 +546,12 @@ export class MapCircle {
       const ringPositions = this.generateCirclePositions(baseCarto0, outerRadius, 0, segments);
       const fillPositions = this.generateCirclePositions(baseCarto0, innerRadius, 0, segments);
 
+      const ringClosed = ringPositions.slice();
+      if (ringClosed.length >= 2) ringClosed.push(ringClosed[0]);
+      root._primitiveOutlinePositions = ringClosed;
+      const innerPart = root._innerEntity as OverlayEntity | undefined;
+      if (innerPart) innerPart._primitiveOutlinePositions = ringClosed;
+
       const inner = root._innerEntity;
       if (!inner) return;
 
@@ -671,6 +683,12 @@ export class MapCircle {
 
       const ringPositions = this.generateCirclePositions(carto, root._outerRadius, 0, segments);
       const fillPositions = this.generateCirclePositions(carto, root._innerRadius, 0, segments);
+
+      const ringClosed = ringPositions.slice();
+      if (ringClosed.length >= 2) ringClosed.push(ringClosed[0]);
+      root._primitiveOutlinePositions = ringClosed;
+      const innerPart = root._innerEntity as OverlayEntity | undefined;
+      if (innerPart) innerPart._primitiveOutlinePositions = ringClosed;
 
       const ringBase = (root as any)._primitiveRingBaseColor as Cesium.Color | undefined;
       const fillBase = (root as any)._primitiveFillBaseColor as Cesium.Color | undefined;
@@ -866,7 +884,8 @@ export class MapCircle {
     }
 
     const ringColor = hlColor.withAlpha(1.0);
-    const fillColor = hlColor.withAlpha(fillAlpha);
+    const fillColor = root._primitiveFillBaseColor ?? (this.resolveMaterialColor(root._fillMaterial as any) ?? Cesium.Color.BLUE.withAlpha(0.5));
+    // 仅高亮边框（环），不改变填充
     this.getPrimitiveBatchForOverlay(root).setColors(id, ringColor, fillColor);
     (entity as OverlayEntity)._isHighlighted = true;
   }

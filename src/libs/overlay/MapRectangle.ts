@@ -180,6 +180,12 @@ export class MapRectangle {
     const innerRect = this.shrinkRectangle(options.coordinates, ringThickness);
     const innerPositions = this.rectangleToPositions(innerRect, 0);
 
+    // 记录外圈边界（闭合），供高亮时绘制 glow 边框使用
+    const outerClosed = outerPositions.slice();
+    if (outerClosed.length >= 2) outerClosed.push(outerClosed[0]);
+    outerEntity._primitiveOutlinePositions = outerClosed;
+    innerEntity._primitiveOutlinePositions = outerClosed;
+
     const batch = layerKey ? this.getLayeredPrimitiveBatch(layerKey) : this.getPrimitiveBatch();
     batch.upsertGeometry({
       rectangleId: id,
@@ -387,6 +393,12 @@ export class MapRectangle {
       const innerRect = this.shrinkRectangle(coordinates, thickness);
       const innerPositions = this.rectangleToPositions(innerRect, 0);
 
+      // 记录外圈边界（闭合），供高亮时绘制 glow 边框使用
+      const outerClosed = outerPositions.slice();
+      if (outerClosed.length >= 2) outerClosed.push(outerClosed[0]);
+      root._primitiveOutlinePositions = outerClosed;
+      (inner as OverlayEntity)._primitiveOutlinePositions = outerClosed;
+
       const ringBase = root._primitiveRingBaseColor ?? Cesium.Color.BLACK;
       const fillBase = root._primitiveFillBaseColor ?? Cesium.Color.BLUE.withAlpha(0.5);
 
@@ -587,7 +599,8 @@ export class MapRectangle {
     if (!root._primitiveFillBaseColor) root._primitiveFillBaseColor = Cesium.Color.BLUE.withAlpha(0.5);
 
     const ringColor = hlColor.withAlpha(1.0);
-    const fillColor = hlColor.withAlpha(fillAlpha);
+    const fillColor = root._primitiveFillBaseColor ?? Cesium.Color.BLUE.withAlpha(0.5);
+    // 仅高亮边框（环），不改变填充
     this.getPrimitiveBatchForOverlay(root).setColors(id, ringColor, fillColor);
     (entity as OverlayEntity)._isHighlighted = true;
   }

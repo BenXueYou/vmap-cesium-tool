@@ -37,7 +37,11 @@ export class CesiumOverlayService {
   private bulkUpdateDepth = 0;
 
   private static readonly DEFAULT_HIGHLIGHT_COLOR = Cesium.Color.YELLOW;
+  // NOTE: 高亮不再默认修改面填充颜色（仅做边框发光）。fillAlpha 仅为兼容旧配置而保留。
   private static readonly DEFAULT_HIGHLIGHT_FILL_ALPHA = 0.35;
+
+  private static readonly DEFAULT_HIGHLIGHT_GLOW_POWER = 0.25;
+  private static readonly GLOW_OUTLINE_ROOT_ID_PROP = '__vmapOverlayRootId';
 
   // 鼠标 hover 时最多每隔一段时间 pick 一次（降低 pick pass 对 primitive.update 的压力）
   private static readonly HOVER_PICK_MIN_INTERVAL_MS = 66; // ~15fps
@@ -115,6 +119,185 @@ export class CesiumOverlayService {
     }
   }
 
+  private getEntityPropertyString(entity: Cesium.Entity, key: string): string | null {
+    try {
+      const props: any = (entity as any).properties;
+      if (!props) return null;
+      const v: any = props[key];
+      if (v === undefined || v === null) return null;
+      if (typeof v.getValue === 'function') {
+        const got = v.getValue(Cesium.JulianDate.now());
+        if (got === undefined || got === null) return null;
+        return String(got);
+      }
+      return String(v);
+    } catch {
+      return null;
+    }
+  }
+
+  private mapGlowOutlineEntityToRoot(entity: Cesium.Entity): (DrawEntity & OverlayEntity) | null {
+    const rootId = this.getEntityPropertyString(entity, CesiumOverlayService.GLOW_OUTLINE_ROOT_ID_PROP);
+    if (!rootId) return null;
+    const root = this.overlayMap.get(rootId);
+    return root ? (root as DrawEntity & OverlayEntity) : null;
+  }
+
+  private getClosedPositions(positions: Cesium.Cartesian3[]): Cesium.Cartesian3[] {
+    const list = positions.slice();
+    if (list.length >= 2) {
+      const first = list[0];
+      const last = list[list.length - 1];
+      if (!Cesium.Cartesian3.equals(first, last)) list.push(first);
+    }
+    return list;
+  }
+
+  private generateEllipseOutlinePositions(center: Cesium.Cartesian3, semiMajor: number, semiMinor: number, rotationRad: number, segments: number): Cesium.Cartesian3[] {
+    const a = Math.max(0, Number(semiMajor) || 0);
+    const b = Math.max(0, Number(semiMinor) || 0);
+    const n = Math.max(16, Math.min(512, Math.floor(segments) || 128));
+    if (!(a > 0) || !(b > 0) || !center) return [];
+
+    const frame = Cesium.Transforms.eastNorthUpToFixedFrame(center);
+    const cosR = Math.cos(rotationRad || 0);
+    const sinR = Math.sin(rotationRad || 0);
+    const result: Cesium.Cartesian3[] = [];
+
+    for (let i = 0; i < n; i++) {
+      const t = (i / n) * Cesium.Math.TWO_PI;
+      const x0 = Math.cos(t) * a;
+      const y0 = Math.sin(t) * b;
+      const x = cosR * x0 - sinR * y0;
+      const y = sinR * x0 + cosR * y0;
+      const pLocal = new Cesium.Cartesian3(x, y, 0);
+      const pWorld = Cesium.Matrix4.multiplyByPoint(frame, pLocal, new Cesium.Cartesian3());
+      result.push(pWorld);
+    }
+    return this.getClosedPositions(result);
+  }
+
+  private ensureGlowOutline(root: OverlayEntity, color: Cesium.Color): void {
+    try {
+      if (root._highlightGlowEntity) return;
+
+      // 已经是“粗边框=独立 polyline 实体”的情况：由 polyline 高亮分支直接把该边框改成 glow
+      if (root._overlayType !== 'polygon-primitive' && root._overlayType !== 'circle-primitive' && root._overlayType !== 'rectangle-primitive') {
+        const border = root._borderEntity as OverlayEntity | undefined;
+        if (root._isThickOutline && border && (border as any).polyline) {
+          return;
+        }
+      }
+
+      // 1) primitive：优先用预先记录的边界
+      let positions: Cesium.Cartesian3[] = [];
+      if (Array.isArray((root as any)._primitiveOutlinePositions) && (root as any)._primitiveOutlinePositions.length > 0) {
+        positions = (root as any)._primitiveOutlinePositions as Cesium.Cartesian3[];
+      }
+
+      // 2) polygon
+      if (positions.length === 0 && root.polygon) {
+        const h: any = (root.polygon as any).hierarchy;
+        const hv: any = (h && typeof h.getValue === 'function') ? h.getValue(Cesium.JulianDate.now()) : h;
+        const outer: Cesium.Cartesian3[] | undefined = hv?.positions || hv;
+        if (Array.isArray(outer) && outer.length > 2) {
+          positions = this.getClosedPositions(outer as Cesium.Cartesian3[]);
+        }
+      }
+
+      // 3) rectangle
+      if (positions.length === 0 && root.rectangle) {
+        const cProp: any = (root.rectangle as any).coordinates;
+        const rect: Cesium.Rectangle | undefined = (cProp && typeof cProp.getValue === 'function') ? cProp.getValue(Cesium.JulianDate.now()) : cProp;
+        if (rect && Number.isFinite((rect as any).west)) {
+          const h = (root._clampToGround ?? true) ? 0 : (root._baseHeight ?? 0);
+          const base = [
+            Cesium.Cartesian3.fromRadians(rect.west, rect.south, h),
+            Cesium.Cartesian3.fromRadians(rect.east, rect.south, h),
+            Cesium.Cartesian3.fromRadians(rect.east, rect.north, h),
+            Cesium.Cartesian3.fromRadians(rect.west, rect.north, h),
+          ];
+          positions = this.getClosedPositions(base);
+        }
+      }
+
+      // 4) ellipse/circle
+      if (positions.length === 0) {
+        const centerCarto = (root as any)._centerCartographic as Cesium.Cartographic | undefined;
+        if (centerCarto && Number.isFinite(centerCarto.longitude) && Number.isFinite(centerCarto.latitude)) {
+          const h = (root._clampToGround ?? true) ? 0 : (root._baseHeight ?? 0);
+          const center = Cesium.Cartesian3.fromRadians(centerCarto.longitude, centerCarto.latitude, h);
+          const radius = Number((root as any)._outerRadius ?? 0);
+          const seg = Number((root as any)._ringSegments ?? 128);
+          if (radius > 0) {
+            positions = this.generateEllipseOutlinePositions(center, radius, radius, 0, seg);
+          }
+        } else if (root.ellipse && root.position) {
+          const center = root.position.getValue(Cesium.JulianDate.now()) as Cesium.Cartesian3;
+          const el: any = root.ellipse;
+          const a = this.getNumberProperty(el.semiMajorAxis, 0);
+          const b = this.getNumberProperty(el.semiMinorAxis, 0);
+          const rot = this.getNumberProperty(el.rotation, 0);
+          positions = this.generateEllipseOutlinePositions(center, a, b, rot, 128);
+        }
+      }
+
+      if (!positions || positions.length < 4) return;
+
+      const clampToGround = root._clampToGround ?? true;
+      const widthBase = Math.max(
+        2,
+        Number((root as any)._outlineWidth ?? 1) || 1,
+        Number((root.rectangle as any)?.outlineWidth?.getValue?.(Cesium.JulianDate.now()) ?? 1) || 1,
+        Number((root.polygon as any)?.outlineWidth?.getValue?.(Cesium.JulianDate.now()) ?? 1) || 1
+      );
+
+      const glowId = `__vmap__highlight_glow__${String((root as any).id)}`;
+      const existed = this.entities.getById(glowId);
+      if (existed) {
+        try { this.entities.remove(existed); } catch { /* ignore */ }
+      }
+
+      const glowEntity = this.entities.add({
+        id: glowId,
+        polyline: {
+          positions,
+          width: widthBase + 2,
+          material: new Cesium.PolylineGlowMaterialProperty({
+            color,
+            glowPower: CesiumOverlayService.DEFAULT_HIGHLIGHT_GLOW_POWER,
+          }),
+          clampToGround,
+          ...(clampToGround ? { zIndex: 999 } : {}),
+        },
+      });
+
+      // 用 properties 把 glow entity 映射回根覆盖物，保证 click/hover 行为一致
+      try {
+        (glowEntity as any).properties = new Cesium.PropertyBag({
+          [CesiumOverlayService.GLOW_OUTLINE_ROOT_ID_PROP]: String((root as any).id),
+        });
+      } catch {
+        // ignore
+      }
+
+      root._highlightGlowEntity = glowEntity;
+    } catch {
+      // ignore
+    }
+  }
+
+  private removeGlowOutline(root: OverlayEntity): void {
+    const glow = root._highlightGlowEntity;
+    if (!glow) return;
+    try {
+      this.entities.remove(glow);
+    } catch {
+      // ignore
+    }
+    root._highlightGlowEntity = undefined;
+  }
+
   private resolveOverlayByPickId(raw: any): (DrawEntity & OverlayEntity) | null {
     const id = this.normalizeOverlayPickId(raw);
     if (!id) return null;
@@ -138,7 +321,9 @@ export class CesiumOverlayService {
     // 1) 正常 entity pick：pickedObject.id === Entity
     try {
       if (Cesium.defined((pickedObject as any).id) && (pickedObject as any).id instanceof Cesium.Entity) {
-        return (pickedObject as any).id as DrawEntity & OverlayEntity;
+        const pickedEntity = (pickedObject as any).id as Cesium.Entity;
+        const mapped = this.mapGlowOutlineEntityToRoot(pickedEntity);
+        return mapped || (pickedEntity as DrawEntity & OverlayEntity);
       }
     } catch {
       // ignore
@@ -513,7 +698,8 @@ export class CesiumOverlayService {
             // primitive GeometryInstance.id 可能是字符串，需要映射回 overlayMap 的根实体
             let entity: Cesium.Entity | null = null;
             if (id instanceof Cesium.Entity) {
-              entity = id;
+              const mapped = this.mapGlowOutlineEntityToRoot(id);
+              entity = mapped ? (mapped as unknown as Cesium.Entity) : id;
             } else {
               const mapped = this.resolveOverlayByPickId(id);
               if (mapped) entity = mapped as unknown as Cesium.Entity;
@@ -682,28 +868,29 @@ export class CesiumOverlayService {
   private applyOverlayHighlightStyle(entity: OverlayEntity): void {
     if (!entity._highlightOriginalStyle) entity._highlightOriginalStyle = {};
 
-    // Primitive-backed circle：颜色更新不走 entity.graphics
-    if (entity._overlayType === 'circle-primitive') {
-      const { color: hl, fillAlpha } = this.getActiveHighlightOptions(entity);
-      this.circle.applyPrimitiveHighlight(entity, hl, fillAlpha);
-      return;
-    }
-
-    // Primitive-backed polygon：颜色更新不走 entity.graphics
-    if (entity._overlayType === 'polygon-primitive') {
-      const { color: hl, fillAlpha } = this.getActiveHighlightOptions(entity);
-      this.polygon.applyPrimitiveHighlight(entity, hl, fillAlpha);
-      return;
-    }
-
-    // Primitive-backed rectangle：颜色更新不走 entity.graphics
-    if (entity._overlayType === 'rectangle-primitive') {
-      const { color: hl, fillAlpha } = this.getActiveHighlightOptions(entity);
-      this.rectangle.applyPrimitiveHighlight(entity, hl, fillAlpha);
-      return;
-    }
+    // 统一：用根实体承载 glow outline（避免 group 内多次创建）
+    const root = (entity._highlightEntities && entity._highlightEntities.length > 0)
+      ? (entity._highlightEntities[0] as OverlayEntity)
+      : entity;
 
     const { color: hl, fillAlpha } = this.getActiveHighlightOptions(entity);
+
+    // Primitive-backed：仅改边框颜色（不改填充），同时叠加一条 glow 边框
+    if (entity._overlayType === 'circle-primitive') {
+      this.circle.applyPrimitiveHighlight(entity, hl, fillAlpha);
+      this.ensureGlowOutline(root, hl);
+      return;
+    }
+    if (entity._overlayType === 'polygon-primitive') {
+      this.polygon.applyPrimitiveHighlight(entity, hl, fillAlpha);
+      this.ensureGlowOutline(root, hl);
+      return;
+    }
+    if (entity._overlayType === 'rectangle-primitive') {
+      this.rectangle.applyPrimitiveHighlight(entity, hl, fillAlpha);
+      this.ensureGlowOutline(root, hl);
+      return;
+    }
 
     // 点
     if (entity.point) {
@@ -769,18 +956,14 @@ export class CesiumOverlayService {
       const width = this.getNumberProperty(pl.width, 2);
       pl.width = new Cesium.ConstantProperty(width + 2);
 
-      // 尽量保留材质语义：
-      // - ColorMaterialProperty：直接替换颜色
-      // - PolylineGlowMaterialProperty：复制一份新的 glow 材质并替换颜色（不改原对象，方便还原）
-      if (pl.material instanceof Cesium.ColorMaterialProperty) {
-        pl.material = new Cesium.ColorMaterialProperty(hl);
-      } else if (pl.material instanceof Cesium.PolylineGlowMaterialProperty) {
-        const glowPower = (pl.material as any).glowPower;
-        pl.material = new Cesium.PolylineGlowMaterialProperty({
-          color: hl,
-          glowPower: typeof glowPower === 'number' ? glowPower : 0.25,
-        });
-      }
+      // 默认高亮样式：发光材质
+      const glowPower = (pl.material instanceof Cesium.PolylineGlowMaterialProperty)
+        ? (pl.material as any).glowPower
+        : undefined;
+      pl.material = new Cesium.PolylineGlowMaterialProperty({
+        color: hl,
+        glowPower: typeof glowPower === 'number' ? glowPower : CesiumOverlayService.DEFAULT_HIGHLIGHT_GLOW_POWER,
+      });
     }
 
     // 面（Polygon）
@@ -794,13 +977,11 @@ export class CesiumOverlayService {
           material: pg.material,
         };
       }
-      const outlineWidth = this.getNumberProperty(pg.outlineWidth, 1);
-      (pg as any).outline = new Cesium.ConstantProperty(true);
-      pg.outlineColor = new Cesium.ConstantProperty(hl);
-      pg.outlineWidth = new Cesium.ConstantProperty(Math.max(2, outlineWidth + 2));
 
-      // NOTE: 贴地多边形的 outline 很可能不可见或宽度无效，因此用“改材质”保证高亮可见
-      pg.material = new Cesium.ColorMaterialProperty(hl.withAlpha(fillAlpha));
+      // 不再默认修改填充（避免出现“黄色填充高亮”）
+      // 仅保证 outline 打开，并叠加一条 glow 边框（对贴地/primitive 都更稳定）
+      (pg as any).outline = new Cesium.ConstantProperty(true);
+      this.ensureGlowOutline(root, hl);
     }
 
     // 矩形
@@ -814,13 +995,8 @@ export class CesiumOverlayService {
           material: r.material,
         };
       }
-      const outlineWidth = this.getNumberProperty(r.outlineWidth, 1);
       (r as any).outline = new Cesium.ConstantProperty(true);
-      r.outlineColor = new Cesium.ConstantProperty(hl);
-      r.outlineWidth = new Cesium.ConstantProperty(Math.max(2, outlineWidth + 2));
-
-      // 同 polygon：用材质保证贴地高亮可见
-      r.material = new Cesium.ColorMaterialProperty(hl.withAlpha(fillAlpha));
+      this.ensureGlowOutline(root, hl);
     }
 
     // 圆/椭圆
@@ -834,13 +1010,8 @@ export class CesiumOverlayService {
           material: el.material,
         };
       }
-      const outlineWidth = this.getNumberProperty(el.outlineWidth, 1);
       (el as any).outline = new Cesium.ConstantProperty(true);
-      el.outlineColor = new Cesium.ConstantProperty(hl);
-      el.outlineWidth = new Cesium.ConstantProperty(Math.max(2, outlineWidth + 2));
-
-      // NOTE: 贴地 ellipse 的 outline 也可能不可见，因此改材质兜底
-      el.material = new Cesium.ColorMaterialProperty(hl.withAlpha(fillAlpha));
+      this.ensureGlowOutline(root, hl);
     }
 
     entity._isHighlighted = true;
@@ -852,20 +1023,23 @@ export class CesiumOverlayService {
    * @returns 无返回值
    */
   private restoreOverlayHighlightStyle(entity: OverlayEntity): void {
-    // Primitive-backed circle：颜色更新不走 entity.graphics
+    const root = (entity._highlightEntities && entity._highlightEntities.length > 0)
+      ? (entity._highlightEntities[0] as OverlayEntity)
+      : entity;
+
+    // primitive 也可能叠加了 glow outline
     if (entity._overlayType === 'circle-primitive') {
+      this.removeGlowOutline(root);
       this.circle.restorePrimitiveHighlight(entity);
       return;
     }
-
-    // Primitive-backed polygon：颜色更新不走 entity.graphics
     if (entity._overlayType === 'polygon-primitive') {
+      this.removeGlowOutline(root);
       this.polygon.restorePrimitiveHighlight(entity);
       return;
     }
-
-    // Primitive-backed rectangle：颜色更新不走 entity.graphics
     if (entity._overlayType === 'rectangle-primitive') {
+      this.removeGlowOutline(root);
       this.rectangle.restorePrimitiveHighlight(entity);
       return;
     }
@@ -930,6 +1104,9 @@ export class CesiumOverlayService {
       el.outlineWidth = orig.ellipse.outlineWidth;
       el.material = orig.ellipse.material;
     }
+
+    // 清理 glow 边框
+    this.removeGlowOutline(root);
 
     entity._isHighlighted = false;
   }
