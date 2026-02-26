@@ -14,6 +14,15 @@ import { MapCircle, type CircleOptions } from './overlay/MapCircle';
 import { MapRing, type RingOptions } from './overlay/MapRing';
 import type { OverlayPosition } from './overlay/types';
 
+export interface CesiumOverlayServiceOptions {
+  /**
+   * 是否启用实体 hover 处理器（MOUSE_MOVE 下会执行 pick/drillPick 并触发 hover 高亮）。
+   * 大屏/高负载场景可考虑关闭以规避 Cesium 在 primitive 重建窗口期的边界问题。
+   * @default true
+   */
+  enableHoverHandler?: boolean;
+}
+
 /**
  * Cesium 覆盖物服务类
  * 统一管理各种覆盖物工具类
@@ -23,6 +32,9 @@ export class CesiumOverlayService {
   private entities: Cesium.EntityCollection;
   private overlayMap: Map<string, Entity> = new Map(); // 通过ID管理覆盖物
   private infoWindowContainer: HTMLElement | null = null;
+
+  /** 构造参数（用于开关 hover handler 等运行时策略） */
+  private readonly options: CesiumOverlayServiceOptions;
 
   // ========== Overlay Edit Mode ==========
   private overlayEditModeEnabled = false;
@@ -389,13 +401,18 @@ export class CesiumOverlayService {
   public readonly circle: MapCircle;
   public readonly ring: MapRing;
 
-  constructor(viewer: Viewer) {
+  constructor(viewer: Viewer, options: CesiumOverlayServiceOptions = {}) {
     this.viewer = viewer;
+    this.options = options;
     this.entities = viewer.entities;
     // this.enableTranslucentPicking();
     this.initInfoWindowContainer();
     this.setupEntityClickHandler();
-    this.setupEntityHoverHandler();
+
+    // hover handler 在大屏/高负载场景可能带来高频 pick/drillPick 压力，可通过配置禁用
+    if (this.options.enableHoverHandler !== false) {
+      this.setupEntityHoverHandler();
+    }
 
     // 初始化各种覆盖物工具类
     this.marker = new MapMarker(viewer);

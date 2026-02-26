@@ -58,13 +58,37 @@ overlay.destroy();
 ## 构造函数
 
 ```ts
-constructor(viewer: Cesium.Viewer)
+constructor(viewer: Cesium.Viewer, options?: CesiumOverlayServiceOptions)
+```
+
+### CesiumOverlayServiceOptions
+
+```ts
+export interface CesiumOverlayServiceOptions {
+  /**
+   * 是否启用实体 hover 处理器（MOUSE_MOVE 下会执行 pick/drillPick 并触发 hover 高亮）。
+   * 大屏/高负载场景可考虑关闭以规避 Cesium 在 primitive 重建窗口期的边界问题。
+   * @default true
+   */
+  enableHoverHandler?: boolean;
+}
 ```
 
 创建后会：
 
 - 在 `viewer.container` 内部插入一个信息窗容器（用于 HTML InfoWindow）
-- 注册实体 click/hover 的 ScreenSpaceEventHandler
+- 注册实体 click 的 ScreenSpaceEventHandler
+- 默认注册实体 hover 的 ScreenSpaceEventHandler（可通过 `enableHoverHandler: false` 关闭）
+
+### 大屏场景禁用 hover（规避高频 pick 导致的崩溃）
+
+```ts
+import { CesiumOverlayService } from '@xingm/vmap-cesium-toolbar';
+
+const overlay = new CesiumOverlayService(viewer, {
+  enableHoverHandler: false,
+});
+```
 
 ## 高亮相关
 

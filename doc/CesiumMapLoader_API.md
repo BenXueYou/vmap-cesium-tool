@@ -178,7 +178,10 @@ function bindAll(v: any) {
 
   // 2) Overlay
   overlay?.destroy?.();
-  overlay = new CesiumOverlayService(viewer);
+  overlay = new CesiumOverlayService(viewer, {
+    // 大屏/高负载场景如出现 hover 高频崩溃，可关闭 hover handler
+    enableHoverHandler: false,
+  });
   overlay.addMarker({ id: 'm1', position: [116.3974, 39.9093], pixelSize: 10 });
 
   // 3) Heatmap
