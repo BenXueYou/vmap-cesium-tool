@@ -50,11 +50,18 @@ import CesiumHeatmapLayer from './libs/CesiumHeatmapLayer';
 export { CesiumHeatmapLayer as HeatmapLayer };
 export type { HeatmapOptions } from './libs/CesiumHeatmapLayer';
 
+// Point cluster functionality
+import CesiumPointClusterLayer from './libs/CesiumPointClusterLayer';
+export { CesiumPointClusterLayer as PointClusterLayer };
+export type { ClusterPoint, PointClusterLayerOptions, ClusterStyleStep } from './libs/CesiumPointClusterLayer';
+
 // 默认导出
 export default {
   CesiumMapToolbar,
   DrawHelper,
   CesiumOverlayService,
   initCesium,
-  initCesiumMap: initCesium
+  initCesiumMap: initCesium,
+  HeatmapLayer: CesiumHeatmapLayer,
+  PointClusterLayer: CesiumPointClusterLayer,
 };

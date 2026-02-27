@@ -213,4 +213,3 @@ const { viewer: v } = await initCesium(containerId, {
 
 bindAll(v);
 ```
-

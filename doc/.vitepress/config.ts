@@ -18,6 +18,7 @@ export default defineConfig({
       { text: 'DrawHelper', link: '/CesiumMapHelper_API' },
       { text: 'CesiumMapLoader', link: '/CesiumMapLoader_API' },
       { text: 'CesiumOverlayService', link: '/CesiumOverlayService_API' },
+      { text: 'PointClusterLayer', link: '/CesiumPointClusterLayer_API' },
       { text: 'GeoJSON', link: '/GeoJSON_Usage' },
     ],
 
@@ -29,6 +30,7 @@ export default defineConfig({
           { text: 'DrawHelper（CesiumMapHelper）', link: '/CesiumMapHelper_API' },
           { text: 'CesiumMapLoader', link: '/CesiumMapLoader_API' },
           { text: 'CesiumOverlayService', link: '/CesiumOverlayService_API' },
+          { text: 'PointClusterLayer（点聚合）', link: '/CesiumPointClusterLayer_API' },
         ],
       },
       {

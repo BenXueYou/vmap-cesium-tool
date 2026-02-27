@@ -30,6 +30,7 @@ features:
 - [DrawHelper（CesiumMapHelper）API](/CesiumMapHelper_API)
 - [CesiumMapLoader API](/CesiumMapLoader_API)
 - [CesiumOverlayService API](/CesiumOverlayService_API)
+- [PointClusterLayer（点聚合）API](/CesiumPointClusterLayer_API)
 - [GeoJSON 使用说明](/GeoJSON_Usage)
 - [多语言（i18n）使用说明](/I18n_Usage)
 
