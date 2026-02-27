@@ -2091,8 +2091,7 @@ export class CesiumOverlayService {
     if (entity) {
       // 如果是信息窗口，移除DOM元素
       const overlay = entity as OverlayEntity;
-      const infoWindow = overlay._infoWindow;
-      if (infoWindow) {
+      if (overlay._overlayType === 'infoWindow') {
         this.infoWindow.remove(entity);
       }
 

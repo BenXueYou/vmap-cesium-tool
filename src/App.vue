@@ -37,6 +37,7 @@
         <button @click="testSetOverlayHighlight">{{ t('ui.test.set_highlight') }}</button>
         <button @click="testToggleOverlayHighlight">{{ t('ui.test.toggle_highlight') }}</button>
         <button @click="addInfoWindow">{{ t('ui.add.info_window') }}</button>
+        <button @click="closeInfoWindow">{{ t('ui.add.info_window_close') }}</button>
         <button @click="() => addRing()">{{ t('ui.add.ring') }}</button>
         <button @click="addRingTest">{{ t('ui.add.ring_test') }}</button>
       </div>
@@ -117,6 +118,7 @@ const {
   addLabel,
   addRectangle,
   addInfoWindow,
+  closeInfoWindow,
   cancelMarkerMode,
   addRing,
   destroyOverlayService,

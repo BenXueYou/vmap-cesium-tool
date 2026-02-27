@@ -686,6 +686,7 @@ export class MapInfoWindow {
     domElement.style.zIndex = String(data.zIndex);
 
     (entity as any)[INFO_WINDOW_DATA_KEY] = data;
+    (entity as any)['_overlayType'] = 'infoWindow';
     this.entityMap.set(id, data);
 
     // 初始定位

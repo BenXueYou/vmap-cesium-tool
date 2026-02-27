@@ -1177,6 +1177,18 @@ export function useOverlayHelper(
     markerEntities.length = 0;
   };
 
+  const closeInfoWindow = () => {
+    if (overlayService.value) {
+       markerEntities.forEach((entity) => {
+        if (entity.id.includes('infowindow_')) {
+          console.log('关闭信息窗口', entity.id); 
+          overlayService.value!.removeOverlay(entity.id);
+        }
+      });
+    }
+  }
+
+
   return {
     overlayService,
     initOverlayService,
@@ -1197,6 +1209,7 @@ export function useOverlayHelper(
     addPolygon,
     addRectangle,
     addInfoWindow,
+    closeInfoWindow,
     testSetOverlayHighlight,
     testToggleOverlayHighlight,
     cancelMarkerMode,
