@@ -357,6 +357,7 @@ export class CesiumOverlayService {
   }
 
   private resolvePickedOverlayEntity(pickedObject: any): (DrawEntity & OverlayEntity) | null {
+    debugger;
     if (!pickedObject) return null;
 
     // 1) 正常 entity pick：pickedObject.id === Entity
@@ -2037,6 +2038,9 @@ export class CesiumOverlayService {
     const id = options.id || this.generateId('polygon');
     const entity = this.polygon.add({ ...options, id });
     this.overlayMap.set(id, entity);
+    console.log('---------------------- addPolygon-------------------------------', options);
+    console.log('---------------------- addPolygon-------------------------------', id, entity);
+    console.log('---------------------- addPolygon-------------------------------', this.overlayMap);
     this.markOverlayMutated();
     return entity;
   }
