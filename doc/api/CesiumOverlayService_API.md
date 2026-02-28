@@ -133,8 +133,10 @@ hoverHighlight?: boolean | { color?: Cesium.Color | string; fillAlpha?: number }
 当前支持：
 
 - `Polygon`（含 primitive/entity）：拖拽顶点修改形状、拖拽边中点新增顶点、右键顶点删除、中心点拖拽整体移动
-- `Rectangle`（含 primitive/entity）：拖拽角点修改范围
+- `Rectangle`（含 primitive/entity）：拖拽角点修改范围、中心点拖拽整体移动
 - `Circle`（含 primitive/entity）：拖拽中心点移动、拖拽半径点修改半径
+- `Polyline`：拖拽顶点修改形状、拖拽边中点新增顶点、右键顶点删除、中心点拖拽整体移动、旋转/缩放
+- `Marker/Icon/SVG`：拖拽单点移动位置
 
 编辑回调：
 
@@ -224,6 +226,23 @@ overlay.setOverlayEditMode(true);
 - 蓝色点：顶点控制点（拖拽修改顶点位置）
 - 粉色点：边中点（拖拽会新增一个顶点，并继续拖拽该新顶点）
 - 绿色点：中心移动点（拖拽整体移动多边形）
+
+#### Rectangle 控制点说明
+
+- 蓝色点：角点（拖拽修改范围）
+- 绿色点：中心移动点（拖拽整体移动矩形）
+
+#### Polyline 控制点说明
+
+- 蓝色点：顶点控制点（拖拽修改顶点位置）
+- 粉色点：边中点（拖拽会新增一个顶点，并继续拖拽该新顶点）
+- 绿色点：中心移动点（拖拽整体移动折线）
+- 棕色点：旋转手柄（拖拽整体旋转）
+- 紫色点：缩放手柄（拖拽整体等比缩放）
+
+#### Marker/Icon/SVG 控制点说明
+
+- 绿色点：中心移动点（拖拽整体移动）
 
 #### Polygon 右键删除顶点
 
