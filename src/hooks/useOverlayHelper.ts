@@ -5,6 +5,16 @@ import type { OverlayEntity } from '../libs/overlay/types';
 import { CesiumOverlayService } from "../libs/overlay";
 import { i18n } from "../i18n";
 
+type OverlayEditChangeHandler = (entity: Entity & OverlayEntity) => void;
+
+type OverlayHelperOptions = {
+  /**
+   * 覆盖物编辑模式下，拖拽结束且几何变化时触发。
+   * 可用于同步业务数据或触发保存。
+   */
+  onOverlayEditChange?: OverlayEditChangeHandler;
+};
+
 /**
  * 覆盖物相关的辅助逻辑
  * - 提供添加点位（Marker）与示例覆盖物的便捷方法
@@ -23,9 +33,25 @@ export function useOverlayHelper(
   /**
    * 初始化覆盖物服务
    */
-  const initOverlayService = () => {
+  const initOverlayService = (options: OverlayHelperOptions = {}) => {
     if (!viewer.value) return;
-    overlayService.value = new CesiumOverlayService(viewer.value);
+    overlayService.value = new CesiumOverlayService(viewer.value, {
+      onOverlayEditChange: (entity) => {
+        const hasCustom = typeof options.onOverlayEditChange === 'function';
+        if (!hasCustom) {
+          const id = String((entity as any)?.id ?? '');
+          console.log('[OverlayEdit] geometry changed:', id, entity);
+          message.value = `覆盖物已更新${id ? `: ${id}` : ''}`;
+          setTimeout(() => (message.value = ''), 1500);
+        }
+
+        try {
+          options.onOverlayEditChange?.(entity as Entity & OverlayEntity);
+        } catch {
+          // ignore
+        }
+      },
+    });
   };
 
   /**

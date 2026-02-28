@@ -606,7 +606,14 @@ onMounted(async () => {
   viewer.value = cesiumViewer;
 
   // 初始化覆盖物服务
-  initOverlayService();
+  initOverlayService({
+    onOverlayEditChange: (entity) => {
+      const id = String((entity as any)?.id ?? '');
+      console.log('[App] overlay edit change:', id, entity);
+      message.value = id ? `编辑完成：${id}` : '编辑完成';
+      setTimeout(() => (message.value = ''), 1200);
+    },
+  });
 
   // 初始化绘图助手
   initDrawHelper();

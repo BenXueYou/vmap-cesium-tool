@@ -71,6 +71,12 @@ export interface CesiumOverlayServiceOptions {
    * @default true
    */
   enableHoverHandler?: boolean;
+
+  /**
+   * 覆盖物编辑模式下：一次拖拽结束（LEFT_UP）且几何发生变化时触发。
+   * 参数为“已回写后的覆盖物 entity”。
+   */
+  onOverlayEditChange?: (entity: OverlayEntity) => void;
 }
 ```
 
@@ -130,6 +136,10 @@ hoverHighlight?: boolean | { color?: Cesium.Color | string; fillAlpha?: number }
 - `Rectangle`（含 primitive/entity）：拖拽角点修改范围
 - `Circle`（含 primitive/entity）：拖拽中心点移动、拖拽半径点修改半径
 
+编辑回调：
+
+- `onOverlayEditChange`：拖拽结束后触发一次（非实时 MOUSE_MOVE），仅在几何实际变化时触发。
+
 ### API
 
 #### setOverlayEditMode
@@ -188,11 +198,26 @@ overlay.stopOverlayEdit();
 overlay.setOverlayEditMode(false);
 ```
 
+### 监听编辑变化（onOverlayEditChange）
+
+```ts
+const overlay = new CesiumOverlayService(viewer, {
+  onOverlayEditChange: (entity) => {
+    // entity 为“已回写后的覆盖物”
+    console.log('overlay changed', entity.id, entity);
+    // 在此处可同步业务数据/触发保存
+  },
+});
+
+overlay.setOverlayEditMode(true);
+```
+
 ### 交互说明与注意事项
 
 - 控制点是内部创建的临时实体（不会写入 `overlayMap`），只用于编辑交互。
 - 拖拽控制点期间会临时禁用相机控制（防止“拖点”和“拖地图”同时触发）。鼠标松开后会自动恢复。
 - 进入编辑时会清理该覆盖物已有的 hover/click 高亮（包括 glow outline），避免出现“叠加边框”。
+- `onOverlayEditChange` 仅在拖拽结束时触发（不会在拖拽过程中高频触发）。
 
 #### Polygon 控制点说明
 
