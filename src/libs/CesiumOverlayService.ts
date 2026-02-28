@@ -428,6 +428,28 @@ export class CesiumOverlayService {
           // ignore
         }
       },
+      applyPolylinePositions: (entity: DrawEntity & OverlayEntity, positions: Cesium.Cartesian3[]) => {
+        try {
+          this.polyline.updatePositions(entity, positions as any);
+        } catch {
+          // ignore
+        }
+      },
+      applyPointPosition: (entity: DrawEntity & OverlayEntity, position: Cesium.Cartesian3) => {
+        try {
+          if (entity.point) {
+            this.marker.updatePosition(entity, position as any);
+            return;
+          }
+          if (entity.billboard) {
+            this.icon.updatePosition(entity, position as any);
+            return;
+          }
+          entity.position = new Cesium.ConstantPositionProperty(position);
+        } catch {
+          // ignore
+        }
+      },
     }, {
       onChange: options.onOverlayEditChange,
     });
