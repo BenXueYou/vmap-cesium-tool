@@ -430,7 +430,7 @@ export function useOverlayHelper(
       hoverHighlight: { color: '#0be967ff', fillAlpha: 0.35 },
       clickHighlight: { color: '#ffee58', fillAlpha: 0.35 },
       onClick: () => {
-        logRectangle('E(click)', rectangleE);
+        logRectangle('E(click111)', rectangleE);
         message.value = i18n.t('overlay.rectangle_e_clicked');
         setTimeout(() => (message.value = ''), 2000);
       },
@@ -711,12 +711,13 @@ export function useOverlayHelper(
     const circle3 = overlayService.value.addCircle({
       position: [120.19656308, 30.18640485],
       radius: 100.73,
-      outlineWidth: 6,
+      outlineWidth: 1,
       outline: true,
       material: Cesium.Color.fromCssColorString('#18d17e').withAlpha(0.6),
       outlineColor: Cesium.Color.fromCssColorString('#18d17e').withAlpha(1),
       renderMode: 'primitive',
       layerKey: `circleLayer3`,
+      hoverHighlight: true,
       onClick: () => {
         console.log(circle3, "圆形circle3被点击");
       },
@@ -724,12 +725,13 @@ export function useOverlayHelper(
     const circle2 = overlayService.value.addCircle({
       position: [120.19656308, 30.18640485],
       radius: 52.73,
-      outlineWidth: 6,
+      outlineWidth: 1,
       material: Cesium.Color.fromCssColorString('#ff9900').withAlpha(0.6),
       outlineColor: Cesium.Color.fromCssColorString('#ff9900').withAlpha(1),
       renderMode: 'primitive',
       layerKey: `circleLayer2`,
       outline: true,
+      hoverHighlight: true,
       onClick: () => {
         console.log(circle2, "圆形circle2被点击");
       },
@@ -738,12 +740,13 @@ export function useOverlayHelper(
     const circle1 = overlayService.value.addCircle({
       position: [120.19656308, 30.18640485],
       radius: 30.73,
-      outlineWidth: 6,
+      outlineWidth: 1,
       material: Cesium.Color.fromCssColorString('#d32f2f').withAlpha(0.6),
       outlineColor: Cesium.Color.fromCssColorString('#d32f2f').withAlpha(1),
       renderMode: 'primitive',
       layerKey: `circleLayer1`,
       outline: true,
+      hoverHighlight: true,
       onClick: () => {
         console.log(circle1, "圆形circle1被点击");
       },

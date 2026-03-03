@@ -199,8 +199,14 @@ export class CesiumOverlayService {
     return this.getClosedPositions(result);
   }
 
+  /**
+   * 确保发光轮廓效果
+   * @param root - 根覆盖物实体
+   * @param color - 发光颜色
+   */
   private ensureGlowOutline(root: OverlayEntity, color: Cesium.Color): void {
     try {
+      // 如果已经存在发光轮廓实体，则直接返回
       if (root._highlightGlowEntity) return;
 
       // 已经是“粗边框=独立 polyline 实体”的情况：由 polyline 高亮分支直接把该边框改成 glow
@@ -338,7 +344,6 @@ export class CesiumOverlayService {
   }
 
   private resolvePickedOverlayEntity(pickedObject: any): (DrawEntity & OverlayEntity) | null {
-    debugger;
     if (!pickedObject) return null;
 
     // 1) 正常 entity pick：pickedObject.id === Entity

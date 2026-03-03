@@ -1,7 +1,8 @@
 import * as Cesium from "cesium";
 import type { Primitive } from "cesium";
 import { BaseDraw, DrawLine, DrawPolygon, DrawRectangle, DrawCircle, type DrawCallbacks, type DrawOptions, type DrawEntity, toggleSelectedStyle } from './drawHelper';
-import { wouldCreatePolygonSelfIntersection } from '../utils/selfIntersection';
+import { DrawHintHelper } from './drawHelper/DrawHint';
+import { wouldCreatePolygonSelfIntersection, wouldCreatePolygonSelfIntersectionKind } from '../utils/selfIntersection';
 import { i18n } from './i18n';
 /**
  * Cesium 绘图辅助工具类
@@ -28,13 +29,7 @@ class DrawHelper {
   private lastPreviewPosition: Cesium.Cartesian3 | null = null;
 
   // 绘制步骤提示（跟随鼠标的提示 Label）
-  private drawHintEntity: Cesium.Entity | null = null;
-  private drawHintText: string = "";
-  private drawHintLastPosition: Cesium.Cartesian3 | null = null;
-
-  // 提示文案临时覆盖（用于“多边形不能交叉”等即时反馈）
-  private drawHintOverrideText: string | null = null;
-  private drawHintOverrideUntil = 0;
+  private drawHintHelper: DrawHintHelper;
 
   // 最近一次左键点击上下文（用于 renderError 定位）
   private lastLeftClickDebug: {
@@ -157,12 +152,20 @@ class DrawHelper {
     }
   }
 
+  /**
+   * 检查当前是否处于拾取(blocked)状态
+   * @returns {boolean} 如果当前时间小于设定的阻塞时间，则返回true表示拾取被阻塞，否则返回false
+   */
   private isPickBlocked(): boolean {
     try {
+      // 将viewer类型转换为any以访问可能不存在的属性
       const anyViewer: any = this.viewer as any;
+      // 获取阻塞时间，如果属性不存在则默认为0
       const until = Number(anyViewer.__vmapDrawHelperBlockPickUntil) || 0;
+      // 比较当前时间与阻塞时间，判断是否仍在阻塞状态
       return Date.now() < until;
     } catch {
+      // 如果过程中出现任何错误，返回false表示不阻塞
       return false;
     }
   }
@@ -344,6 +347,16 @@ class DrawHelper {
     this.viewer = viewer;
     this.scene = viewer.scene;
     this.entities = viewer.entities;
+    this.drawHintHelper = new DrawHintHelper(
+      this.entities,
+      () => ({
+        isDrawing: this.isDrawing,
+        drawMode: this.drawMode,
+        tempPositions: this.tempPositions,
+        offsetHeight: this.offsetHeight,
+      }),
+      (key, params) => i18n.t(key, params)
+    );
 
     // 兜底触发统计：用于确认 NaN 恢复逻辑是否曾经触发过
     try {
@@ -357,9 +370,6 @@ class DrawHelper {
 
     // 根据地图模式设置偏移高度
     this.updateOffsetHeight();
-
-    // 确保启用地形深度测试以获得正确的高度
-    // this.scene.globe.depthTestAgainstTerrain = true;
 
     // 初始化绘制类实例
     const callbacks: DrawCallbacks = {
@@ -923,14 +933,25 @@ class DrawHelper {
     }
   }
 
+  /**
+   * 安装实体添加钩子函数，用于在实体被添加到EntityCollection时进行安全检查和处理
+   * 这是一个私有方法，主要用于拦截和修改Cesium中EntityCollection的add方法
+   */
   private installEntitiesAddHook(): void {
+    // 如果钩子已经安装，则直接返回，避免重复安装
     if (this.entityCollectionAddHookInstalled) return;
     try {
+      // 获取Cesium的EntityCollection原型对象
       const proto: any = (Cesium as any).EntityCollection?.prototype;
+      // 检查原型对象是否存在以及add方法是否为函数
       if (!proto || typeof proto.add !== 'function') return;
+      // 保存原始的add方法引用
       this.originalEntityCollectionAdd = proto.add;
+      // 保存当前对象的引用，以便在新的add方法中使用
       const self = this;
+      // 重写EntityCollection的add方法
       proto.add = function (this: any, options: any) {
+        // 调用原始的add方法，获取实体对象
         const entity = self.originalEntityCollectionAdd!.call(this, options);
         // 只在绘制中启用：避免影响正常覆盖物
         if (self.isDrawing) {
@@ -1164,9 +1185,7 @@ class DrawHelper {
     }
 
     // 若正在绘制且提示已显示，场景模式切换后同步提示高度
-    if (this.isDrawing && this.drawHintLastPosition) {
-      this.updateDrawHintPosition(this.drawHintLastPosition);
-    }
+    this.drawHintHelper.handleSceneModeChanged();
   }
 
   /**
@@ -1180,173 +1199,7 @@ class DrawHelper {
     }
   }
 
-  /**
-   * 计算提示文本（随绘制模式 + 点数量变化）
-   */
-  private getDrawHintText(): string {
-    if (!this.isDrawing || !this.drawMode) {
-      return "";
-    }
-
-    // 临时覆盖优先（例如自相交提示）
-    if (this.drawHintOverrideText && Date.now() < this.drawHintOverrideUntil) {
-      return this.drawHintOverrideText;
-    }
-    this.drawHintOverrideText = null;
-    this.drawHintOverrideUntil = 0;
-
-    const pointCount = this.tempPositions.length;
-
-    switch (this.drawMode) {
-      case "circle": {
-        if (pointCount === 0) return i18n.t("draw.hint.circle_start");
-        if (pointCount === 1) return i18n.t("draw.hint.circle_radius");
-        return i18n.t("draw.hint.finish_or_undo");
-      }
-      case "rectangle": {
-        if (pointCount === 0) return i18n.t("draw.hint.rectangle_start");
-        if (pointCount === 1) return i18n.t("draw.hint.rectangle_end");
-        return i18n.t("draw.hint.finish_or_undo");
-      }
-      case "polygon": {
-        if (pointCount === 0) return i18n.t("draw.hint.polygon_start");
-        if (pointCount === 1) return i18n.t("draw.hint.polygon_add" );
-        return i18n.t("draw.hint.polygon_continue");
-      }
-      case "line": {
-        if (pointCount === 0) return i18n.t("draw.hint.line_start");
-        if (pointCount === 1) return i18n.t("draw.hint.line_add");
-        return i18n.t("draw.hint.line_continue");
-      }
-      default:
-        return "";
-    }
-  }
-
-  /**
-   * 设置绘制提示覆盖文本及其持续时间
-   * @param text 要显示的提示文本
-   * @param ms 提示文本显示的持续时间（毫秒），默认为1200毫秒
-   */
-  private setDrawHintOverride(text: string, ms: number = 1200): void {
-    this.drawHintOverrideText = text; // 设置提示覆盖文本
-    this.drawHintOverrideUntil = Date.now() + Math.max(0, ms); // 设置提示文本的过期时间，确保不小于0
-    this.refreshDrawHintTextOnly(); // 仅刷新提示文本
-  }
-
-  /**
-   * 将提示位置转换为显示位置（按当前模式做轻微抬高，避免被地形遮挡）
-   */
-  private toHintDisplayPosition(position: Cesium.Cartesian3): Cesium.Cartesian3 {
-    // 这里不能只依赖 try/catch：fromRadians 传入 NaN 不会 throw，会返回 NaN Cartesian3。
-    if (
-      !position ||
-      !Number.isFinite((position as any).x) ||
-      !Number.isFinite((position as any).y) ||
-      !Number.isFinite((position as any).z)
-    ) {
-      return position;
-    }
-    try {
-      const carto = Cesium.Cartographic.fromCartesian(position);
-      if (!Number.isFinite(carto.longitude) || !Number.isFinite(carto.latitude)) {
-        return position;
-      }
-      const baseHeight = Number.isFinite(carto.height) ? (carto.height as number) : 0;
-      const extraHeight = this.offsetHeight > 0 ? this.offsetHeight : 0.1;
-      const displayPos = Cesium.Cartesian3.fromRadians(
-        carto.longitude,
-        carto.latitude,
-        baseHeight + extraHeight
-      );
-      if (
-        Number.isFinite((displayPos as any).x) &&
-        Number.isFinite((displayPos as any).y) &&
-        Number.isFinite((displayPos as any).z)
-      ) {
-        return displayPos;
-      }
-      return position;
-    } catch {
-      return position;
-    }
-  }
-
-  /**
-   * 创建或更新提示实体的位置与文本
-   */
-  private updateDrawHintPosition(position: Cesium.Cartesian3): void {
-    if (!this.isDrawing) return;
-
-    const nextText = this.getDrawHintText();
-    if (!nextText) {
-      this.clearDrawHint();
-      return;
-    }
-
-    this.drawHintText = nextText;
-    this.drawHintLastPosition = position.clone();
-
-    const displayPos = this.toHintDisplayPosition(position);
-
-    if (!this.drawHintEntity) {
-      this.drawHintEntity = this.entities.add({
-        position: new Cesium.ConstantPositionProperty(displayPos),
-        label: {
-          text: this.drawHintText,
-          font: "14px 'Microsoft YaHei', 'PingFang SC', sans-serif",
-          showBackground: true,
-          backgroundColor: Cesium.Color.BLACK.withAlpha(0.75),
-          fillColor: Cesium.Color.WHITE,
-          outlineColor: Cesium.Color.BLACK,
-          outlineWidth: 2,
-          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-          pixelOffset: new Cesium.Cartesian2(12, -18),
-          horizontalOrigin: Cesium.HorizontalOrigin.LEFT,
-          verticalOrigin: Cesium.VerticalOrigin.TOP,
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
-          heightReference: Cesium.HeightReference.NONE,
-          scaleByDistance: new Cesium.NearFarScalar(1.5e2, 1.0, 1.5e7, 0.6),
-        },
-      });
-    } else {
-      this.drawHintEntity.position = new Cesium.ConstantPositionProperty(displayPos);
-      if (this.drawHintEntity.label) {
-        this.drawHintEntity.label.text = new Cesium.ConstantProperty(this.drawHintText);
-      }
-    }
-  }
-
-  /**
-   * 更新提示文本（不改变位置；通常在点数变化时调用）
-   */
-  private refreshDrawHintTextOnly(): void {
-    const nextText = this.getDrawHintText();
-    this.drawHintText = nextText;
-    if (!nextText) {
-      this.clearDrawHint();
-      return;
-    }
-    if (this.drawHintEntity?.label) {
-      this.drawHintEntity.label.text = new Cesium.ConstantProperty(nextText);
-    }
-  }
-
-  /**
-   * 清除绘制提示实体
-   */
-  private clearDrawHint(): void {
-    if (this.drawHintEntity) {
-      try {
-        this.entities.remove(this.drawHintEntity);
-      } catch {
-        // ignore
-      }
-      this.drawHintEntity = null;
-    }
-    this.drawHintText = "";
-    this.drawHintLastPosition = null;
-  }
+  
 
   /**
    * 开始绘制线条
@@ -1397,7 +1250,7 @@ class DrawHelper {
     this.endDrawingInternal(false);
 
     // 清理可能残留的提示
-    this.clearDrawHint();
+    this.drawHintHelper.clear();
 
     this.drawMode = mode;
     this.isDrawing = true;
@@ -1437,7 +1290,7 @@ class DrawHelper {
     }
 
     // 初始化提示文本（位置将在首次鼠标移动/点击时确定）
-    this.refreshDrawHintTextOnly();
+    this.drawHintHelper.refreshTextOnly();
 
     this.activateDrawingHandlers();
   }
@@ -1456,7 +1309,6 @@ class DrawHelper {
     this.screenSpaceEventHandler.setInputAction(
       (click: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
         if (!this.isDrawing) return;
-        console.log('左键点击44444444添加点位置');
         // 本次点击事件链中屏蔽其它模块 pick（绘制中通常已屏蔽，但用于“结束绘制”边界的兜底）
         this.setPickCooldown(300, 'draw-left-click');
         // 防御：requestRenderMode 下，点击会触发渲染更新；先清理历史脏实体避免更新阶段抛错
@@ -1467,8 +1319,6 @@ class DrawHelper {
           return;
         }
         const cartesian = this.pickGlobePosition(click.position);
-        console.log('左键点击55555555添加点位置:', cartesian);
-
         try {
           const anyViewer: any = this.viewer as any;
           this.lastLeftClickDebug = {
@@ -1488,7 +1338,7 @@ class DrawHelper {
 
         if (cartesian) {
           // 点击时同步提示位置（避免用户不移动鼠标看不到提示更新）
-          this.updateDrawHintPosition(cartesian);
+          this.drawHintHelper.updatePosition(cartesian);
           this.addPoint(cartesian);
 
           // 再清理一次：本次点击可能刚创建了新的临时点/面/边框实体，确保下一帧不会因 NaN 停渲染
@@ -1511,7 +1361,7 @@ class DrawHelper {
         const cartesian = this.pickGlobePosition(move.endPosition);
         if (cartesian) {
           // 无论是否已落点，都更新提示位置
-          this.updateDrawHintPosition(cartesian);
+          this.drawHintHelper.updatePosition(cartesian);
 
           // 已落点时才更新几何预览
           if (this.tempPositions.length > 0) {
@@ -1628,8 +1478,10 @@ class DrawHelper {
             if (willSelfIntersect && !allowContinue) {
               // 阻止落点，但保持绘制状态，用户可继续选择其他点
               console.warn('Polygon self-intersection detected; point rejected.');
-              this.setDrawHintOverride(i18n.t('draw.hint.polygon_no_intersection'));
+              this.drawHintHelper.setOverride(i18n.t('draw.hint.polygon_no_intersection'));
               return;
+            } else {
+              this.drawHintHelper.setOverride('', 0);
             }
           }
         }
@@ -1641,7 +1493,7 @@ class DrawHelper {
       this.updateDrawingEntity();
 
       // 点数变化后刷新提示文案
-      this.refreshDrawHintTextOnly();
+      this.drawHintHelper.refreshTextOnly();
     }
   }
 
@@ -1672,9 +1524,8 @@ class DrawHelper {
     }
 
     // 点数变化后刷新提示文案
-    this.refreshDrawHintTextOnly();
+    this.drawHintHelper.refreshTextOnly();
   }
-
   /**
    * 更新预览线/面
    * @param currentMousePosition 当前鼠标位置世界坐标
@@ -1691,11 +1542,15 @@ class DrawHelper {
       if (selfIntersectionEnabled) {
         const existing = this.currentDrawer.getTempPositions();
         if (existing && existing.length >= 2) {
+          // 检查是否交叉（允许相切但不允许真正交叉），如果会自相交且不允许继续，则显示提示并阻止预览更新
+          const kind = wouldCreatePolygonSelfIntersectionKind(existing, currentMousePosition);
           const willSelfIntersect = wouldCreatePolygonSelfIntersection(existing, currentMousePosition, { allowTouch });
           if (willSelfIntersect && !allowContinue) {
-            this.setDrawHintOverride(i18n.t('draw.hint.polygon_no_intersection'));
+            this.drawHintHelper.setOverride(i18n.t('draw.hint.polygon_no_intersection'));
             this.updateDrawingEntity(undefined);
             return;
+          } else {
+            this.drawHintHelper.setOverride('', 0);
           }
         }
       }
@@ -1821,7 +1676,7 @@ class DrawHelper {
     this.deactivateDrawingHandlers();
 
     // 清理提示
-    this.clearDrawHint();
+    this.drawHintHelper.clear();
 
     if (DrawHelper.activeDrawingHelper === this) {
       DrawHelper.activeDrawingHelper = null;
@@ -1875,7 +1730,7 @@ class DrawHelper {
       this.deactivateDrawingHandlers();
 
       // 取消/结束绘制时清理提示
-      this.clearDrawHint();
+      this.drawHintHelper.clear();
       // 取消绘制时同样恢复地形深度测试开关
       if (this.originalDepthTestAgainstTerrain !== null) {
         this.scene.globe.depthTestAgainstTerrain = this.originalDepthTestAgainstTerrain;

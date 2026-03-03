@@ -262,7 +262,7 @@ export function useDrawHelper(
       strokeColor: Cesium.Color.ORANGE,
       fillColor: Cesium.Color.ORANGE.withAlpha(0.35),
       showAreaLabel: true,
-      selfIntersectionEnabled: true,
+      selfIntersectionEnabled: true, // 不允许自相交
       // 严格：不允许擦边、不允许继续（即：检测到就拒绝落点/拒绝完成）
       selfIntersectionAllowTouch: false,
       selfIntersectionAllowContinue: false,
