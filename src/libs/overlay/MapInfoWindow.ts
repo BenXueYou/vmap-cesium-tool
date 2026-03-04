@@ -7,7 +7,7 @@ export interface InfoWindowOptions {
   content: string | HTMLElement;
   width?: number;
   height?: number;
-  pixelOffset?: Cesium.Cartesian2; // x: right, y: up (in CSS pixels)
+  pixelOffset?: Cesium.Cartesian2; // x：向右，y：向上（单位：CSS 像素）
   show?: boolean;
   onClick?: (entity: Entity) => void;
   id?: string;
@@ -54,7 +54,7 @@ interface InternalEntityData {
   cameraListener: () => void;
   postRenderListener: Cesium.Event.RemoveCallback;
   zIndex: number; // 新增：用于层级管理
-  lastUpdate: number; // ms timestamp from performance.now(), 用于节流
+  lastUpdate: number; // 毫秒时间戳（来自 performance.now()），用于节流
   arrowEl?: HTMLElement | null;
 }
 
@@ -116,15 +116,15 @@ export class MapInfoWindow {
   }
 
   /**
-   * Set default update interval (ms) for position updates when an InfoWindow doesn't specify `updateInterval`.
-   * 0 means update every frame.
+   * 设置默认的位置更新间隔（毫秒）：当 InfoWindow 未指定 `updateInterval` 时使用。
+   * 0 表示每帧更新。
    */
   public setDefaultUpdateInterval(ms: number): void {
     this.defaultUpdateInterval = Math.max(0, ms);
   }
 
   /**
-   * Force immediate update (recompute positions) of all managed info windows.
+   * 强制立即更新（重新计算位置）所有已管理的信息窗。
    */
   public forceUpdateAll(): void {
     const entities = this.viewer.entities.values.slice();
@@ -174,7 +174,7 @@ export class MapInfoWindow {
     const scene = this.viewer.scene;
     const canvas = scene.canvas;
 
-    // 1. 转换为绘制缓冲区像素坐标（WebGL 坐标系）
+    // 1. 转换为窗口像素坐标（Cesium 返回的 window 坐标，原点左上）
     const screenPos = Cesium.SceneTransforms.worldToWindowCoordinates(scene, worldPos);
     if (!screenPos || !Cesium.defined(screenPos)) return null;
 
@@ -184,7 +184,7 @@ export class MapInfoWindow {
     const canvasRect = canvas.getBoundingClientRect();
     const containerRect = this.container.getBoundingClientRect();
 
-    // 3. 直接使用 Cesium 返回的窗口坐标（已是 CSS 像素，原点左上），再转换为 container 内坐标
+    // 3. 使用 Cesium 返回的窗口坐标（单位：CSS 像素，原点左上），并换算为 container 内坐标
     const x = screenPos.x - containerRect.left;
     const y = screenPos.y - containerRect.top;
 
@@ -228,7 +228,7 @@ export class MapInfoWindow {
 
     let { x, y } = pixelPos;
 
-    // 计算 anchor 点在世界坐标系中的位置：基于 Cartographic 高度加上 anchorHeight
+    // 计算锚点在屏幕上的位置：用于将信息窗锚定到 marker 顶部
     const anchorMeters = options.anchorHeight ?? 10; // 默认 10 米（较小默认值避免远距时视觉偏移过大）
     const tailGap = options.tailGap ?? 8; // 弹窗底部与 marker 顶部的间隙（px）
     try {
@@ -238,7 +238,7 @@ export class MapInfoWindow {
         x = basePixel.x;
         y = basePixel.y - options.anchorPixel;
       } else {
-        // 使用 Cartographic（经纬度 + 高度）增加高度，避免法线乘积带来的非线性误差
+        // 使用 Cartographic（经纬度 + 高度）抬升高度，避免直接用法线/向量带来的非线性误差
         const carto = Cesium.Cartographic.fromCartesian(worldPos);
         const lonDeg = Cesium.Math.toDegrees(carto.longitude);
         const latDeg = Cesium.Math.toDegrees(carto.latitude);
@@ -261,7 +261,7 @@ export class MapInfoWindow {
       void e;
     }
 
-    // 应用原始 pixelOffset（CSS 像素）
+    // 应用 pixelOffset（单位：CSS 像素）
     if (options.pixelOffset) {
       x += options.pixelOffset.x;
       y -= options.pixelOffset.y;
@@ -279,169 +279,198 @@ export class MapInfoWindow {
     const width = rect.width;
     const height = rect.height;
     domElement.style.visibility = '';
-    domElement.style.display = 'none'; // 暂不显示，等定位完成
+    domElement.style.display = 'none'; // 先隐藏，待定位完成后再显示
 
-    // 根据 positionOffset 决定默认锚点与方向
-    const side = options.positionOffset ?? 'top';
-    let transform = 'translate(-50%, -100%)';
+    // 记录锚点（顶部锚点）与基础点（marker 屏幕点），供不同方向的定位计算
+    const anchorX = x;
+    const anchorY = y;
+    const baseX = pixelPos.x;
+    const baseY = pixelPos.y;
 
-    if (side === 'top') {
-      y = y - tailGap;
-      transform = 'translate(-50%, -100%)';
-    } else if (side === 'bottom') {
-      const baseY = pixelPos.y;
-      y = baseY + tailGap;
-      x = pixelPos.x;
-      transform = 'translate(-50%, 0%)';
-    } else if (side === 'left') {
-      x = pixelPos.x - tailGap;
-      y = pixelPos.y;
-      transform = 'translate(-100%, -50%)';
-    } else if (side === 'right') {
-      x = pixelPos.x + tailGap;
-      y = pixelPos.y;
-      transform = 'translate(0%, -50%)';
-    } else if (side === 'top-left') {
-      x = pixelPos.x - tailGap;
-      y = pixelPos.y - tailGap;
-      transform = 'translate(-100%, -100%)';
-    } else if (side === 'top-right') {
-      x = pixelPos.x + tailGap;
-      y = pixelPos.y - tailGap;
-      transform = 'translate(0%, -100%)';
-    } else if (side === 'bottom-left') {
-      x = pixelPos.x - tailGap;
-      y = pixelPos.y + tailGap;
-      transform = 'translate(-100%, 0%)';
-    } else if (side === 'bottom-right') {
-      x = pixelPos.x + tailGap;
-      y = pixelPos.y + tailGap;
-      transform = 'translate(0%, 0%)';
-    } else if (side === 'left-top') {
-      x = pixelPos.x - tailGap;
-      y = pixelPos.y - tailGap;
-      transform = 'translate(-100%, 0%)';
-    } else if (side === 'left-bottom') {
-      x = pixelPos.x - tailGap;
-      y = pixelPos.y + tailGap;
-      transform = 'translate(-100%, -100%)';
-    } else if (side === 'right-top') {
-      x = pixelPos.x + tailGap;
-      y = pixelPos.y - tailGap;
-      transform = 'translate(0%, 0%)';
-    } else if (side === 'right-bottom') {
-      x = pixelPos.x + tailGap;
-      y = pixelPos.y + tailGap;
-      transform = 'translate(0%, -100%)';
-    }
+    type Side = NonNullable<InfoWindowOptions['positionOffset']>;
+    const requestedSide = (options.positionOffset ?? 'top') as Side;
 
-    // 不做边缘避让：只要超出视口就隐藏
-    const computeBounds = () => {
-      switch (side) {
+    const placeForSide = (s: Side): { x: number; y: number; transform: string } => {
+      if (s === 'top') {
+        return { x: anchorX, y: anchorY - tailGap, transform: 'translate(-50%, -100%)' };
+      }
+      if (s === 'bottom') {
+        return { x: baseX, y: baseY + tailGap, transform: 'translate(-50%, 0%)' };
+      }
+      if (s === 'left') {
+        return { x: baseX - tailGap, y: baseY, transform: 'translate(-100%, -50%)' };
+      }
+      if (s === 'right') {
+        return { x: baseX + tailGap, y: baseY, transform: 'translate(0%, -50%)' };
+      }
+      if (s === 'top-left') {
+        return { x: baseX - tailGap, y: baseY - tailGap, transform: 'translate(-100%, -100%)' };
+      }
+      if (s === 'top-right') {
+        return { x: baseX + tailGap, y: baseY - tailGap, transform: 'translate(0%, -100%)' };
+      }
+      if (s === 'bottom-left') {
+        return { x: baseX - tailGap, y: baseY + tailGap, transform: 'translate(-100%, 0%)' };
+      }
+      if (s === 'bottom-right') {
+        return { x: baseX + tailGap, y: baseY + tailGap, transform: 'translate(0%, 0%)' };
+      }
+      if (s === 'left-top') {
+        return { x: baseX - tailGap, y: baseY - tailGap, transform: 'translate(-100%, 0%)' };
+      }
+      if (s === 'left-bottom') {
+        return { x: baseX - tailGap, y: baseY + tailGap, transform: 'translate(-100%, -100%)' };
+      }
+      if (s === 'right-top') {
+        return { x: baseX + tailGap, y: baseY - tailGap, transform: 'translate(0%, 0%)' };
+      }
+      // right-bottom
+      return { x: baseX + tailGap, y: baseY + tailGap, transform: 'translate(0%, -100%)' };
+    };
+
+    const boundsFor = (s: Side, px: number, py: number) => {
+      switch (s) {
         case 'top':
-          return {
-            left: x - width / 2,
-            right: x + width / 2,
-            top: y - height,
-            bottom: y,
-          };
+          return { left: px - width / 2, right: px + width / 2, top: py - height, bottom: py };
         case 'bottom':
-          return {
-            left: x - width / 2,
-            right: x + width / 2,
-            top: y,
-            bottom: y + height,
-          };
+          return { left: px - width / 2, right: px + width / 2, top: py, bottom: py + height };
         case 'left':
-          return {
-            left: x - width,
-            right: x,
-            top: y - height / 2,
-            bottom: y + height / 2,
-          };
+          return { left: px - width, right: px, top: py - height / 2, bottom: py + height / 2 };
         case 'right':
-          return {
-            left: x,
-            right: x + width,
-            top: y - height / 2,
-            bottom: y + height / 2,
-          };
+          return { left: px, right: px + width, top: py - height / 2, bottom: py + height / 2 };
         case 'top-left':
-          return {
-            left: x - width,
-            right: x,
-            top: y - height,
-            bottom: y,
-          };
+          return { left: px - width, right: px, top: py - height, bottom: py };
         case 'top-right':
-          return {
-            left: x,
-            right: x + width,
-            top: y - height,
-            bottom: y,
-          };
+          return { left: px, right: px + width, top: py - height, bottom: py };
         case 'bottom-left':
-          return {
-            left: x - width,
-            right: x,
-            top: y,
-            bottom: y + height,
-          };
+          return { left: px - width, right: px, top: py, bottom: py + height };
         case 'bottom-right':
-          return {
-            left: x,
-            right: x + width,
-            top: y,
-            bottom: y + height,
-          };
+          return { left: px, right: px + width, top: py, bottom: py + height };
         case 'left-top':
-          return {
-            left: x - width,
-            right: x,
-            top: y,
-            bottom: y + height,
-          };
+          return { left: px - width, right: px, top: py, bottom: py + height };
         case 'left-bottom':
-          return {
-            left: x - width,
-            right: x,
-            top: y - height,
-            bottom: y,
-          };
+          return { left: px - width, right: px, top: py - height, bottom: py };
         case 'right-top':
-          return {
-            left: x,
-            right: x + width,
-            top: y,
-            bottom: y + height,
-          };
+          return { left: px, right: px + width, top: py, bottom: py + height };
         case 'right-bottom':
-          return {
-            left: x,
-            right: x + width,
-            top: y - height,
-            bottom: y,
-          };
         default:
-          return {
-            left: x - width / 2,
-            right: x + width / 2,
-            top: y - height,
-            bottom: y,
-          };
+          return { left: px, right: px + width, top: py - height, bottom: py };
       }
     };
 
-    const bounds = computeBounds();
-    if (
-      bounds.left < 0 ||
-      bounds.top < 0 ||
-      bounds.right > containerWidth ||
-      bounds.bottom > containerHeight
-    ) {
-      domElement.style.display = 'none';
-      return;
+    const margin = 4;
+    const overflowScore = (b: { left: number; right: number; top: number; bottom: number }) => {
+      const maxX = containerWidth - margin;
+      const maxY = containerHeight - margin;
+      const leftO = Math.max(0, margin - b.left);
+      const rightO = Math.max(0, b.right - maxX);
+      const topO = Math.max(0, margin - b.top);
+      const bottomO = Math.max(0, b.bottom - maxY);
+      return leftO + rightO + topO + bottomO;
+    };
+
+    const flipVertical = (s: Side): Side => {
+      if (s === 'top') return 'bottom';
+      if (s === 'bottom') return 'top';
+      if (s.startsWith('top-')) return (`bottom-${s.slice(4)}` as Side);
+      if (s.startsWith('bottom-')) return (`top-${s.slice(7)}` as Side);
+      if (s.endsWith('-top')) return (`${s.slice(0, -4)}-bottom` as Side);
+      if (s.endsWith('-bottom')) return (`${s.slice(0, -7)}-top` as Side);
+      return s;
+    };
+
+    const flipHorizontal = (s: Side): Side => {
+      if (s === 'left') return 'right';
+      if (s === 'right') return 'left';
+      if (s.startsWith('left-')) return (`right-${s.slice(5)}` as Side);
+      if (s.startsWith('right-')) return (`left-${s.slice(6)}` as Side);
+      if (s.endsWith('-left')) return (`${s.slice(0, -5)}-right` as Side);
+      if (s.endsWith('-right')) return (`${s.slice(0, -6)}-left` as Side);
+      return s;
+    };
+
+    // 优先翻转方向：当请求方向越界时，先尝试翻转（上下/左右/组合），选择越界最小的方案
+    const candidates: Side[] = [];
+    const pushUnique = (s: Side) => {
+      if (!candidates.includes(s)) candidates.push(s);
+    };
+
+    // 先用请求方向计算一次，判断是否越界
+    const requestedPlacement = placeForSide(requestedSide);
+    const requestedBounds = boundsFor(requestedSide, requestedPlacement.x, requestedPlacement.y);
+    const requestedOverflow = overflowScore(requestedBounds);
+
+    let side: Side = requestedSide;
+    let placement = requestedPlacement;
+
+    if (requestedOverflow > 0) {
+      // 先尝试翻转，再回退请求方向（用于兜底）
+      pushUnique(flipVertical(requestedSide));
+      pushUnique(flipHorizontal(requestedSide));
+      pushUnique(flipHorizontal(flipVertical(requestedSide)));
+      pushUnique(requestedSide);
+
+      let bestSide = requestedSide;
+      let bestPlacement = requestedPlacement;
+      let bestScore = requestedOverflow;
+
+      for (const c of candidates) {
+        const p = placeForSide(c);
+        const b = boundsFor(c, p.x, p.y);
+        const score = overflowScore(b);
+        if (score < bestScore) {
+          bestScore = score;
+          bestSide = c;
+          bestPlacement = p;
+        }
+      }
+
+      side = bestSide;
+      placement = bestPlacement;
     }
+
+    x = placement.x;
+    y = placement.y;
+    let transform = placement.transform;
+
+    // 边缘避让：方向翻转后若仍超出容器，则将窗口整体平移回容器内（兜底）
+    const bounds = boundsFor(side, x, y);
+
+    // 计算需要的平移量，使窗口尽量完整落入容器内
+    let dx = 0;
+    let dy = 0;
+
+    // 若窗口比容器还大，则只能尽量贴边展示
+    const maxLeft = containerWidth - margin;
+    const maxTop = containerHeight - margin;
+
+    // X 方向修正
+    if (bounds.left + dx < margin) {
+      dx += margin - (bounds.left + dx);
+    }
+    if (bounds.right + dx > maxLeft) {
+      dx -= (bounds.right + dx) - maxLeft;
+    }
+
+    // Y 方向修正
+    if (bounds.top + dy < margin) {
+      dy += margin - (bounds.top + dy);
+    }
+    if (bounds.bottom + dy > maxTop) {
+      dy -= (bounds.bottom + dy) - maxTop;
+    }
+
+    // 应用平移修正：通过 transform 追加 translate，避免改变锚点 (x, y)
+    if (dx !== 0 || dy !== 0) {
+      transform = `${transform} translate(${dx}px, ${dy}px)`;
+    }
+
+    const shiftedBounds = {
+      left: bounds.left + dx,
+      right: bounds.right + dx,
+      top: bounds.top + dy,
+      bottom: bounds.bottom + dy,
+    };
 
     // 设置最终位置
     domElement.style.left = `${x}px`;
@@ -454,7 +483,7 @@ export class MapInfoWindow {
       const arrow = data.arrowEl;
       const size = (options.arrowSize ?? 8) + 'px';
       const color = domElement.style.background || options.backgroundColor || '#ffffff';
-      // reset
+      // 重置
       arrow.style.borderLeft = '0';
       arrow.style.borderRight = '0';
       arrow.style.borderTop = '0';
@@ -473,14 +502,18 @@ export class MapInfoWindow {
         return 'top';
       };
 
-      const alignment = (s: string): number => {
-        if (s.includes('left')) return 25;
-        if (s.includes('right')) return 75;
-        return 50;
-      };
-
       const orient = orientFromSide(side);
-      const alignPercent = alignment(side);
+
+      // 箭头对齐：基于锚点 (x,y) 在“平移后的窗口”中的相对位置动态计算
+      const clampPercent = (p: number) => Math.max(10, Math.min(90, p));
+      let alignPercent = 50;
+      if (orient === 'top' || orient === 'bottom') {
+        const p = ((x - shiftedBounds.left) / Math.max(1, width)) * 100;
+        alignPercent = clampPercent(p);
+      } else {
+        const p = ((y - shiftedBounds.top) / Math.max(1, height)) * 100;
+        alignPercent = clampPercent(p);
+      }
 
       if (orient === 'top') {
         arrow.style.left = `${alignPercent}%`;
@@ -553,7 +586,7 @@ export class MapInfoWindow {
       el.appendChild(arrow);
     }
 
-    // 内容区（单独管理，便于 updateContent 保留按钮）
+    // 内容区（单独管理，便于 updateContent 时保留关闭按钮等元素）
     const contentWrap = document.createElement('div');
     contentWrap.className = 'cesium-info-window-content';
     if (typeof options.content === 'string') {
@@ -563,7 +596,7 @@ export class MapInfoWindow {
     }
     el.appendChild(contentWrap);
 
-    // 点击提升层级（不对关闭按钮触发）
+    // 点击提升层级（点击关闭按钮不触发）
     el.addEventListener('click', (e) => {
       if ((e.target as HTMLElement).closest('.cesium-info-window-close')) return;
       this.bringToFront(entity); // 注意：entity 在闭包中
@@ -588,7 +621,7 @@ export class MapInfoWindow {
       el.appendChild(btn);
     }
 
-    // NOTE: click handling for onClick is handled above (bringToFront + options.onClick).
+    // 备注：onClick 的点击处理已在上方统一处理（bringToFront + options.onClick）。
 
     return el;
   }
@@ -653,6 +686,7 @@ export class MapInfoWindow {
     domElement.style.zIndex = String(data.zIndex);
 
     (entity as any)[INFO_WINDOW_DATA_KEY] = data;
+    (entity as any)['_overlayType'] = 'infoWindow';
     this.entityMap.set(id, data);
 
     // 初始定位
@@ -748,7 +782,7 @@ export class MapInfoWindow {
       this.cameraMoveEndListener = undefined;
     }
 
-    const entities = this.viewer.entities.values.slice(); // use the array property and iterate over a copy
+    const entities = this.viewer.entities.values.slice(); // 使用数组并遍历副本，避免迭代过程中集合变化
     for (const entity of entities) {
       if ((entity as any)[INFO_WINDOW_DATA_KEY]) {
         this.remove(entity);

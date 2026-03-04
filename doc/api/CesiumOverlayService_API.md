@@ -58,13 +58,43 @@ overlay.destroy();
 ## 构造函数
 
 ```ts
-constructor(viewer: Cesium.Viewer)
+constructor(viewer: Cesium.Viewer, options?: CesiumOverlayServiceOptions)
+```
+
+### CesiumOverlayServiceOptions
+
+```ts
+export interface CesiumOverlayServiceOptions {
+  /**
+   * 是否启用实体 hover 处理器（MOUSE_MOVE 下会执行 pick/drillPick 并触发 hover 高亮）。
+   * 大屏/高负载场景可考虑关闭以规避 Cesium 在 primitive 重建窗口期的边界问题。
+   * @default true
+   */
+  enableHoverHandler?: boolean;
+
+  /**
+   * 覆盖物编辑模式下：一次拖拽结束（LEFT_UP）且几何发生变化时触发。
+   * 参数为“已回写后的覆盖物 entity”。
+   */
+  onOverlayEditChange?: (entity: OverlayEntity) => void;
+}
 ```
 
 创建后会：
 
 - 在 `viewer.container` 内部插入一个信息窗容器（用于 HTML InfoWindow）
-- 注册实体 click/hover 的 ScreenSpaceEventHandler
+- 注册实体 click 的 ScreenSpaceEventHandler
+- 默认注册实体 hover 的 ScreenSpaceEventHandler（可通过 `enableHoverHandler: false` 关闭）
+
+### 大屏场景禁用 hover（规避高频 pick 导致的崩溃）
+
+```ts
+import { CesiumOverlayService } from '@xingm/vmap-cesium-toolbar';
+
+const overlay = new CesiumOverlayService(viewer, {
+  enableHoverHandler: false,
+});
+```
 
 ## 高亮相关
 
@@ -95,6 +125,129 @@ hoverHighlight?: boolean | { color?: Cesium.Color | string; fillAlpha?: number }
 
 - `color`：高亮主色（默认 yellow）
 - `fillAlpha`：面填充高亮透明度（默认 0.35）
+
+## 覆盖物编辑模式（Overlay Edit Mode）
+
+覆盖物编辑模式用于**编辑已存在的覆盖物几何形状**（不是绘制新图形）。
+
+当前支持：
+
+- `Polygon`（含 primitive/entity）：拖拽顶点修改形状、拖拽边中点新增顶点、右键顶点删除、中心点拖拽整体移动
+- `Rectangle`（含 primitive/entity）：拖拽角点修改范围、中心点拖拽整体移动
+- `Circle`（含 primitive/entity）：拖拽中心点移动、拖拽半径点修改半径
+- `Polyline`：拖拽顶点修改形状、拖拽边中点新增顶点、右键顶点删除、中心点拖拽整体移动、旋转/缩放
+- `Marker/Icon/SVG`：拖拽单点移动位置
+
+编辑回调：
+
+- `onOverlayEditChange`：拖拽结束后触发一次（非实时 MOUSE_MOVE），仅在几何实际变化时触发。
+
+### API
+
+#### setOverlayEditMode
+
+```ts
+setOverlayEditMode(enabled: boolean): void
+```
+
+- `true`：开启编辑模式。此时点击覆盖物会进入编辑并显示控制点。
+- `false`：关闭编辑模式。会退出当前编辑、移除控制点，并销毁编辑事件处理器。
+
+#### getOverlayEditModeEnabled
+
+```ts
+getOverlayEditModeEnabled(): boolean
+```
+
+返回全局编辑模式是否开启。
+
+#### startOverlayEdit
+
+```ts
+startOverlayEdit(entityOrId: OverlayEntity | string): boolean
+```
+
+主动开始编辑某个覆盖物（也可依赖“开启编辑模式后点击覆盖物自动进入编辑”）。
+
+- 返回 `true`：进入编辑成功并创建控制点
+- 返回 `false`：该覆盖物当前不支持编辑或无法解析其几何
+
+#### stopOverlayEdit
+
+```ts
+stopOverlayEdit(): void
+```
+
+退出当前正在编辑的覆盖物，但**不关闭全局编辑模式**。
+
+适用场景：你希望“编辑模式仍保持开启”，但暂时取消当前对象的编辑（例如准备点击其它覆盖物继续编辑）。
+
+### 基本用法示例
+
+```ts
+const overlay = new CesiumOverlayService(viewer);
+
+// 开启编辑模式（此后点击覆盖物会进入编辑）
+overlay.setOverlayEditMode(true);
+
+// 或者：主动指定某个覆盖物进入编辑
+overlay.startOverlayEdit('polygon_1');
+
+// 退出当前编辑（编辑模式仍开启）
+overlay.stopOverlayEdit();
+
+// 关闭编辑模式（完全关闭）
+overlay.setOverlayEditMode(false);
+```
+
+### 监听编辑变化（onOverlayEditChange）
+
+```ts
+const overlay = new CesiumOverlayService(viewer, {
+  onOverlayEditChange: (entity) => {
+    // entity 为“已回写后的覆盖物”
+    console.log('overlay changed', entity.id, entity);
+    // 在此处可同步业务数据/触发保存
+  },
+});
+
+overlay.setOverlayEditMode(true);
+```
+
+### 交互说明与注意事项
+
+- 控制点是内部创建的临时实体（不会写入 `overlayMap`），只用于编辑交互。
+- 拖拽控制点期间会临时禁用相机控制（防止“拖点”和“拖地图”同时触发）。鼠标松开后会自动恢复。
+- 进入编辑时会清理该覆盖物已有的 hover/click 高亮（包括 glow outline），避免出现“叠加边框”。
+- `onOverlayEditChange` 仅在拖拽结束时触发（不会在拖拽过程中高频触发）。
+
+#### Polygon 控制点说明
+
+- 蓝色点：顶点控制点（拖拽修改顶点位置）
+- 粉色点：边中点（拖拽会新增一个顶点，并继续拖拽该新顶点）
+- 绿色点：中心移动点（拖拽整体移动多边形）
+
+#### Rectangle 控制点说明
+
+- 蓝色点：角点（拖拽修改范围）
+- 绿色点：中心移动点（拖拽整体移动矩形）
+
+#### Polyline 控制点说明
+
+- 蓝色点：顶点控制点（拖拽修改顶点位置）
+- 粉色点：边中点（拖拽会新增一个顶点，并继续拖拽该新顶点）
+- 绿色点：中心移动点（拖拽整体移动折线）
+- 棕色点：旋转手柄（拖拽整体旋转）
+- 紫色点：缩放手柄（拖拽整体等比缩放）
+
+#### Marker/Icon/SVG 控制点说明
+
+- 绿色点：中心移动点（拖拽整体移动）
+
+#### Polygon 右键删除顶点
+
+- 在编辑状态下，**右键点击蓝色顶点控制点**可删除该顶点
+- 最少保留 3 个点（当点数 ≤ 3 时不再允许删除）
 
 ## 创建覆盖物（add 系列）
 

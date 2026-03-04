@@ -10,6 +10,7 @@ interface I18nLike {
   t(key: string, params?: Record<string, any>, localeOverride?: Locale): string;
   onLocaleChange(cb: (locale: Locale) => void): () => void;
   bindElement(el: HTMLElement, key: string, attr?: "text" | "title" | "placeholder", params?: Record<string, any>): void;
+  updateElement(el: HTMLElement): void;
   updateTree(root: HTMLElement): void;
   addMessages?(locale: Locale, dict: I18nDict, options?: { merge?: boolean }): void;
   setFallbackLocale?(locale: Locale): void;

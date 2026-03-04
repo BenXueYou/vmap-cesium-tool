@@ -32,6 +32,7 @@ export default defineConfig(({ mode }) => {
         rollupOptions: {
           external: ['vue', 'cesium'],
           output: {
+            exports: 'named',
             globals: {
               vue: 'Vue',
               cesium: 'Cesium'

@@ -48,7 +48,12 @@ export type * from './libs/toolBar/NotFlyZonesService';
 // Heatmap functionality
 import CesiumHeatmapLayer from './libs/CesiumHeatmapLayer';
 export { CesiumHeatmapLayer as HeatmapLayer };
-export type { HeatmapOptions } from './types/index';
+export type { HeatmapOptions } from './libs/CesiumHeatmapLayer';
+
+// Point cluster functionality
+import CesiumPointClusterLayer from './libs/CesiumPointClusterLayer';
+export { CesiumPointClusterLayer as PointClusterLayer };
+export type { ClusterPoint, PointClusterLayerOptions, ClusterStyleStep } from './libs/CesiumPointClusterLayer';
 
 // 默认导出
 export default {
@@ -56,5 +61,7 @@ export default {
   DrawHelper,
   CesiumOverlayService,
   initCesium,
-  initCesiumMap: initCesium
+  initCesiumMap: initCesium,
+  HeatmapLayer: CesiumHeatmapLayer,
+  PointClusterLayer: CesiumPointClusterLayer,
 };

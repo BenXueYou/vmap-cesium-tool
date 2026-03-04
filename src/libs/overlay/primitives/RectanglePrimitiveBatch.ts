@@ -2,13 +2,14 @@ import * as Cesium from 'cesium';
 import type { Viewer, Entity } from 'cesium';
 
 export interface RectanglePrimitiveParts {
-  outer: Entity; // ring entity proxy (pick id)
-  inner: Entity; // fill entity proxy (pick id)
+  outer: Entity; // 外环代理实体（用于拾取标识）
+  inner: Entity; // 填充代理实体（用于拾取标识）
 }
 
 interface RectanglePrimitiveRecord {
   rectangleId: string;
   parts: RectanglePrimitiveParts;
+  instanceIds: { outer: string; inner: string };
   outerPositions: Cesium.Cartesian3[];
   innerPositions: Cesium.Cartesian3[];
   ringColor: Cesium.Color;
@@ -44,12 +45,12 @@ export class RectanglePrimitiveBatch {
     const fillCollection = options?.fillCollection;
 
     if (ringCollection || fillCollection) {
-      // When mounted under external collections, we do not own them.
+      // 当挂载到外部集合下时，这些集合不由本类负责销毁。
       this.ringCollection = (ringCollection ?? fillCollection) as Cesium.PrimitiveCollection;
       this.fillCollection = (fillCollection ?? ringCollection) as Cesium.PrimitiveCollection;
       this.ownsCollections = false;
     } else {
-      // Backwards-compatible: one owned collection attached to the scene.
+      // 兼容旧用法：创建并持有一个根集合，直接挂到场景上。
       const root = new Cesium.PrimitiveCollection();
       this.ownedRootCollection = root;
       this.ringCollection = root;
@@ -66,14 +67,14 @@ export class RectanglePrimitiveBatch {
       this.ringPrimitive = null;
       this.fillPrimitive = null;
     } catch {
-      // ignore
+      // 忽略异常
     }
 
     if (this.ownsCollections && this.ownedRootCollection) {
       try {
         this.viewer.scene.primitives.remove(this.ownedRootCollection);
       } catch {
-        // ignore
+        // 忽略异常
       }
       this.ownedRootCollection = null;
     }
@@ -93,6 +94,10 @@ export class RectanglePrimitiveBatch {
     this.records.set(args.rectangleId, {
       rectangleId: args.rectangleId,
       parts: args.parts,
+      instanceIds: {
+        outer: `${args.rectangleId}__outer`,
+        inner: `${args.rectangleId}__fill`,
+      },
       outerPositions: args.outerPositions,
       innerPositions: args.innerPositions,
       ringColor: args.ringColor,
@@ -194,7 +199,7 @@ export class RectanglePrimitiveBatch {
       ringInstances.push(
         new Cesium.GeometryInstance({
           geometry: ringGeom,
-          id: rec.parts.outer,
+          id: rec.instanceIds.outer,
           attributes: {
             color: Cesium.ColorGeometryInstanceAttribute.fromColor(ringColor),
           },
@@ -209,7 +214,7 @@ export class RectanglePrimitiveBatch {
       fillInstances.push(
         new Cesium.GeometryInstance({
           geometry: fillGeom,
-          id: rec.parts.inner,
+          id: rec.instanceIds.inner,
           attributes: {
             color: Cesium.ColorGeometryInstanceAttribute.fromColor(fillColor),
           },
@@ -229,7 +234,7 @@ export class RectanglePrimitiveBatch {
       this.fillCollection.add(this.fillPrimitive);
     }
 
-    // Add ring after fill so ring stays visible when using a single shared collection.
+    // 先加填充、后加外环：当“填充/外环”共用同一个集合时，保证外环始终渲染在填充之上。
     if (ringInstances.length > 0) {
       this.ringPrimitive = new Cesium.GroundPrimitive({
         geometryInstances: ringInstances,
@@ -249,7 +254,7 @@ export class RectanglePrimitiveBatch {
     try {
       this.viewer.scene.requestRender?.();
     } catch {
-      // ignore
+      // 忽略异常
     }
   }
 
@@ -268,7 +273,7 @@ export class RectanglePrimitiveBatch {
     try {
       if (this.ringPrimitive) {
         if ((this.ringPrimitive as any).ready) {
-          const attrs: any = (this.ringPrimitive as any).getGeometryInstanceAttributes(rec.parts.outer);
+          const attrs: any = (this.ringPrimitive as any).getGeometryInstanceAttributes(rec.instanceIds.outer);
           if (attrs && attrs.color) {
             attrs.color = Cesium.ColorGeometryInstanceAttribute.toValue(ringColor);
           }
@@ -277,13 +282,13 @@ export class RectanglePrimitiveBatch {
         }
       }
     } catch {
-      // ignore
+      // 忽略异常
     }
 
     try {
       if (this.fillPrimitive) {
         if ((this.fillPrimitive as any).ready) {
-          const attrs: any = (this.fillPrimitive as any).getGeometryInstanceAttributes(rec.parts.inner);
+          const attrs: any = (this.fillPrimitive as any).getGeometryInstanceAttributes(rec.instanceIds.inner);
           if (attrs && attrs.color) {
             attrs.color = Cesium.ColorGeometryInstanceAttribute.toValue(fillColor);
           }
@@ -292,7 +297,7 @@ export class RectanglePrimitiveBatch {
         }
       }
     } catch {
-      // ignore
+      // 忽略异常
     }
 
     if (needRetry) {
@@ -302,7 +307,7 @@ export class RectanglePrimitiveBatch {
     try {
       this.viewer.scene.requestRender?.();
     } catch {
-      // ignore
+      // 忽略异常
     }
   }
 }

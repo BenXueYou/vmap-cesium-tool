@@ -7,13 +7,13 @@ export interface CirclePrimitiveLayerCollections {
 }
 
 /**
- * Maintains a stable, ordered layer stack for Circle primitive rendering.
+ * 为 Circle（圆）Primitive 渲染维护一个稳定的有序图层栈。
  *
- * Rendering order:
- * - all fill layers (bottom -> top)
- * - all ring layers (bottom -> top)
+ * 渲染顺序：
+ * - 所有填充图层（从下到上）
+ * - 所有外环图层（从下到上）
  *
- * This ensures boundaries (rings) remain visible even when multiple translucent fills overlap.
+ * 这样可以确保在存在多个半透明填充重叠时，外环边界仍然清晰可见。
  */
 export class CirclePrimitiveLayerStack {
   private viewer: Viewer;
@@ -29,7 +29,7 @@ export class CirclePrimitiveLayerStack {
     this.fillsRoot = new Cesium.PrimitiveCollection();
     this.ringsRoot = new Cesium.PrimitiveCollection();
 
-    // Add fills first, rings second so rings always render above fills.
+    // 先添加填充，再添加外环，以保证外环始终渲染在填充之上。
     this.viewer.scene.primitives.add(this.fillsRoot);
     this.viewer.scene.primitives.add(this.ringsRoot);
   }
@@ -42,7 +42,7 @@ export class CirclePrimitiveLayerStack {
     const fillCollection = new Cesium.PrimitiveCollection();
     const ringCollection = new Cesium.PrimitiveCollection();
 
-    // Layer ordering is the insertion order of these sub-collections.
+    // 图层顺序即这些子集合被插入的顺序。
     this.fillsRoot.add(fillCollection);
     this.ringsRoot.add(ringCollection);
 
@@ -55,12 +55,12 @@ export class CirclePrimitiveLayerStack {
     try {
       this.viewer.scene.primitives.remove(this.fillsRoot);
     } catch {
-      // ignore
+      // 忽略异常
     }
     try {
       this.viewer.scene.primitives.remove(this.ringsRoot);
     } catch {
-      // ignore
+      // 忽略异常
     }
 
     this.layers.clear();

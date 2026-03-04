@@ -10,10 +10,10 @@ hero:
   actions:
     - theme: brand
       text: CesiumMapToolbar
-      link: /CesiumMapToolbar_API
+      link: /api/CesiumMapToolbar_API
     - theme: alt
       text: CesiumOverlayService
-      link: /CesiumOverlayService_API
+      link: /api/CesiumOverlayService_API
 
 features:
   - title: API 文档
@@ -26,12 +26,13 @@ features:
 
 ## 目录
 
-- [CesiumMapToolbar API](/CesiumMapToolbar_API)
-- [DrawHelper（CesiumMapHelper）API](/CesiumMapHelper_API)
-- [CesiumMapLoader API](/CesiumMapLoader_API)
-- [CesiumOverlayService API](/CesiumOverlayService_API)
-- [GeoJSON 使用说明](/GeoJSON_Usage)
-- [多语言（i18n）使用说明](/I18n_Usage)
+- [CesiumMapToolbar（工具栏） API](/api/CesiumMapToolbar_API)
+- [DrawHelper（CesiumMapHelper绘制）API](/api/CesiumMapHelper_API)
+- [CesiumMapLoader（地图加载器） API](/api/CesiumMapLoader_API)
+- [CesiumOverlayService（覆盖物） API](/api/CesiumOverlayService_API)
+- [PointClusterLayer（点聚合）API](/api/CesiumPointClusterLayer_API)
+- [GeoJSON 使用说明](/guide/GeoJSON_Usage)
+- [多语言（i18n）使用说明](/guide/I18n_Usage)
 
 ## 常见问题
 

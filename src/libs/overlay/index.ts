@@ -1,4 +1,5 @@
 export { CesiumOverlayService } from '../CesiumOverlayService';
+export type { CesiumOverlayServiceOptions } from '../CesiumOverlayService';
 export { MapMarker } from './MapMarker';
 export { MapLabel } from './MapLabel';
 export { MapIcon } from './MapIcon';

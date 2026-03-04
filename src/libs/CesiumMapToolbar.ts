@@ -14,7 +14,7 @@ import type {
 import { TDTMapTypes } from './config/CesiumMapConfig'
 import { formatDistance, calculatePolygonArea } from '../utils/calc';
 
-import { defaultButtons } from './toolBar/MapToolBarConfig'
+import { defaultButtons, defaultMeasureItems, defaultToolBarStyle } from './toolBar/MapToolBarConfig'
 import { i18n, type I18nLike } from '../libs/i18n';
 
 type ResolvedButtonConfig = Omit<ButtonConfig, 'icon'> & { icon: string | HTMLElement } & { titleKey?: string };
@@ -79,14 +79,7 @@ export class CesiumMapToolbar {
     this.viewer = viewer;
     this.container = container;
     this.config = {
-      position: 'bottom-right',
-      buttonSize: 40,
-      buttonSpacing: 8,
-      backgroundColor: 'rgba(255, 255, 255, 0.9)',
-      borderColor: '#e0e0e0',
-      borderRadius: 6,
-      boxShadow: '0 2px 10px rgba(0, 0, 0, 0.1)',
-      zIndex: 1000,
+      ...defaultToolBarStyle,
       ...config
     };
     this.useI18n = config.useI18n ?? true;
@@ -797,11 +790,7 @@ export class CesiumMapToolbar {
       z-index: 1001;
     `;
 
-    const menuItems = [
-      { id: 'measure-area', text: '测面积', textKey: 'measurement.menu.area', icon: '📐' },
-      { id: 'measure-distance', text: '测距', textKey: 'measurement.menu.distance', icon: '📏' },
-      { id: 'clear-measurement', text: '清除', textKey: 'measurement.menu.clear', icon: '🗑️' }
-    ];
+    const menuItems = defaultMeasureItems;
 
     menuItems.forEach(item => {
       const menuItem = document.createElement('div');

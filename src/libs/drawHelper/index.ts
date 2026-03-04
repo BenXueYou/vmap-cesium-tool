@@ -3,4 +3,5 @@ export { DrawLine } from './DrawLine';
 export { DrawPolygon } from './DrawPolgon';
 export { DrawRectangle } from './DrawRectangle';
 export { DrawCircle } from './DrawCircle';
+export { DrawHintHelper } from './DrawHint';
 

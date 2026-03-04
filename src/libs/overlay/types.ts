@@ -76,6 +76,8 @@ export interface OverlayEntity extends Entity {
 	_highlightState?: { click?: boolean; hover?: boolean };
 	/** 用于还原高亮前的原始样式 */
 	_highlightOriginalStyle?: OverlayHighlightOriginalStyle;
+	/** 高亮时临时创建的“发光边框”实体（由 CesiumOverlayService 管理） */
+	_highlightGlowEntity?: Entity;
 
 	/** 覆盖物类型标识（用于 CesiumOverlayService 做差异化更新/删除） */
 	_overlayType?: string;
@@ -118,6 +120,8 @@ export interface OverlayEntity extends Entity {
 	_primitiveLayerKey?: string;
 	_primitiveRingBaseColor?: Color;
 	_primitiveFillBaseColor?: Color;
+	/** primitive：用于高亮发光边框的外圈/边界位置（通常为闭合折线） */
+	_primitiveOutlinePositions?: Cartesian3[];
 	/** primitive polygon/rectangle: 边框纯色缓存（用于高亮恢复） */
 	_primitiveBorderBaseColor?: Color;
 }

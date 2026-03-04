@@ -89,6 +89,16 @@ export class MapPolygon {
     if (!material) return Cesium.Color.BLUE.withAlpha(0.5);
     if (typeof material === 'string') return this.resolveColor(material);
     if (material instanceof Cesium.Color) return material;
+    if (material instanceof Cesium.ColorMaterialProperty) {
+      try {
+        const c: any = (material as any).color;
+        const v = c && typeof c.getValue === 'function' ? c.getValue(Cesium.JulianDate.now()) : c;
+        if (v instanceof Cesium.Color) return v;
+        if (typeof v === 'string') return this.resolveColor(String(v));
+      } catch {
+        // ignore
+      }
+    }
     return null;
   }
 
@@ -171,6 +181,10 @@ export class MapPolygon {
     const borderBase = surfacePositions;
     const borderPositions: Cesium.Cartesian3[] = borderBase.slice();
     if (borderPositions.length >= 2) borderPositions.push(borderBase[0]);
+
+    // 记录边界（闭合），供高亮时绘制 glow 边框使用
+    fillEntity._primitiveOutlinePositions = borderPositions;
+    borderEntity._primitiveOutlinePositions = borderPositions;
 
     const batch = layerKey ? this.getLayeredPrimitiveBatch(layerKey) : this.getPrimitiveBatch();
     batch.upsertGeometry({
@@ -481,6 +495,10 @@ export class MapPolygon {
       const borderPositions: Cesium.Cartesian3[] = borderBase.slice();
       if (borderPositions.length >= 2) borderPositions.push(borderBase[0]);
 
+      root._primitiveOutlinePositions = borderPositions;
+      const borderPart = root._borderEntity as OverlayEntity | undefined;
+      if (borderPart) borderPart._primitiveOutlinePositions = borderPositions;
+
       const fillColor = root._primitiveFillBaseColor ?? Cesium.Color.ORANGE.withAlpha(0.5);
       const borderColor = root._primitiveBorderBaseColor ?? Cesium.Color.ORANGE;
       const borderWidth = Math.max(1, Number(root._outlineWidth ?? 2) || 2);
@@ -655,7 +673,8 @@ export class MapPolygon {
     if (!root._primitiveFillBaseColor) root._primitiveFillBaseColor = Cesium.Color.ORANGE.withAlpha(0.5);
 
     const borderColor = hlColor.withAlpha(1.0);
-    const fillColor = hlColor.withAlpha(fillAlpha);
+    const fillColor = root._primitiveFillBaseColor ?? Cesium.Color.ORANGE.withAlpha(0.5);
+    // 仅高亮边框，不改变填充
     this.getPrimitiveBatchForOverlay(root).setColors(id, borderColor, fillColor);
     entity._isHighlighted = true;
   }

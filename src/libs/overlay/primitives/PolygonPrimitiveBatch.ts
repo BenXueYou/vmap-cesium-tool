@@ -2,13 +2,14 @@ import * as Cesium from 'cesium';
 import type { Viewer, Entity } from 'cesium';
 
 export interface PolygonPrimitiveParts {
-  fill: Entity; // fill proxy entity (pick id)
-  border: Entity; // border proxy entity (pick id)
+  fill: Entity; // 填充代理实体（用于拾取标识）
+  border: Entity; // 边框代理实体（用于拾取标识）
 }
 
 interface PolygonPrimitiveRecord {
   polygonId: string;
   parts: PolygonPrimitiveParts;
+  instanceIds: { fill: string; border: string };
   fillPositions: Cesium.Cartesian3[];
   borderPositions: Cesium.Cartesian3[];
   borderWidth: number;
@@ -45,12 +46,12 @@ export class PolygonPrimitiveBatch {
     const borderCollection = options?.borderCollection;
 
     if (fillCollection || borderCollection) {
-      // When mounted under external collections, we do not own them.
+      // 当挂载到外部集合下时，这些集合不由本类负责销毁。
       this.fillCollection = (fillCollection ?? borderCollection) as Cesium.PrimitiveCollection;
       this.borderCollection = (borderCollection ?? fillCollection) as Cesium.PrimitiveCollection;
       this.ownsCollections = false;
     } else {
-      // Backwards-compatible: one owned collection attached to the scene.
+      // 兼容旧用法：创建并持有一个根集合，直接挂到场景上。
       const root = new Cesium.PrimitiveCollection();
       this.ownedRootCollection = root;
       this.fillCollection = root;
@@ -65,7 +66,7 @@ export class PolygonPrimitiveBatch {
       if (this.fillPrimitive) this.fillCollection.remove(this.fillPrimitive);
       if (this.borderPrimitive) this.borderCollection.remove(this.borderPrimitive);
     } catch {
-      // ignore
+      // 忽略异常
     }
     this.fillPrimitive = null;
     this.borderPrimitive = null;
@@ -74,7 +75,7 @@ export class PolygonPrimitiveBatch {
       try {
         this.viewer.scene.primitives.remove(this.ownedRootCollection);
       } catch {
-        // ignore
+        // 忽略异常
       }
       this.ownedRootCollection = null;
     }
@@ -95,6 +96,10 @@ export class PolygonPrimitiveBatch {
     this.records.set(args.polygonId, {
       polygonId: args.polygonId,
       parts: args.parts,
+      instanceIds: {
+        fill: `${args.polygonId}__fill`,
+        border: `${args.polygonId}__border`,
+      },
       fillPositions: args.fillPositions,
       borderPositions: args.borderPositions,
       borderWidth: Math.max(1, Number(args.borderWidth) || 1),
@@ -204,7 +209,7 @@ export class PolygonPrimitiveBatch {
       fillInstances.push(
         new Cesium.GeometryInstance({
           geometry: fillGeom,
-          id: rec.parts.fill,
+          id: rec.instanceIds.fill,
           attributes: {
             color: Cesium.ColorGeometryInstanceAttribute.fromColor(fillColor),
           },
@@ -219,7 +224,7 @@ export class PolygonPrimitiveBatch {
       borderInstances.push(
         new Cesium.GeometryInstance({
           geometry: borderGeom,
-          id: rec.parts.border,
+          id: rec.instanceIds.border,
           attributes: {
             color: Cesium.ColorGeometryInstanceAttribute.fromColor(borderColor),
           },
@@ -256,7 +261,7 @@ export class PolygonPrimitiveBatch {
     try {
       this.viewer.scene.requestRender?.();
     } catch {
-      // ignore
+      // 忽略异常
     }
   }
 
@@ -275,7 +280,7 @@ export class PolygonPrimitiveBatch {
     try {
       if (this.fillPrimitive) {
         if ((this.fillPrimitive as any).ready) {
-          const attrs: any = (this.fillPrimitive as any).getGeometryInstanceAttributes(rec.parts.fill);
+          const attrs: any = (this.fillPrimitive as any).getGeometryInstanceAttributes(rec.instanceIds.fill);
           if (attrs && attrs.color) {
             attrs.color = Cesium.ColorGeometryInstanceAttribute.toValue(fillColor);
           }
@@ -284,13 +289,13 @@ export class PolygonPrimitiveBatch {
         }
       }
     } catch {
-      // ignore
+      // 忽略异常
     }
 
     try {
       if (this.borderPrimitive) {
         if ((this.borderPrimitive as any).ready) {
-          const attrs: any = (this.borderPrimitive as any).getGeometryInstanceAttributes(rec.parts.border);
+          const attrs: any = (this.borderPrimitive as any).getGeometryInstanceAttributes(rec.instanceIds.border);
           if (attrs && attrs.color) {
             attrs.color = Cesium.ColorGeometryInstanceAttribute.toValue(borderColor);
           }
@@ -299,7 +304,7 @@ export class PolygonPrimitiveBatch {
         }
       }
     } catch {
-      // ignore
+      // 忽略异常
     }
 
     if (needRetry) {
@@ -309,7 +314,7 @@ export class PolygonPrimitiveBatch {
     try {
       this.viewer.scene.requestRender?.();
     } catch {
-      // ignore
+      // 忽略异常
     }
   }
 }

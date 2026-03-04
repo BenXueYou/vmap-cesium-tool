@@ -5,6 +5,16 @@ import type { OverlayEntity } from '../libs/overlay/types';
 import { CesiumOverlayService } from "../libs/overlay";
 import { i18n } from "../i18n";
 
+type OverlayEditChangeHandler = (entity: Entity & OverlayEntity) => void;
+
+type OverlayHelperOptions = {
+  /**
+   * 覆盖物编辑模式下，拖拽结束且几何变化时触发。
+   * 可用于同步业务数据或触发保存。
+   */
+  onOverlayEditChange?: OverlayEditChangeHandler;
+};
+
 /**
  * 覆盖物相关的辅助逻辑
  * - 提供添加点位（Marker）与示例覆盖物的便捷方法
@@ -23,9 +33,25 @@ export function useOverlayHelper(
   /**
    * 初始化覆盖物服务
    */
-  const initOverlayService = () => {
+  const initOverlayService = (options: OverlayHelperOptions = {}) => {
     if (!viewer.value) return;
-    overlayService.value = new CesiumOverlayService(viewer.value);
+    overlayService.value = new CesiumOverlayService(viewer.value, {
+      onOverlayEditChange: (entity) => {
+        const hasCustom = typeof options.onOverlayEditChange === 'function';
+        if (!hasCustom) {
+          const id = String((entity as any)?.id ?? '');
+          console.log('[OverlayEdit] geometry changed:', id, entity);
+          message.value = `覆盖物已更新${id ? `: ${id}` : ''}`;
+          setTimeout(() => (message.value = ''), 1500);
+        }
+
+        try {
+          options.onOverlayEditChange?.(entity as Entity & OverlayEntity);
+        } catch {
+          // ignore
+        }
+      },
+    });
   };
 
   /**
@@ -404,7 +430,7 @@ export function useOverlayHelper(
       hoverHighlight: { color: '#0be967ff', fillAlpha: 0.35 },
       clickHighlight: { color: '#ffee58', fillAlpha: 0.35 },
       onClick: () => {
-        logRectangle('E(click)', rectangleE);
+        logRectangle('E(click111)', rectangleE);
         message.value = i18n.t('overlay.rectangle_e_clicked');
         setTimeout(() => (message.value = ''), 2000);
       },
@@ -685,12 +711,13 @@ export function useOverlayHelper(
     const circle3 = overlayService.value.addCircle({
       position: [120.19656308, 30.18640485],
       radius: 100.73,
-      outlineWidth: 6,
+      outlineWidth: 1,
       outline: true,
       material: Cesium.Color.fromCssColorString('#18d17e').withAlpha(0.6),
       outlineColor: Cesium.Color.fromCssColorString('#18d17e').withAlpha(1),
       renderMode: 'primitive',
-      layerKey: `circleLayer3`, 
+      layerKey: `circleLayer3`,
+      hoverHighlight: true,
       onClick: () => {
         console.log(circle3, "圆形circle3被点击");
       },
@@ -698,30 +725,48 @@ export function useOverlayHelper(
     const circle2 = overlayService.value.addCircle({
       position: [120.19656308, 30.18640485],
       radius: 52.73,
-      outlineWidth: 6,
-      material: Cesium.Color.fromCssColorString('#ff9900').withAlpha(0.6) ,
+      outlineWidth: 1,
+      material: Cesium.Color.fromCssColorString('#ff9900').withAlpha(0.6),
       outlineColor: Cesium.Color.fromCssColorString('#ff9900').withAlpha(1),
       renderMode: 'primitive',
       layerKey: `circleLayer2`,
       outline: true,
+      hoverHighlight: true,
       onClick: () => {
         console.log(circle2, "圆形circle2被点击");
-      }, 
+      },
     })
 
     const circle1 = overlayService.value.addCircle({
       position: [120.19656308, 30.18640485],
       radius: 30.73,
-      outlineWidth: 6,
+      outlineWidth: 1,
       material: Cesium.Color.fromCssColorString('#d32f2f').withAlpha(0.6),
       outlineColor: Cesium.Color.fromCssColorString('#d32f2f').withAlpha(1),
       renderMode: 'primitive',
-      layerKey: `circleLayer1`, 
+      layerKey: `circleLayer1`,
       outline: true,
+      hoverHighlight: true,
       onClick: () => {
         console.log(circle1, "圆形circle1被点击");
       },
     })
+  }
+
+
+  const removeEntitys = (entity: Cesium.Entity) => {
+    if (!viewer.value || !entity) return
+    viewer.value.entities.remove(entity)
+    const innerEntity = (entity as any)._innerEntity
+    const borderEntity = (entity as any)._borderEntity
+    const labelEntities = (entity as any)._labelEntities
+    if (innerEntity) viewer.value.entities.remove(innerEntity)
+    if (borderEntity) viewer.value.entities.remove(borderEntity)
+    if (labelEntities) {
+      labelEntities.forEach((labelEntity: Cesium.Entity) => {
+        viewer.value?.entities.remove(labelEntity)
+      })
+    }
   }
 
   /**
@@ -733,7 +778,6 @@ export function useOverlayHelper(
     const center = viewer.value.camera.positionCartographic;
     const lon = Cesium.Math.toDegrees(center.longitude);
     const lat = Cesium.Math.toDegrees(center.latitude);
-
 
     // Test A: primitive ✅（粗边框 + 贴地 + 纯色材质）
     const circleA = overlayService.value.addCircle({
@@ -763,10 +807,6 @@ export function useOverlayHelper(
         setTimeout(() => (message.value = ''), 2000);
       },
     });
-
-    // 初始化时打印一次，确认是否走了 primitive
-    logCircle('A(init)', circleA);
-
     addIcon({ longitude: 120.09747987, latitude: 30.12573937 });
 
     // Test B: primitive ❌（非粗边框：outlineWidth<=1，会回退到 entity ellipse）
@@ -818,8 +858,9 @@ export function useOverlayHelper(
       outlineColor: '#2519d2ff',
       outlineWidth: 15,
       segments: 256,
-      clickHighlight: { color: '#ffee58', fillAlpha: 0.35 },
+      // clickHighlight: { color: '#ffee58', fillAlpha: 0.35 },
       hoverHighlight: true,
+      clickHighlight: true,
       renderMode: 'primitive',
       onClick: () => {
         logCircle('D(click)', circleD);
@@ -869,13 +910,14 @@ export function useOverlayHelper(
       clickHighlight: { color: '#ffee58', fillAlpha: 0.35 },
       onClick: () => {
         logCircle('F-alarm(click)', alarmCircle);
-        message.value = i18n.t('overlay.circle_alarm_clicked');
-        setTimeout(() => (message.value = ''), 2000);
+        // viewer.value!.entities.remove(alarmCircle);
+        // overlayService.value!.removeOverlay(alarmCircle.id);
+        // message.value = i18n.t('overlay.circle_alarm_clicked');
+        // setTimeout(() => (message.value = ''), 2000);
       },
     });
-    logCircle('F-alarm(init)', alarmCircle);
 
-        // Test F: primitive ✅（分层叠加：侦测区 vs 告警区）
+    // Test F: primitive ✅（分层叠加：侦测区 vs 告警区）
     // 目标：两个区域都填充、且边界始终清晰可见。
     // 关键：为 primitive circle 提供 layerKey，按业务顺序创建即可确定上下层。
 
@@ -889,15 +931,16 @@ export function useOverlayHelper(
       outlineWidth: 20,
       renderMode: 'primitive',
       layerKey: 'detect222',
-      hoverHighlight: { color: '#0be967ff', fillAlpha: 0.35 },
-      clickHighlight: { color: '#ffee58', fillAlpha: 0.35 },
+      hoverHighlight: true,
+      clickHighlight: true,
+      // hoverHighlight: { color: '#0be967ff', fillAlpha: 0.35 },
+      // clickHighlight: { color: '#ffee58', fillAlpha: 0.35 },
       onClick: () => {
         logCircle('F-detect(click)', detectCircle);
         message.value = i18n.t('overlay.circle_detect_clicked');
         setTimeout(() => (message.value = ''), 2000);
       },
     });
-    logCircle('F-detect(init)', detectCircle);
 
     addIcon({ longitude: detectCenter[0], latitude: detectCenter[1] });
 
@@ -1163,6 +1206,18 @@ export function useOverlayHelper(
     markerEntities.length = 0;
   };
 
+  const closeInfoWindow = () => {
+    if (overlayService.value) {
+       markerEntities.forEach((entity) => {
+        if (entity.id.includes('infowindow_')) {
+          console.log('关闭信息窗口', entity.id); 
+          overlayService.value!.removeOverlay(entity.id);
+        }
+      });
+    }
+  }
+
+
   return {
     overlayService,
     initOverlayService,
@@ -1183,6 +1238,7 @@ export function useOverlayHelper(
     addPolygon,
     addRectangle,
     addInfoWindow,
+    closeInfoWindow,
     testSetOverlayHighlight,
     testToggleOverlayHighlight,
     cancelMarkerMode,

@@ -215,26 +215,45 @@ export default class CesiumHeatmapLayer {
     return null;
   }
 
+  /**
+   * 获取离散桶的索引
+   * @param value - 需要确定桶索引的数值
+   * @return 返回对应的桶索引，如果阈值无效则返回0
+   */
   private getDiscreteBucketIndex(value: number): number {
-    const thresholds = this.options.discreteThresholds;
+    const thresholds = this.options.discreteThresholds; // 获取离散阈值数组
+    // 检查阈值是否为数组且非空，若无效则返回0
     if (!Array.isArray(thresholds) || thresholds.length === 0) return 0;
+    // 遍历阈值数组
     for (let i = 0; i < thresholds.length; i++) {
-      const t = thresholds[i];
+      const t = thresholds[i]; // 获取当前阈值
+      // 如果阈值不是有效数字则跳过
       if (!Number.isFinite(t)) continue;
+      // 如果值小于当前阈值，则返回当前索引
       if (value < t) return i;
     }
+    // 如果值大于所有阈值，则返回阈值数组的长度
     return thresholds.length;
   }
 
+  /**
+   * 渲染离散热力图
+   * @param points 热力点数据数组
+   */
   private renderDiscrete(points: HeatPoint[]): void {
+    // 如果没有完整数据矩形或点数组为空，则直接返回
     if (!this.fullDataRectangle || points.length === 0) return;
 
+    // 从选项中获取宽度、高度和半径
     const { width, height, radius } = this.options;
     const ctx = this.ctx;
+    // 清除整个画布
     ctx.clearRect(0, 0, width, height);
 
+    // 获取离散阈值和颜色配置
     const thresholds = this.options.discreteThresholds;
     const colors = this.options.discreteColors;
+    // 检查阈值和颜色配置是否完整，不完整则回退为普通热力图
     if (!Array.isArray(thresholds) || !Array.isArray(colors) || colors.length !== thresholds.length + 1) {
       // 配置不完整则回退为 heat
       this.renderHeatmap(points, { persistMinMax: false });

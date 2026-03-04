@@ -13,6 +13,60 @@ export class DrawPolygon extends BaseDraw {
   private currentBorderEntity: Entity | null = null;
 
   /**
+   * 结束绘制但未生成最终结果（例如点数不足/自相交被拦截）时的统一清理。
+   * 目标：不留下临时实体/状态副作用（尤其是 depthTestAgainstTerrain）。
+   */
+  private abortFinishCleanup(): void {
+    // 清除临时实体（红点/预览面/预览边框/临时标签）
+    try {
+      this.tempEntities.forEach((entity) => {
+        if (entity) {
+          try {
+            this.entities.remove(entity);
+          } catch {
+            // ignore
+          }
+        }
+      });
+    } catch {
+      // ignore
+    }
+
+    try {
+      this.tempLabelEntities.forEach((entity) => {
+        if (entity) {
+          try {
+            this.entities.remove(entity);
+          } catch {
+            // ignore
+          }
+        }
+      });
+    } catch {
+      // ignore
+    }
+
+    this.tempEntities = [];
+    this.tempLabelEntities = [];
+    this.tempPositions = [];
+    this.currentPolygonEntity = null;
+    this.currentBorderEntity = null;
+
+    // 恢复 requestRenderMode（如果需要）
+    this.restoreRequestRenderModeIfNeeded();
+
+    // 恢复地形深度测试开关
+    try {
+      if (this.originalDepthTestAgainstTerrain !== null) {
+        this.scene.globe.depthTestAgainstTerrain = this.originalDepthTestAgainstTerrain;
+        this.originalDepthTestAgainstTerrain = null;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  /**
    * 开始绘制
    */
   public startDrawing(options?: DrawOptions): void {
@@ -206,17 +260,7 @@ export class DrawPolygon extends BaseDraw {
     const validPositions = this.tempPositions.filter((p) => isValidCartesian3(p));
     if (validPositions.length < 3) {
       console.warn("[DrawPolygon] Not enough valid positions to finish drawing:", validPositions);
-      this.restoreRequestRenderModeIfNeeded();
-      // 清除掉红色的球体实体
-      this.tempEntities.forEach((entity) => {
-        if (entity) {
-          this.entities.remove(entity);
-        }
-      });
-      this.tempEntities.length = 0;
-      this.tempPositions = [];
-      this.currentPolygonEntity = null;
-      this.currentBorderEntity = null;
+      this.abortFinishCleanup();
       return null;
     }
 
@@ -232,7 +276,7 @@ export class DrawPolygon extends BaseDraw {
       .filter((c) => c && Number.isFinite(c.longitude) && Number.isFinite(c.latitude)) as Cesium.Cartographic[];
 
     if (groundCartos.length < 3) {
-      this.restoreRequestRenderModeIfNeeded();
+      this.abortFinishCleanup();
       return null;
     }
 
@@ -247,7 +291,7 @@ export class DrawPolygon extends BaseDraw {
     const safeGroundPositions = groundPositions.filter((p) => isValidCartesian3(p));
     if (safeGroundPositions.length < 3) {
       console.warn("[DrawPolygon] Not enough valid ground positions to finish drawing:", safeGroundPositions);
-      this.restoreRequestRenderModeIfNeeded();
+      this.abortFinishCleanup();
       return null;
     }
 
@@ -258,7 +302,7 @@ export class DrawPolygon extends BaseDraw {
     if (selfIntersectionEnabled) {
       const selfIntersecting = isClosedPolygonSelfIntersecting(safeGroundPositions, { allowTouch });
       if (selfIntersecting && !allowContinue) {
-        this.restoreRequestRenderModeIfNeeded();
+        this.abortFinishCleanup();
         return null;
       }
     }

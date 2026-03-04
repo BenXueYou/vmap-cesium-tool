@@ -61,6 +61,11 @@ const enUS = {
       lod_medium: "Aggregation level: medium",
       lod_fine: "Aggregation level: fine",
     },
+    overlay_edit: {
+      enable: "Enable overlay edit mode",
+      disable: "Disable overlay edit mode",
+      stop: "Exit current edit",
+    },
   },
   draw: {
     start: {
@@ -127,6 +132,9 @@ const enUS = {
     info_window_desc: "Uses <strong>anchorPixel</strong> and sets <code>updateInterval: 200</code>. It should track camera moves in real time (throttling is bypassed while moving).",
     ring_added: "Glowing ring added",
     ring_clicked: "Glowing ring clicked",
+    edit_mode_on: "Overlay edit mode enabled (click an overlay to edit, drag handles to reshape)",
+    edit_mode_off: "Overlay edit mode disabled",
+    edit_stopped: "Exited current overlay edit",
   },
 };
 

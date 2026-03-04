@@ -2,13 +2,14 @@ import * as Cesium from 'cesium';
 import type { Viewer, Entity } from 'cesium';
 
 export interface CirclePrimitiveParts {
-  outer: Entity; // ring entity proxy (pick id)
-  inner: Entity; // fill entity proxy (pick id)
+  outer: Entity; // 外环代理实体（用于拾取标识）
+  inner: Entity; // 填充代理实体（用于拾取标识）
 }
 
 interface CirclePrimitiveRecord {
   circleId: string;
   parts: CirclePrimitiveParts;
+  instanceIds: { outer: string; inner: string };
   ringPositions: Cesium.Cartesian3[];
   fillPositions: Cesium.Cartesian3[];
   ringColor: Cesium.Color;
@@ -45,12 +46,12 @@ export class CirclePrimitiveBatch {
     const fillCollection = options?.fillCollection;
 
     if (ringCollection || fillCollection) {
-      // When mounted under external collections, we do not own them.
+      // 当挂载到外部集合下时，这些集合不由本类负责销毁。
       this.ringCollection = (ringCollection ?? fillCollection) as Cesium.PrimitiveCollection;
       this.fillCollection = (fillCollection ?? ringCollection) as Cesium.PrimitiveCollection;
       this.ownsCollections = false;
     } else {
-      // Backwards-compatible: one owned collection attached to the scene.
+      // 兼容旧用法：创建并持有一个根集合，直接挂到场景上。
       const root = new Cesium.PrimitiveCollection();
       this.ownedRootCollection = root;
       this.ringCollection = root;
@@ -67,14 +68,14 @@ export class CirclePrimitiveBatch {
       this.ringPrimitive = null;
       this.fillPrimitive = null;
     } catch {
-      // ignore
+      // 忽略异常
     }
 
     if (this.ownsCollections && this.ownedRootCollection) {
       try {
         this.viewer.scene.primitives.remove(this.ownedRootCollection);
       } catch {
-        // ignore
+        // 忽略异常
       }
       this.ownedRootCollection = null;
     }
@@ -98,6 +99,12 @@ export class CirclePrimitiveBatch {
     this.records.set(args.circleId, {
       circleId: args.circleId,
       parts: args.parts,
+      // IMPORTANT: GeometryInstance.id must be structured-cloneable when GroundPrimitive is asynchronous.
+      // Use pure string ids here; picking will resolve them back to proxy entities via suffix normalization.
+      instanceIds: {
+        outer: `${args.circleId}__outer`,
+        inner: `${args.circleId}__fill`,
+      },
       ringPositions: args.ringPositions,
       fillPositions: args.fillPositions,
       ringColor: args.ringColor,
@@ -172,7 +179,7 @@ export class CirclePrimitiveBatch {
   }
 
   private rebuild(): void {
-    // Drop old primitives (safe for static-ish scenario)
+    // 清理旧的图元（适用于“基本静态”的批量场景）
     if (this.ringPrimitive) {
       try { this.ringCollection.remove(this.ringPrimitive); } catch {}
       this.ringPrimitive = null;
@@ -200,7 +207,7 @@ export class CirclePrimitiveBatch {
       ringInstances.push(
         new Cesium.GeometryInstance({
           geometry: ringGeom,
-          id: rec.parts.outer,
+          id: rec.instanceIds.outer,
           attributes: {
             color: Cesium.ColorGeometryInstanceAttribute.fromColor(ringColor),
           },
@@ -215,7 +222,7 @@ export class CirclePrimitiveBatch {
       fillInstances.push(
         new Cesium.GeometryInstance({
           geometry: fillGeom,
-          id: rec.parts.inner,
+          id: rec.instanceIds.inner,
           attributes: {
             color: Cesium.ColorGeometryInstanceAttribute.fromColor(fillColor),
           },
@@ -223,7 +230,7 @@ export class CirclePrimitiveBatch {
       );
     }
 
-    // Add fill first, then ring so ring stays visible when using a single shared collection.
+    // 先加填充、后加外环：当“填充/外环”共用同一个集合时，保证外环始终渲染在填充之上。
     if (fillInstances.length > 0) {
       this.fillPrimitive = new Cesium.GroundPrimitive({
         geometryInstances: fillInstances,
@@ -248,7 +255,7 @@ export class CirclePrimitiveBatch {
       this.ringCollection.add(this.ringPrimitive);
     }
 
-    // After rebuild, ensure current colors are applied (covers the case where user toggled highlight while primitive was building)
+    // 重建之后再应用一次“当前颜色”（覆盖：用户在异步构建期间切换高亮/可见性 的情况）
     for (const rec of this.records.values()) {
       this.applyCurrentColors(rec.circleId);
     }
@@ -256,7 +263,7 @@ export class CirclePrimitiveBatch {
     try {
       this.viewer.scene.requestRender?.();
     } catch {
-      // ignore
+      // 忽略异常
     }
   }
 
@@ -272,11 +279,11 @@ export class CirclePrimitiveBatch {
 
     let needRetry = false;
 
-    // If primitives are not ready yet (async pipeline), schedule retry so highlight/visible eventually takes effect.
+    // 如果图元还没就绪（异步管线），安排重试，让高亮/可见性最终生效。
     try {
       if (this.ringPrimitive) {
         if ((this.ringPrimitive as any).ready) {
-          const attrs: any = (this.ringPrimitive as any).getGeometryInstanceAttributes(rec.parts.outer);
+          const attrs: any = (this.ringPrimitive as any).getGeometryInstanceAttributes(rec.instanceIds.outer);
           if (attrs && attrs.color) {
             attrs.color = Cesium.ColorGeometryInstanceAttribute.toValue(ringColor);
           }
@@ -285,13 +292,13 @@ export class CirclePrimitiveBatch {
         }
       }
     } catch {
-      // ignore
+      // 忽略异常
     }
 
     try {
       if (this.fillPrimitive) {
         if ((this.fillPrimitive as any).ready) {
-          const attrs: any = (this.fillPrimitive as any).getGeometryInstanceAttributes(rec.parts.inner);
+          const attrs: any = (this.fillPrimitive as any).getGeometryInstanceAttributes(rec.instanceIds.inner);
           if (attrs && attrs.color) {
             attrs.color = Cesium.ColorGeometryInstanceAttribute.toValue(fillColor);
           }
@@ -300,7 +307,7 @@ export class CirclePrimitiveBatch {
         }
       }
     } catch {
-      // ignore
+      // 忽略异常
     }
 
     if (needRetry) {
@@ -310,7 +317,7 @@ export class CirclePrimitiveBatch {
     try {
       this.viewer.scene.requestRender?.();
     } catch {
-      // ignore
+      // 忽略异常
     }
   }
 }

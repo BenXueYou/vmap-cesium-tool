@@ -15,6 +15,31 @@ export class DrawLine extends BaseDraw {
   private isTotalLabelWarmedUp: boolean = false;
 
   /**
+   * 清理当前线段/总距离标签（不影响线实体本身）
+   */
+  private clearDistanceLabels(): void {
+    this.currentSegmentLabels.forEach((entity) => {
+      if (entity) {
+        this.entities.remove(entity);
+        const index = this.tempLabelEntities.indexOf(entity);
+        if (index > -1) {
+          this.tempLabelEntities.splice(index, 1);
+        }
+      }
+    });
+    this.currentSegmentLabels = [];
+
+    if (this.currentTotalLabel) {
+      this.entities.remove(this.currentTotalLabel);
+      const index = this.tempLabelEntities.indexOf(this.currentTotalLabel);
+      if (index > -1) {
+        this.tempLabelEntities.splice(index, 1);
+      }
+      this.currentTotalLabel = null;
+    }
+  }
+
+  /**
    * 开始绘制
    */
   public startDrawing(options?: DrawOptions): void {
@@ -106,6 +131,12 @@ export class DrawLine extends BaseDraw {
       this.tempEntities.push(this.currentLineEntity);
     }
 
+    // 距离标签（总长/分段）可通过 showDistanceLabel 关闭
+    if (this.drawOptions?.showDistanceLabel === false) {
+      this.clearDistanceLabels();
+      return;
+    }
+
     // 更新分段标签
     this.updateSegmentLabels(positions);
 
@@ -127,6 +158,11 @@ export class DrawLine extends BaseDraw {
     if (validPositions.length < 2) {
       this.restoreRequestRenderModeIfNeeded();
       return null;
+    }
+
+    // 若业务关闭了距离标签，则确保不留下任何测量标签实体
+    if (this.drawOptions?.showDistanceLabel === false) {
+      this.clearDistanceLabels();
     }
 
     const groundPositions = validPositions.map((p) => {

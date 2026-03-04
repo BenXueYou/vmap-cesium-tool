@@ -4,57 +4,54 @@
     <!-- 消息提示 -->
     <div v-if="message" class="message">{{ message }}</div>
     <div class="test-button-group">
-      <div>
-        <button @click="switchLocale('zh-CN')">{{ t('app.lang.zh') }}</button>
-        <button @click="switchLocale('en-US')">{{ t('app.lang.en') }}</button>
+      <div class="action-row">
+        <select class="action-select" v-model="selected.locale" @change="onLocaleSelect">
+          <option disabled value="">{{ tt('app.lang.choose', '语言 / Language') }}</option>
+          <option value="zh-CN">{{ t('app.lang.zh') }}</option>
+          <option value="en-US">{{ t('app.lang.en') }}</option>
+        </select>
       </div>
-      <br />
-      <div>
-        <button @click="addDrawLine">{{ t('ui.draw.line') }}</button>
-        <button @click="addDrawArea">{{ t('ui.draw.area') }}</button>
-        <button @click="addDrawAreaNoLabel">{{ t('ui.draw.area_no_label') }}</button>
-        <button @click="addDrawCircle">{{ t('ui.draw.circle') }}</button>
-        <button @click="addDrawCircleNoLabel">{{ t('ui.draw.circle_no_label') }}</button>
-        <button @click="addDrawPolygon">{{ t('ui.draw.polygon') }}</button>
-        <button @click="addDrawPolygon_PointIntercept">{{ t('ui.draw.polygon_point_intercept') }}</button>
-        <button @click="addDrawPolygon_FinishFallback">{{ t('ui.draw.polygon_finish_fallback') }}</button>
-        <button @click="addDrawPolygonNoLabel">{{ t('ui.draw.polygon_no_label') }}</button>
+
+      <div class="action-row">
+        <select class="action-select" v-model="selected.draw" @change="() => runAction('draw')">
+          <option disabled value="">{{ tt('ui.group.draw', '绘制') }}</option>
+          <option v-for="opt in actionGroups.draw" :key="opt.id" :value="opt.id">{{ getOptionLabel(opt) }}</option>
+        </select>
       </div>
-      <br />
-      <div>
-        <button @click="addMarker">{{ t('ui.add.marker') }}</button>
-        <button @click="addLine">{{ t('ui.add.line') }}</button>
-        <button @click="addArea">{{ t('ui.add.area') }}</button>
-        <button @click="addCircle">{{ t('ui.add.circle') }}</button>
-        <button @click="addCircle123">{{ t('ui.add.circle123') }}</button>
-        <button @click="addPolygon">{{ t('ui.add.polygon') }}</button>
-        <button @click="addPolyline">{{ t('ui.add.polyline') }}</button>
-        <button @click="() => addIcon()">{{ t('ui.add.icon') }}</button>
-        <button @click="() => addSvg()">{{ t('ui.add.svg') }}</button>
-        <button @click="addMarkerWithLabel">{{ t('ui.add.marker_with_label') }}</button>
-        <button @click="addLabel">{{ t('ui.add.label') }}</button>
-        <button @click="addRectangle">{{ t('ui.add.rectangle') }}</button>
-        <button @click="testSetOverlayHighlight">{{ t('ui.test.set_highlight') }}</button>
-        <button @click="testToggleOverlayHighlight">{{ t('ui.test.toggle_highlight') }}</button>
-        <button @click="addInfoWindow">{{ t('ui.add.info_window') }}</button>
-        <button @click="() => addRing()">{{ t('ui.add.ring') }}</button>
-        <button @click="addRingTest">{{ t('ui.add.ring_test') }}</button>
+
+      <div class="action-row">
+        <select class="action-select" v-model="selected.overlay" @change="() => runAction('overlay')">
+          <option disabled value="">{{ tt('ui.group.overlay', '覆盖物/叠加物') }}</option>
+          <option v-for="opt in actionGroups.overlay" :key="opt.id" :value="opt.id">{{ getOptionLabel(opt) }}</option>
+        </select>
       </div>
-      <br />
-      <div>
-        <button @click="addHeatMap">{{ t('ui.add.heatmap') }}</button>
-        <button @click="enableHeatmapAuto">{{ t('ui.heatmap.auto_on') }}</button>
-        <button @click="disableHeatmapAuto">{{ t('ui.heatmap.auto_off') }}</button>
-        <button @click="setHeatmapLodCoarse">{{ t('ui.heatmap.lod_coarse') }}</button>
-        <button @click="setHeatmapLodMedium">{{ t('ui.heatmap.lod_medium') }}</button>
-        <button @click="setHeatmapLodFine">{{ t('ui.heatmap.lod_fine') }}</button>
+
+      <div class="action-row">
+        <select class="action-select" v-model="selected.overlayEdit" @change="() => runAction('overlayEdit')">
+          <option disabled value="">{{ tt('ui.group.overlay_edit', '覆盖物编辑') }}</option>
+          <option v-for="opt in actionGroups.overlayEdit" :key="opt.id" :value="opt.id">{{ getOptionLabel(opt) }}</option>
+        </select>
+      </div>
+
+      <div class="action-row">
+        <select class="action-select" v-model="selected.heatmap" @change="() => runAction('heatmap')">
+          <option disabled value="">{{ tt('ui.group.heatmap', '热力图') }}</option>
+          <option v-for="opt in actionGroups.heatmap" :key="opt.id" :value="opt.id">{{ getOptionLabel(opt) }}</option>
+        </select>
+      </div>
+
+      <div class="action-row">
+        <select class="action-select" v-model="selected.cluster" @change="() => runAction('cluster')">
+          <option disabled value="">点聚合（Cluster）</option>
+          <option v-for="opt in actionGroups.cluster" :key="opt.id" :value="opt.id">{{ getOptionLabel(opt) }}</option>
+        </select>
       </div>
     </div>
   </div>
 </template>
 
 <script lang="ts" setup>
-import { onMounted, ref, onBeforeUnmount } from "vue";
+import { onMounted, ref, onBeforeUnmount, reactive } from "vue";
 import { initCesium, setCameraView } from "./libs/CesiumMapLoader";
 import { CesiumMapToolbar } from "./libs/CesiumMapToolbar";
 import type { ToolbarConfig } from "./libs/CesiumMapModel";
@@ -64,11 +61,12 @@ import { useOverlayHelper } from "./hooks/useOverlayHelper";
 import { getViteTdToken, getViteCesiumToken } from "./utils/common";
 import * as Cesium from "cesium";
 import { useHeatmapHelper } from "./hooks/useHeatmapHelper";
+import { usePointClusterHelper } from "./hooks/usePointClusterHelper";
 import { i18n } from "./i18n";
 let viewer = ref<Cesium.Viewer>();
 const message = ref("");
 let mapToolbar: CesiumMapToolbar | null = null;
-i18n.configure({ persist: true, useStoredLocale: true });
+i18n.configure?.({ persist: true, useStoredLocale: true });
 const currentLocale = ref(i18n.getLocale());
 const t = (key: string, params?: Record<string, any>) => i18n.t(key, params, currentLocale.value);
 const switchLocale = (locale: "zh-CN" | "en-US") => i18n.setLocale(locale, { persist: true });
@@ -111,12 +109,28 @@ const {
   addLabel,
   addRectangle,
   addInfoWindow,
+  closeInfoWindow,
   cancelMarkerMode,
   addRing,
   destroyOverlayService,
   testSetOverlayHighlight,
   testToggleOverlayHighlight,
 } = useOverlayHelper(viewer, message);
+
+const enableOverlayEditMode = () => {
+  overlayService.value?.setOverlayEditMode(true);
+  message.value = t('overlay.edit_mode_on');
+};
+
+const disableOverlayEditMode = () => {
+  overlayService.value?.setOverlayEditMode(false);
+  message.value = t('overlay.edit_mode_off');
+};
+
+const stopOverlayEdit = () => {
+  overlayService.value?.stopOverlayEdit();
+  message.value = t('overlay.edit_stopped');
+};
 
 const {
   heatmapLayer,
@@ -130,6 +144,201 @@ const {
   stopHeatmapAutoUpdate,
   destroyHeatmap,
 } = useHeatmapHelper(viewer);
+
+// 点聚合（Cluster）示例
+const {
+  clusterLayer,
+  visible: clusterVisible,
+  initCluster,
+  updateClusterData,
+  setClusterVisible,
+  destroyCluster,
+} = usePointClusterHelper(viewer);
+
+const generateClusterDemoPoints = (count = 600) => {
+  const baseLon = 120.1986;
+  const baseLat = 30.1862;
+
+  const pts = Array.from({ length: count }).map((_, idx) => {
+    // 在一个很小的经纬度范围内抖动，形成明显聚类效果
+    const lon = baseLon + (Math.random() - 0.5) * 0.02;
+    const lat = baseLat + (Math.random() - 0.5) * 0.02;
+    return {
+      id: String(idx + 1),
+      lon,
+      lat,
+      value: 1,
+      properties: {
+        name: `Point-${idx + 1}`,
+      },
+    };
+  });
+
+  return pts;
+};
+
+const addPointCluster = () => {
+  if (!viewer.value) return;
+
+  initCluster({
+    pixelRange: 60,
+    minimumClusterSize: 2,
+    // count 越大越“热”
+    clusterStyleSteps: [
+      { minCount: 200, color: Cesium.Color.RED, pixelSize: 30 },
+      { minCount: 80, color: Cesium.Color.ORANGE, pixelSize: 26 },
+      { minCount: 20, color: Cesium.Color.YELLOW, pixelSize: 22 },
+      { minCount: 2, color: Cesium.Color.DODGERBLUE, pixelSize: 18 },
+    ],
+    onClusterClick: (points) => {
+      message.value = `点击聚合点：包含 ${points.length} 个点`;
+      setTimeout(() => (message.value = ""), 1500);
+      console.log("cluster points", points);
+    },
+    onPointClick: (point) => {
+      message.value = `点击单点：${String(point.properties?.name ?? point.id ?? '')}`;
+      setTimeout(() => (message.value = ""), 1200);
+      console.log("single point", point);
+    },
+  });
+
+  const pts = generateClusterDemoPoints(800);
+  updateClusterData(pts);
+  setClusterVisible(true);
+
+  setCameraView(viewer.value, {
+    longitude: 120.1986,
+    latitude: 30.1862,
+    height: 9000,
+    pitch: -90,
+  });
+};
+
+const togglePointClusterVisible = () => {
+  if (!clusterLayer.value) {
+    message.value = "请先添加点聚合图层";
+    setTimeout(() => (message.value = ""), 1200);
+    return;
+  }
+  const next = !clusterVisible.value;
+  setClusterVisible(next);
+  message.value = next ? "点聚合：已显示" : "点聚合：已隐藏";
+  setTimeout(() => (message.value = ""), 1200);
+};
+
+const clearPointCluster = () => {
+  if (!clusterLayer.value) {
+    message.value = "请先添加点聚合图层";
+    setTimeout(() => (message.value = ""), 1200);
+    return;
+  }
+  updateClusterData([]);
+  message.value = "点聚合：已清空数据";
+  setTimeout(() => (message.value = ""), 1200);
+};
+
+const destroyPointCluster = () => {
+  destroyCluster();
+  message.value = "点聚合：已销毁";
+  setTimeout(() => (message.value = ""), 1200);
+};
+
+// ===== 下拉动作聚合（按原 <br /> 分组） =====
+type ActionOption = { id: string; labelKey?: string; label?: string; run: () => void };
+type ActionGroupId = 'draw' | 'overlay' | 'overlayEdit' | 'heatmap' | 'cluster';
+
+const selected = reactive({
+  locale: '' as '' | 'zh-CN' | 'en-US',
+  draw: '',
+  overlay: '',
+  overlayEdit: '',
+  heatmap: '',
+  cluster: '',
+});
+
+const onLocaleSelect = () => {
+  if (!selected.locale) return;
+  switchLocale(selected.locale);
+  selected.locale = '';
+};
+
+const tt = (key: string, fallback: string) => {
+  const v = t(key);
+  return !v || v === key ? fallback : v;
+};
+
+const getOptionLabel = (opt: ActionOption) => {
+  if (opt.labelKey) return t(opt.labelKey);
+  return opt.label ?? opt.id;
+};
+
+const actionGroups: Record<ActionGroupId, ActionOption[]> = {
+  draw: [
+    { id: 'addDrawLine', labelKey: 'ui.draw.line', run: addDrawLine },
+    { id: 'addDrawArea', labelKey: 'ui.draw.area', run: addDrawArea },
+    { id: 'addDrawAreaNoLabel', labelKey: 'ui.draw.area_no_label', run: addDrawAreaNoLabel },
+    { id: 'addDrawCircle', labelKey: 'ui.draw.circle', run: addDrawCircle },
+    { id: 'addDrawCircleNoLabel', labelKey: 'ui.draw.circle_no_label', run: addDrawCircleNoLabel },
+    { id: 'addDrawPolygon', labelKey: 'ui.draw.polygon', run: addDrawPolygon },
+    { id: 'addDrawPolygon_PointIntercept', labelKey: 'ui.draw.polygon_point_intercept', run: addDrawPolygon_PointIntercept },
+    { id: 'addDrawPolygon_FinishFallback', labelKey: 'ui.draw.polygon_finish_fallback', run: addDrawPolygon_FinishFallback },
+    { id: 'addDrawPolygonNoLabel', labelKey: 'ui.draw.polygon_no_label', run: addDrawPolygonNoLabel },
+  ],
+  overlay: [
+    { id: 'addMarker', labelKey: 'ui.add.marker', run: addMarker },
+    { id: 'addLine', labelKey: 'ui.add.line', run: addLine },
+    { id: 'addArea', labelKey: 'ui.add.area', run: addArea },
+    { id: 'addCircle', labelKey: 'ui.add.circle', run: addCircle },
+    { id: 'addCircle123', labelKey: 'ui.add.circle123', run: addCircle123 },
+    { id: 'addPolygon', labelKey: 'ui.add.polygon', run: addPolygon },
+    { id: 'addPolyline', labelKey: 'ui.add.polyline', run: addPolyline },
+    { id: 'addIcon', labelKey: 'ui.add.icon', run: () => addIcon() },
+    { id: 'addSvg', labelKey: 'ui.add.svg', run: () => addSvg() },
+    { id: 'addMarkerWithLabel', labelKey: 'ui.add.marker_with_label', run: addMarkerWithLabel },
+    { id: 'addLabel', labelKey: 'ui.add.label', run: () => (addLabel as any)() },
+    { id: 'addRectangle', labelKey: 'ui.add.rectangle', run: addRectangle },
+    { id: 'testSetOverlayHighlight', labelKey: 'ui.test.set_highlight', run: testSetOverlayHighlight },
+    { id: 'testToggleOverlayHighlight', labelKey: 'ui.test.toggle_highlight', run: testToggleOverlayHighlight },
+    { id: 'addInfoWindow', labelKey: 'ui.add.info_window', run: addInfoWindow },
+    { id: 'closeInfoWindow', labelKey: 'ui.add.info_window_close', run: closeInfoWindow },
+    { id: 'addRing', labelKey: 'ui.add.ring', run: () => addRing() },
+    { id: 'addRingTest', labelKey: 'ui.add.ring_test', run: () => addRingTest() },
+  ],
+  overlayEdit: [
+    { id: 'enableOverlayEditMode', labelKey: 'ui.overlay_edit.enable', run: enableOverlayEditMode },
+    { id: 'disableOverlayEditMode', labelKey: 'ui.overlay_edit.disable', run: disableOverlayEditMode },
+    { id: 'stopOverlayEdit', labelKey: 'ui.overlay_edit.stop', run: stopOverlayEdit },
+  ],
+  heatmap: [
+    { id: 'addHeatMap', labelKey: 'ui.add.heatmap', run: () => addHeatMap() },
+    { id: 'enableHeatmapAuto', labelKey: 'ui.heatmap.auto_on', run: () => enableHeatmapAuto() },
+    { id: 'disableHeatmapAuto', labelKey: 'ui.heatmap.auto_off', run: () => disableHeatmapAuto() },
+    { id: 'setHeatmapLodCoarse', labelKey: 'ui.heatmap.lod_coarse', run: () => setHeatmapLodCoarse() },
+    { id: 'setHeatmapLodMedium', labelKey: 'ui.heatmap.lod_medium', run: () => setHeatmapLodMedium() },
+    { id: 'setHeatmapLodFine', labelKey: 'ui.heatmap.lod_fine', run: () => setHeatmapLodFine() },
+  ],
+  cluster: [
+    { id: 'addPointCluster', label: '添加点聚合（示例数据）', run: addPointCluster },
+    { id: 'togglePointClusterVisible', label: '显示/隐藏点聚合', run: togglePointClusterVisible },
+    { id: 'clearPointCluster', label: '清空点聚合数据', run: clearPointCluster },
+    { id: 'destroyPointCluster', label: '销毁点聚合图层', run: destroyPointCluster },
+  ],
+};
+
+const runAction = (group: ActionGroupId) => {
+  const selectedId = selected[group];
+  if (!selectedId) return;
+  const opt = actionGroups[group].find(o => o.id === selectedId);
+  selected[group] = '';
+  if (!opt) return;
+  try {
+    opt.run();
+  } catch (e) {
+    console.error(`[${group}] action failed`, e);
+    message.value = '动作执行失败，请看控制台日志';
+    setTimeout(() => (message.value = ''), 1500);
+  }
+};
 
 // 模拟热力点位数据：覆盖所有分级区间（<40, 40-60, 60-90, 90-110, >=110）
 const defaultHeatmapData = [
@@ -397,7 +606,14 @@ onMounted(async () => {
   viewer.value = cesiumViewer;
 
   // 初始化覆盖物服务
-  initOverlayService();
+  initOverlayService({
+    onOverlayEditChange: (entity) => {
+      const id = String((entity as any)?.id ?? '');
+      console.log('[App] overlay edit change:', id, entity);
+      message.value = id ? `编辑完成：${id}` : '编辑完成';
+      setTimeout(() => (message.value = ''), 1200);
+    },
+  });
 
   // 初始化绘图助手
   initDrawHelper();
@@ -497,6 +713,10 @@ onBeforeUnmount(() => {
   if (mapToolbar) {
     mapToolbar.destroy();
   }
+
+  // 销毁热力图与点聚合
+  destroyHeatmap();
+  destroyCluster();
 });
 </script>
 
@@ -514,11 +734,25 @@ onBeforeUnmount(() => {
   left: 10px;
   z-index: 1001;
 
-  div {
+  .action-row {
     display: flex;
-    flex-direction: wrap;
-    gap: 6px;
   }
+}
+
+.action-select {
+  min-width: 260px;
+  max-width: 360px;
+  height: 34px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #fff;
+  background: rgba(0, 0, 0, 0.52);
+  outline: none;
+}
+
+.action-select option {
+  color: #000;
 }
 
 .message {

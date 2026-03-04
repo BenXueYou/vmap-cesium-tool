@@ -3,7 +3,7 @@ import type { Cartesian3 } from "cesium";
 
 type Vec2 = { x: number; y: number };
 
-type IntersectionKind = "none" | "touch" | "cross" | "overlap";
+export type IntersectionKind = "none" | "touch" | "cross" | "overlap";
 
 const DEFAULT_EPS = 1e-9;
 
@@ -141,6 +141,7 @@ function openPolylineWouldSelfIntersect2D(points: Vec2[], allowTouch: boolean): 
   return false;
 }
 
+
 function closingEdgeWouldIntersect2D(points: Vec2[], allowTouch: boolean): boolean {
   // Check whether the closing edge (last -> first) intersects any non-adjacent edge.
   const n = points.length;
@@ -194,6 +195,36 @@ function closedPolygonIsSelfIntersecting2D(points: Vec2[], allowTouch: boolean):
   return false;
 }
 
+function closedPolygonSelfIntersectionKind2D(points: Vec2[]): IntersectionKind {
+  const n = points.length;
+  if (n < 4) return "none";
+
+  const edges: Array<{ a: Vec2; b: Vec2; i: number; j: number }> = [];
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    edges.push({ a: points[i], b: points[j], i, j });
+  }
+
+  for (let e1 = 0; e1 < edges.length; e1++) {
+    for (let e2 = e1 + 1; e2 < edges.length; e2++) {
+      const s1 = edges[e1];
+      const s2 = edges[e2];
+
+      const shareVertex =
+        s1.i === s2.i ||
+        s1.i === s2.j ||
+        s1.j === s2.i ||
+        s1.j === s2.j;
+      if (shareVertex) continue;
+
+      const kind = segmentIntersectionKind(s1.a, s1.b, s2.a, s2.b);
+      if (kind !== "none") return kind;
+    }
+  }
+
+  return "none";
+}
+
 /**
  * Returns true if adding `nextPoint` to an open polygon polyline would create a self-intersection.
  */
@@ -209,6 +240,18 @@ export function wouldCreatePolygonSelfIntersection(
   // Preview stage: treat as a closed polygon and run full edge-to-edge detection.
   return closedPolygonIsSelfIntersecting2D(pts2d, allowTouch);
 }
+
+
+export function wouldCreatePolygonSelfIntersectionKind(
+  existingPoints: Cartesian3[],
+  nextPoint: Cartesian3
+): IntersectionKind {
+  const points = [...existingPoints, nextPoint];
+  if (points.length < 4) return "none";
+  const pts2d = toLocal2D(points);
+  return closedPolygonSelfIntersectionKind2D(pts2d);
+}
+
 
 /**
  * Returns true if the closed polygon described by `points` is self-intersecting.

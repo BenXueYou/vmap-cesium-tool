@@ -7,13 +7,13 @@ export interface PolygonPrimitiveLayerCollections {
 }
 
 /**
- * Maintains a stable, ordered layer stack for Polygon primitive rendering.
+ * 为 Polygon（多边形）Primitive 渲染维护一个稳定的有序图层栈。
  *
- * Rendering order:
- * - all fill layers (bottom -> top)
- * - all border layers (bottom -> top)
+ * 渲染顺序：
+ * - 所有填充图层（从下到上）
+ * - 所有边框图层（从下到上）
  *
- * This ensures borders remain visible even when multiple translucent fills overlap.
+ * 这样可以确保在存在多个半透明填充重叠时，边框仍然清晰可见。
  */
 export class PolygonPrimitiveLayerStack {
   private viewer: Viewer;
@@ -29,7 +29,7 @@ export class PolygonPrimitiveLayerStack {
     this.fillsRoot = new Cesium.PrimitiveCollection();
     this.bordersRoot = new Cesium.PrimitiveCollection();
 
-    // Add fills first, borders second so borders always render above fills.
+    // 先添加填充，再添加边框，以保证边框始终渲染在填充之上。
     this.viewer.scene.primitives.add(this.fillsRoot);
     this.viewer.scene.primitives.add(this.bordersRoot);
   }
@@ -42,7 +42,7 @@ export class PolygonPrimitiveLayerStack {
     const fillCollection = new Cesium.PrimitiveCollection();
     const borderCollection = new Cesium.PrimitiveCollection();
 
-    // Layer ordering is the insertion order of these sub-collections.
+    // 图层顺序即这些子集合被插入的顺序。
     this.fillsRoot.add(fillCollection);
     this.bordersRoot.add(borderCollection);
 
@@ -55,12 +55,12 @@ export class PolygonPrimitiveLayerStack {
     try {
       this.viewer.scene.primitives.remove(this.fillsRoot);
     } catch {
-      // ignore
+      // 忽略异常
     }
     try {
       this.viewer.scene.primitives.remove(this.bordersRoot);
     } catch {
-      // ignore
+      // 忽略异常
     }
 
     this.layers.clear();
