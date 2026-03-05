@@ -239,12 +239,13 @@ export class OverlayEditController {
 
   private detectEditableKind(entity: (DrawEntity & OverlayEntity)): OverlayEditingKind | null {
     const overlayType = String((entity as any)._overlayType ?? "");
+    const isRingCircle = !!(entity as any)._isRing && ((entity as any)._centerCartographic || (entity as any)._outerRadius);
 
+    if (overlayType === "circle-primitive" || isRingCircle || entity.ellipse) return "circle";
     if (entity.polygon || overlayType === "polygon-primitive") return "polygon";
     if (entity.rectangle || overlayType === "rectangle-primitive" || (entity as any)._outerRectangle) return "rectangle";
-    if (entity.ellipse || overlayType === "circle-primitive" || ((entity as any)._centerCartographic && (entity as any)._outerRadius)) return "circle";
     if (entity.polyline) return "polyline";
-    if (entity.label) return null;
+    if (entity.label && !(entity.point || entity.billboard)) return null;
     if ((entity as any)._infoWindow) return null;
     if (entity.point || entity.billboard) return "point";
 
@@ -822,7 +823,71 @@ export class OverlayEditController {
         this.restoreCameraController();
 
         if (shouldEmit && target && this.onChange) {
+          let tempKey: string | null = null;
           try {
+            const id = (target as any).id ?? null;
+            const overlayType = id ? id.split("_")[0] : null;
+            if (overlayType) (target as any)['overlayType'] = overlayType;
+            if (overlayType === "marker") {
+              const pos = this.getPropertyValue<Cesium.Cartesian3 | null>((target as any).position, null);
+              if (pos) {
+                tempKey = "__vmapPrimitiveLngLatPosition";
+                const posLngLat = this.convertPositionToLngLat(pos);
+                (target as any)[tempKey] = posLngLat;
+              }
+            }
+            if (overlayType === "polyline") {
+              const polyline = (target as any)?.polyline as Cesium.Cartesian3[] | undefined;
+              const positions = this.getPropertyValue<any>((polyline as any)?.positions, null) as Cesium.Cartesian3[] | null;
+              if (Array.isArray(positions) && positions.length > 0) {
+                tempKey = "__vmapPrimitivePolylineLngLatPositions";
+                const lngLatPositions = this.convertOutlineToLngLat(positions);
+                (target as any)[tempKey] = lngLatPositions;
+              }
+            }
+            if (overlayType === "circle") {
+              const pos = (target as any)._centerCartographic as Cesium.Cartographic | undefined;
+              tempKey = "__vmapPrimitiveCircleLngLatPosition";
+              if (pos) {
+                const posLngLat = this.convertCartoToLngLat((target as any)._centerCartographic);
+                (target as any)[tempKey] = posLngLat;
+              } else {
+                const position = this.getPropertyValue<Cesium.Cartesian3 | null>((target as any).position, null);
+                if (position) {
+                  const posLngLat = this.convertPositionToLngLat(position);
+                  (target as any)[tempKey] = posLngLat;
+                }
+              }              
+            }
+            if (overlayType === "polygon") {
+              const outline = (target as any)?._primitiveOutlinePositions as Cesium.Cartesian3[] | undefined;
+              if (Array.isArray(outline) && outline.length > 0) {
+                tempKey = "__vmapPrimitiveOutlineLngLatPositions";
+                const lngLatPositions = this.convertOutlineToLngLat(outline);
+                (target as any)[tempKey] = lngLatPositions;
+              }
+            }
+            if (overlayType === "rectangle") {
+              const rect = this.getEditableRectangle(target as any);
+              if (rect) {
+                const height = this.getRectangleEditHeight(target as any);
+                const w = rect.west;
+                const s = rect.south;
+                const e = rect.east;
+                const n = rect.north;
+                const lngLatPositions: Array<[number, number, number]> = [
+                  [Cesium.Math.toDegrees(w), Cesium.Math.toDegrees(s), height],
+                  [Cesium.Math.toDegrees(e), Cesium.Math.toDegrees(s), height],
+                  [Cesium.Math.toDegrees(e), Cesium.Math.toDegrees(n), height],
+                  [Cesium.Math.toDegrees(w), Cesium.Math.toDegrees(n), height],
+                ];
+                (target as any).__vmapPrimitiveRectangleLngLatPositions = lngLatPositions;
+
+                const centerCarto = Cesium.Rectangle.center(rect, new Cesium.Cartographic());
+                centerCarto.height = height;
+                (target as any).__vmapPrimitiveRectangleCenterLngLat = this.convertCartoToLngLat(centerCarto);
+              }
+            }
             this.onChange(target);
           } catch {
             // ignore
@@ -1289,6 +1354,43 @@ export class OverlayEditController {
       return Number.isFinite(c.height) ? c.height : 0;
     } catch {
       return 0;
+    }
+  }
+
+  private convertOutlineToLngLat(positions: Cesium.Cartesian3[]): Array<[number, number, number]> {
+    const out: Array<[number, number, number]> = [];
+    for (const p of positions) {
+      try {
+        if (!p) continue;
+        const temp = this.convertPositionToLngLat(p);
+        if (temp) out.push(temp);
+      } catch {
+        // ignore
+      }
+    }
+    return out;
+  }
+
+  private convertPositionToLngLat(position: Cesium.Cartesian3): [number, number, number] | null {
+    try {
+      if (!position) return null;
+      const carto = Cesium.Cartographic.fromCartesian(position);
+      if (!carto || !Number.isFinite(carto.longitude) || !Number.isFinite(carto.latitude)) return null;
+      return this.convertCartoToLngLat(carto);
+    } catch {
+      return null;
+    }
+  }
+
+  private convertCartoToLngLat(carto: Cesium.Cartographic): [number, number, number] | null {
+    try {
+      if (!carto || !Number.isFinite(carto.longitude) || !Number.isFinite(carto.latitude)) return null;
+      const lon = Cesium.Math.toDegrees(carto.longitude);
+      const lat = Cesium.Math.toDegrees(carto.latitude);
+      const h = Number.isFinite(carto.height) ? carto.height : 0;
+      return [lon, lat, h];
+    } catch {
+      return null;
     }
   }
 

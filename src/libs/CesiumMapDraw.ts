@@ -1,5 +1,4 @@
 import * as Cesium from "cesium";
-import type { Primitive } from "cesium";
 import { BaseDraw, DrawLine, DrawPolygon, DrawRectangle, DrawCircle, type DrawCallbacks, type DrawOptions, type DrawEntity, toggleSelectedStyle } from './drawHelper';
 import { DrawHintHelper } from './drawHelper/DrawHint';
 import { wouldCreatePolygonSelfIntersection, wouldCreatePolygonSelfIntersectionKind } from '../utils/selfIntersection';
@@ -661,9 +660,14 @@ class DrawHelper {
     }
   }
 
+  /**
+   * 检测并输出可能存在高度限制问题的实体信息
+   * @param tag 标识本次检测的唯一标签
+   * @returns 返回包含检测结果的报告对象
+   */
   private dumpPotentialClampingEntities(tag: string): {
-    time: number;
-    tag: string;
+    time: number;  // 报告生成的时间戳
+    tag: string;   // 报告标识标签
     suspects: Array<{ source: string; id: string; kind: string; value?: any }>;
     invalidPositions: Array<{ source: string; id: string; kind: string }>;
     scanned: { viewerEntities: number; dataSources: number };
@@ -965,10 +969,18 @@ class DrawHelper {
     }
   }
 
+  /**
+   * 卸载实体集合添加钩子函数
+   * 该方法用于移除之前添加到EntityCollection原型中的自定义add方法
+   * 恢复原始的add方法实现
+   */
   private uninstallEntitiesAddHook(): void {
+    // 如果钩子未安装，则直接返回
     if (!this.entityCollectionAddHookInstalled) return;
     try {
+      // 获取Cesium的EntityCollection原型对象
       const proto: any = (Cesium as any).EntityCollection?.prototype;
+      // 如果原型存在且保存有原始的add方法，则恢复原始的add方法
       if (proto && this.originalEntityCollectionAdd) {
         proto.add = this.originalEntityCollectionAdd;
       }
@@ -1198,8 +1210,6 @@ class DrawHelper {
       this.offsetHeight = 0; // 2D模式使用0米偏移，所有元素都贴近地面
     }
   }
-
-  
 
   /**
    * 开始绘制线条
@@ -1977,7 +1987,6 @@ class DrawHelper {
   onEntityRemoved(callback: (entity: Cesium.Entity) => void): void {
     this.onEntityRemovedCallback = callback;
   }
-
 
   /**
    * 更新所有已完成实体以适应场景模式变化
