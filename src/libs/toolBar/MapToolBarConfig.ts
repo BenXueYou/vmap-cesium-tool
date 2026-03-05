@@ -24,9 +24,9 @@ export const defaultButtons: ButtonConfig[] = [
 
 // 测量菜单
 export const defaultMeasureItems = [
-    { id: 'measure-area', text: '测面积', textKey: 'measurement.menu.area', icon: '📐' },
-    { id: 'measure-distance', text: '测距', textKey: 'measurement.menu.distance', icon: '📏' },
-    { id: 'clear-measurement', text: '清除', textKey: 'measurement.menu.clear', icon: '🗑️' }
+    { id: 'measure-area', text: '测面积', textKey: 'measurement.menu.area', icon: 'src/assets/images/svg/area.svg' },
+    { id: 'measure-distance', text: '测距', textKey: 'measurement.menu.distance', icon: 'src/assets/images/svg/distance.svg' },
+    { id: 'clear-measurement', text: '清除', textKey: 'measurement.menu.clear', icon: 'src/assets/images/svg/clear .svg' }
 ]
 
 // 测量绘制
