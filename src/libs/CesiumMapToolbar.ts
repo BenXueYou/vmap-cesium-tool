@@ -810,14 +810,46 @@ export class CesiumMapToolbar {
       } else {
         label.textContent = item.text;
       }
-      menuItem.append(item.icon, ' ', label);
+      
+      // 处理图标
+      if (item.icon && typeof item.icon === 'string') {
+        // 检查是否为SVG文件路径
+        if (item.icon.endsWith('.svg')) {
+          // 创建图片元素
+          const img = document.createElement('img');
+          img.src = item.icon;
+          img.style.width = '16px';
+          img.style.height = '16px';
+          img.style.color = 'currentColor';
+          menuItem.appendChild(img);
+          menuItem.appendChild(document.createTextNode(' '));
+          menuItem.appendChild(label);
+        } else if (item.icon.startsWith('<svg')) {
+          // 处理内联SVG
+          const iconContainer = document.createElement('div');
+          iconContainer.innerHTML = item.icon;
+          const svgElement = iconContainer.firstChild;
+          if (svgElement) {
+            menuItem.appendChild(svgElement);
+            menuItem.appendChild(document.createTextNode(' '));
+            menuItem.appendChild(label);
+          }
+        } else {
+          // 处理普通文本图标
+          menuItem.append(item.icon, ' ', label);
+        }
+      } else {
+        menuItem.append(item.icon, ' ', label);
+      }
       menuItem.addEventListener('mouseenter', () => {
-        menuItem.style.backgroundColor = '#023C61';
+        menuItem.style.backgroundColor = '#055AB0';
+        menuItem.style.color = '#007BFF';
         menuItem.style.transform = 'scale(1.02)';
       });
 
       menuItem.addEventListener('mouseleave', () => {
         menuItem.style.backgroundColor = 'transparent';
+        menuItem.style.color = '#fff';
         menuItem.style.transform = 'scale(1.00)';
       });
 
