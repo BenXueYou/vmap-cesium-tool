@@ -114,6 +114,19 @@ setOverlayHighlight(entityOrId: OverlayEntity | string, enabled: boolean, reason
 
 显式开启/关闭某覆盖物高亮。
 
+### toggleOverlayHoverHighlight
+
+```ts
+toggleOverlayHoverHighlight(enabled: boolean): void
+```
+
+启用或禁用覆盖物 hover 高亮处理器。
+
+- `true`：开启 hover 处理（MOUSE_MOVE 下会 pick/drillPick 并触发 hover 高亮）
+- `false`：关闭 hover 处理（不再触发 hover 高亮）
+
+> 说明：该方法只影响 hover 高亮，不影响 click 高亮；关闭时会在 hover handler 内主动清除当前 hover 高亮。
+
 ### clickHighlight / hoverHighlight 选项
 
 多数覆盖物 options 都支持：

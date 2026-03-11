@@ -46,6 +46,11 @@ export interface PointClusterLayerOptions {
   /** 聚合点样式分段：用 count 决定颜色/大小 */
   clusterStyleSteps?: ClusterStyleStep[];
 
+  /** 自定义聚合点渲染（直接修改 cluster entity） */
+  renderCluster?: (args: { cluster: Entity; clusteredEntities: Entity[]; count: number }) => void;
+  /** 自定义单点渲染（直接修改 point entity） */
+  renderSinglePoint?: (args: { entity: Entity; point: ClusterPoint }) => void;
+
   /** 点击聚合点回调：返回该聚合内的原始点 */
   onClusterClick?: (points: ClusterPoint[], ctx: { screenPosition: Cesium.Cartesian2; worldPosition?: Cesium.Cartesian3 }) => void;
   /** 点击单点回调 */
@@ -71,6 +76,8 @@ export default class CesiumPointClusterLayer {
     clusterStyleSteps: ClusterStyleStep[];
     onClusterClick?: PointClusterLayerOptions['onClusterClick'];
     onPointClick?: PointClusterLayerOptions['onPointClick'];
+    renderCluster?: PointClusterLayerOptions['renderCluster'];
+    renderSinglePoint?: PointClusterLayerOptions['renderSinglePoint'];
   };
 
   private dataSource: CustomDataSource;
@@ -108,6 +115,8 @@ export default class CesiumPointClusterLayer {
       idPrefix: options.idPrefix ?? `${layerId}:`,
       onClusterClick: options.onClusterClick,
       onPointClick: options.onPointClick,
+      renderCluster: options.renderCluster,
+      renderSinglePoint: options.renderSinglePoint,
     };
 
     this.dataSource = new Cesium.CustomDataSource(layerId);
@@ -168,6 +177,14 @@ export default class CesiumPointClusterLayer {
       }) as InternalEntity;
 
       entity.__vmapClusterLayerId = this.layerId;
+
+      if (this.options.renderSinglePoint) {
+        try {
+          this.options.renderSinglePoint({ entity, point: p });
+        } catch {
+          // ignore
+        }
+      }
     }
 
     // 触发一次重新聚类
@@ -217,11 +234,21 @@ export default class CesiumPointClusterLayer {
     const count = clusteredEntities.length;
     const style = this.pickStyle(count);
 
+    if (this.options.renderCluster) {
+      try {
+        this.options.renderCluster({ cluster, clusteredEntities, count });
+      } catch {
+        // ignore
+      }
+      return;
+    }
+
     // 统一用 point + label 展示（最轻量）
     (cluster as any).billboard && ((cluster as any).billboard.show = false);
 
     if ((cluster as any).point) {
       (cluster as any).point.show = true;
+      (cluster as any).point.id = cluster;
       (cluster as any).point.pixelSize = style.pixelSize ?? this.options.clusterPixelSize;
       (cluster as any).point.color = toCesiumColor(style.color);
       (cluster as any).point.outlineColor = Cesium.Color.WHITE.withAlpha(0.85);
@@ -231,6 +258,7 @@ export default class CesiumPointClusterLayer {
 
     if ((cluster as any).label) {
       (cluster as any).label.show = true;
+      (cluster as any).label.id = cluster;
       (cluster as any).label.text = String(count);
       (cluster as any).label.font = 'bold 14px sans-serif';
       (cluster as any).label.fillColor = Cesium.Color.WHITE;

@@ -13,8 +13,8 @@ import { MapRectangle, type RectangleOptions } from './overlay/MapRectangle';
 import { MapCircle, type CircleOptions } from './overlay/MapCircle';
 import { MapRing, type RingOptions } from './overlay/MapRing';
 import type { OverlayPosition } from './overlay/types';
-import { OverlayEditController } from './overlay-edit/OverlayEditController';
-import { OverlayHighlight } from './overlay-edit/OverlayHighlight';
+import { OverlayEditController } from './overlay/OverlayEditController';
+import { OverlayHighlight } from './overlay/OverlayHighlight';
 
 export interface CesiumOverlayServiceOptions {
   /**

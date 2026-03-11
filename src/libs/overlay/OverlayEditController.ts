@@ -1,7 +1,7 @@
 import * as Cesium from "cesium";
 import type { Viewer } from "cesium";
 import type { DrawEntity } from "../drawHelper";
-import type { OverlayEntity } from "../overlay/types";
+import type { OverlayEntity } from "./types";
 import {
   buildCircleHandles,
   buildPointHandles,

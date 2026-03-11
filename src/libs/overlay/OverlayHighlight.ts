@@ -1,10 +1,10 @@
 import * as Cesium from "cesium";
 import type { Entity } from "cesium";
 import type { DrawEntity } from "../drawHelper";
-import type { OverlayEntity } from "../overlay/types";
-import type { MapCircle } from "../overlay/MapCircle";
-import type { MapPolygon } from "../overlay/MapPolygon";
-import type { MapRectangle } from "../overlay/MapRectangle";
+import type { OverlayEntity } from "./types";
+import type { MapCircle } from "./MapCircle";
+import type { MapPolygon } from "./MapPolygon";
+import type { MapRectangle } from "./MapRectangle";
 
 export interface OverlayHighlightHost {
 	getEntities(): Cesium.EntityCollection;
