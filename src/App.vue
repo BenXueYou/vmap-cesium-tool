@@ -68,10 +68,19 @@ import { i18n } from "./i18n";
 import eleCImage from "./assets/images/ter_c.png";
 import imgCImage from "./assets/images/vec_c.png";
 
+const CLUSTER_LABEL_BG_COLOR = Cesium.Color.BLACK.withAlpha(0.45);
+const CLUSTER_LABEL_OUTLINE_COLOR = Cesium.Color.BLACK.withAlpha(0.85);
+const CLUSTER_LABEL_BG_PADDING = new Cesium.Cartesian2(6, 4);
+const CLUSTER_LABEL_OFFSET_CENTER = new Cesium.Cartesian2(0, 0);
+const CLUSTER_LABEL_EYE_OFFSET_FRONT = new Cesium.Cartesian3(0, 0, -10);
+const CLUSTER_BILLBOARD_EYE_OFFSET = new Cesium.Cartesian3(0, 0, 0);
+
 
 let viewer = ref<Cesium.Viewer>();
 const message = ref("");
+const hideClusterLabelDuringMove = ref(false);
 let mapToolbar: CesiumMapToolbar | null = null;
+let removeClusterMoveListeners: (() => void) | null = null;
 i18n.configure?.({ persist: true, useStoredLocale: true });
 const currentLocale = ref(i18n.getLocale());
 const t = (key: string, params?: Record<string, any>) => i18n.t(key, params, currentLocale.value);
@@ -222,29 +231,48 @@ const addPointCluster = () => {
 
       if (anyCluster.billboard) {
         const iconSize = count >= 50 ? 56 : 44;
+        const image = count >= 50 ? eleCImage : imgCImage;
         anyCluster.billboard.show = true;
-        anyCluster.billboard.image = count >= 50 ? eleCImage : imgCImage;
-        anyCluster.billboard.width = iconSize;
-        anyCluster.billboard.height = iconSize;
-        anyCluster.billboard.verticalOrigin = Cesium.VerticalOrigin.CENTER;
-        anyCluster.billboard.disableDepthTestDistance = Number.POSITIVE_INFINITY;
+        if (anyCluster.billboard.image !== image) anyCluster.billboard.image = image;
+        if (anyCluster.billboard.width !== iconSize) anyCluster.billboard.width = iconSize;
+        if (anyCluster.billboard.height !== iconSize) anyCluster.billboard.height = iconSize;
+        if (anyCluster.billboard.verticalOrigin !== Cesium.VerticalOrigin.CENTER) {
+          anyCluster.billboard.verticalOrigin = Cesium.VerticalOrigin.CENTER;
+        }
+        if (anyCluster.billboard.eyeOffset !== CLUSTER_BILLBOARD_EYE_OFFSET) {
+          anyCluster.billboard.eyeOffset = CLUSTER_BILLBOARD_EYE_OFFSET;
+        }
+        if (anyCluster.billboard.disableDepthTestDistance !== Number.POSITIVE_INFINITY) {
+          anyCluster.billboard.disableDepthTestDistance = Number.POSITIVE_INFINITY;
+        }
       }
 
       if (anyCluster.label) {
+        if (hideClusterLabelDuringMove.value) {
+          anyCluster.label.show = false;
+          anyCluster.label.showBackground = false;
+          return;
+        }
         anyCluster.label.show = true;
-        anyCluster.label.text = String(count);
-        anyCluster.label.font = "bold 13px sans-serif";
-        anyCluster.label.fillColor = Cesium.Color.WHITE;
-        anyCluster.label.outlineColor = Cesium.Color.BLACK.withAlpha(0.85);
-        anyCluster.label.outlineWidth = 2;
-        anyCluster.label.style = Cesium.LabelStyle.FILL_AND_OUTLINE;
+        const text = String(count);
+        if (anyCluster.label.text !== text) anyCluster.label.text = text;
+        if (anyCluster.label.font !== "bold 13px sans-serif") anyCluster.label.font = "bold 13px sans-serif";
+        if (anyCluster.label.fillColor !== Cesium.Color.WHITE) anyCluster.label.fillColor = Cesium.Color.WHITE;
+        if (anyCluster.label.outlineColor !== CLUSTER_LABEL_OUTLINE_COLOR) anyCluster.label.outlineColor = CLUSTER_LABEL_OUTLINE_COLOR;
+        if (anyCluster.label.outlineWidth !== 2) anyCluster.label.outlineWidth = 2;
+        if (anyCluster.label.style !== Cesium.LabelStyle.FILL_AND_OUTLINE) {
+          anyCluster.label.style = Cesium.LabelStyle.FILL_AND_OUTLINE;
+        }
         anyCluster.label.showBackground = true;
-        anyCluster.label.backgroundColor = Cesium.Color.BLACK.withAlpha(0.45);
-        anyCluster.label.backgroundPadding = new Cesium.Cartesian2(6, 4);
-        anyCluster.label.verticalOrigin = Cesium.VerticalOrigin.CENTER;
-        anyCluster.label.horizontalOrigin = Cesium.HorizontalOrigin.CENTER;
-        anyCluster.label.pixelOffset = new Cesium.Cartesian2(0, 0);
-        anyCluster.label.disableDepthTestDistance = Number.POSITIVE_INFINITY;
+        if (anyCluster.label.backgroundColor !== CLUSTER_LABEL_BG_COLOR) anyCluster.label.backgroundColor = CLUSTER_LABEL_BG_COLOR;
+        if (anyCluster.label.backgroundPadding !== CLUSTER_LABEL_BG_PADDING) anyCluster.label.backgroundPadding = CLUSTER_LABEL_BG_PADDING;
+        if (anyCluster.label.verticalOrigin !== Cesium.VerticalOrigin.CENTER) anyCluster.label.verticalOrigin = Cesium.VerticalOrigin.CENTER;
+        if (anyCluster.label.horizontalOrigin !== Cesium.HorizontalOrigin.CENTER) anyCluster.label.horizontalOrigin = Cesium.HorizontalOrigin.CENTER;
+        if (anyCluster.label.pixelOffset !== CLUSTER_LABEL_OFFSET_CENTER) anyCluster.label.pixelOffset = CLUSTER_LABEL_OFFSET_CENTER;
+        if (anyCluster.label.eyeOffset !== CLUSTER_LABEL_EYE_OFFSET_FRONT) anyCluster.label.eyeOffset = CLUSTER_LABEL_EYE_OFFSET_FRONT;
+        if (anyCluster.label.disableDepthTestDistance !== Number.POSITIVE_INFINITY) {
+          anyCluster.label.disableDepthTestDistance = Number.POSITIVE_INFINITY;
+        }
       }
     },
     renderSinglePoint: ({ entity, point }) => {
@@ -663,6 +691,29 @@ onMounted(async () => {
   (window as any).cesiumViewer = cesiumViewer;
   viewer.value = cesiumViewer;
 
+  const onCameraMoveStart = () => {
+    hideClusterLabelDuringMove.value = true;
+  };
+  const onCameraMoveEnd = () => {
+    window.setTimeout(() => {
+      hideClusterLabelDuringMove.value = false;
+    }, 80);
+  };
+  viewer.value.camera.moveStart.addEventListener(onCameraMoveStart);
+  viewer.value.camera.moveEnd.addEventListener(onCameraMoveEnd);
+  removeClusterMoveListeners = () => {
+    try {
+      viewer.value?.camera.moveStart.removeEventListener(onCameraMoveStart);
+    } catch {
+      // ignore
+    }
+    try {
+      viewer.value?.camera.moveEnd.removeEventListener(onCameraMoveEnd);
+    } catch {
+      // ignore
+    }
+  };
+
   // 初始化覆盖物服务
   initOverlayService({
     onOverlayEditChange: (entity) => {
@@ -762,6 +813,11 @@ const customToolBarBtn = (mapToolbar: CesiumMapToolbar) => {
 
 // 清理资源
 onBeforeUnmount(() => {
+  if (removeClusterMoveListeners) {
+    removeClusterMoveListeners();
+    removeClusterMoveListeners = null;
+  }
+
   // 清理覆盖物服务
   destroyOverlayService();
 

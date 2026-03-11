@@ -1,4 +1,9 @@
 import type { ButtonConfig, ToolbarConfig } from '../CesiumMapModel';
+import measureArea from '../../assets/images/svg/area.svg'
+import measureDistance from '../../assets/images/svg/distance.svg'
+import measureClear from '../../assets/images/svg/clear.svg'
+
+
 export const defaultButtonSorts: Record<string, number> = {
     'search': 0,
     'measure': 1,
@@ -24,9 +29,9 @@ export const defaultButtons: ButtonConfig[] = [
 
 // 测量菜单
 export const defaultMeasureItems = [
-    { id: 'measure-area', text: '测面积', textKey: 'measurement.menu.area', icon: 'src/assets/images/svg/area.svg' },
-    { id: 'measure-distance', text: '测距', textKey: 'measurement.menu.distance', icon: 'src/assets/images/svg/distance.svg' },
-    { id: 'clear-measurement', text: '清除', textKey: 'measurement.menu.clear', icon: 'src/assets/images/svg/clear .svg' }
+    { id: 'measure-area', text: '测面积', textKey: 'measurement.menu.area', icon: measureArea },
+    { id: 'measure-distance', text: '测距', textKey: 'measurement.menu.distance', icon: measureDistance },
+    { id: 'clear-measurement', text: '清除', textKey: 'measurement.menu.clear', icon: measureClear }
 ]
 
 // 测量绘制

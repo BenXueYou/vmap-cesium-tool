@@ -814,7 +814,8 @@ export class CesiumMapToolbar {
       // 处理图标
       if (item.icon && typeof item.icon === 'string') {
         // 检查是否为SVG文件路径
-        if (item.icon.endsWith('.svg')) {
+        console.log('测量菜单图标:', item.icon, typeof item.icon);
+        if (item.icon.startsWith('data:image/svg')) {
           // 创建图片元素
           const img = document.createElement('img');
           img.src = item.icon;
@@ -824,16 +825,6 @@ export class CesiumMapToolbar {
           menuItem.appendChild(img);
           menuItem.appendChild(document.createTextNode(' '));
           menuItem.appendChild(label);
-        } else if (item.icon.startsWith('<svg')) {
-          // 处理内联SVG
-          const iconContainer = document.createElement('div');
-          iconContainer.innerHTML = item.icon;
-          const svgElement = iconContainer.firstChild;
-          if (svgElement) {
-            menuItem.appendChild(svgElement);
-            menuItem.appendChild(document.createTextNode(' '));
-            menuItem.appendChild(label);
-          }
         } else {
           // 处理普通文本图标
           menuItem.append(item.icon, ' ', label);

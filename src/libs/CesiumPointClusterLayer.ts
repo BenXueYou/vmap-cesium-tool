@@ -71,6 +71,8 @@ function toCesiumColor(c: Cesium.Color | string): Cesium.Color {
 }
 
 export default class CesiumPointClusterLayer {
+  private static readonly CLUSTER_STYLE_MIN_INTERVAL_MS = 33; // ~30fps
+
   private viewer: Viewer;
   private readonly options: Required<Omit<PointClusterLayerOptions, 'onClusterClick' | 'onPointClick' | 'clusterStyleSteps' | 'renderCluster' | 'renderSinglePoint'>> & {
     clusterStyleSteps: ClusterStyleStep[];
@@ -85,6 +87,10 @@ export default class CesiumPointClusterLayer {
 
   private clickHandler: ScreenSpaceEventHandler | null = null;
   private readonly layerId: string;
+  private pendingClusterStyles: Map<Entity, Entity[]> = new Map();
+  private clusterStyleRAF: number | null = null;
+  private clusterStyleTimer: number | null = null;
+  private lastClusterStyleFlushTime = 0;
 
   constructor(viewer: Viewer, options: PointClusterLayerOptions = {}) {
     this.viewer = viewer;
@@ -134,7 +140,7 @@ export default class CesiumPointClusterLayer {
 
       // 每次聚类更新时，定制 cluster 的外观
       clustering.clusterEvent.addEventListener((clusteredEntities: Entity[], cluster: Entity) => {
-        this.applyClusterStyle(clusteredEntities, cluster);
+        this.enqueueClusterStyle(clusteredEntities, cluster);
       });
     }
 
@@ -208,6 +214,16 @@ export default class CesiumPointClusterLayer {
   }
 
   public destroy(): void {
+    if (this.clusterStyleRAF !== null) {
+      window.cancelAnimationFrame(this.clusterStyleRAF);
+      this.clusterStyleRAF = null;
+    }
+    if (this.clusterStyleTimer !== null) {
+      window.clearTimeout(this.clusterStyleTimer);
+      this.clusterStyleTimer = null;
+    }
+    this.pendingClusterStyles.clear();
+
     try {
       if (this.clickHandler) {
         this.clickHandler.destroy();
@@ -224,6 +240,42 @@ export default class CesiumPointClusterLayer {
     }
 
     this.entityIdToPoint.clear();
+  }
+
+  private enqueueClusterStyle(clusteredEntities: Entity[], cluster: Entity): void {
+    this.pendingClusterStyles.set(cluster, Array.isArray(clusteredEntities) ? clusteredEntities.slice() : []);
+
+    if (this.clusterStyleRAF !== null || this.clusterStyleTimer !== null) {
+      return;
+    }
+
+    const now = Date.now();
+    const wait = Math.max(0, CesiumPointClusterLayer.CLUSTER_STYLE_MIN_INTERVAL_MS - (now - this.lastClusterStyleFlushTime));
+
+    if (wait > 0) {
+      this.clusterStyleTimer = window.setTimeout(() => {
+        this.clusterStyleTimer = null;
+        this.clusterStyleRAF = window.requestAnimationFrame(() => {
+          this.clusterStyleRAF = null;
+          this.flushClusterStyles();
+        });
+      }, wait);
+      return;
+    }
+
+    this.clusterStyleRAF = window.requestAnimationFrame(() => {
+      this.clusterStyleRAF = null;
+      this.flushClusterStyles();
+    });
+  }
+
+  private flushClusterStyles(): void {
+    this.lastClusterStyleFlushTime = Date.now();
+    const batch = Array.from(this.pendingClusterStyles.entries());
+    this.pendingClusterStyles.clear();
+    for (const [cluster, clusteredEntities] of batch) {
+      this.applyClusterStyle(clusteredEntities, cluster);
+    }
   }
 
   private applyClusterStyle(clusteredEntities: Entity[], cluster: Entity): void {
