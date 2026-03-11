@@ -36,6 +36,31 @@ export class DrawCircle extends BaseDraw {
     }
   }
 
+
+  public addPoint(position: Cartesian3): void {
+    // 只允许两个点：中心点 + 半径点
+    if (this.tempPositions.length >= 2) {
+      // 移除旧的半径点（保留第一个中心点）
+      this.tempPositions.pop();
+
+      // 只移除“点实体”，避免误删预览圆/边框
+      for (let i = this.tempEntities.length - 1; i >= 0; i -= 1) {
+        const entity = this.tempEntities[i] as Entity;
+        if (entity.point) {
+          this.entities.remove(entity);
+          this.tempEntities.splice(i, 1);
+          break;
+        }
+      }
+    }
+
+    // 统一走 BaseDraw 的校验/克隆/创建红点逻辑
+    super.addPoint(position);
+
+    // 更新预览圆
+    this.updateDrawingEntity();
+  }
+
   /**
    * 更新绘制实体（预览）
    */
@@ -162,6 +187,8 @@ export class DrawCircle extends BaseDraw {
     }
 
     this.centerPosition = centerGround;
+
+    console.log(this, '-----this.tempEntities------', this.tempEntities);
   }
 
   /**
@@ -184,7 +211,7 @@ export class DrawCircle extends BaseDraw {
     // 如果没有第二个点，使用当前圆实体
     let radius = 0;
     if (this.tempPositions.length >= 2) {
-      radius = Cesium.Cartesian3.distance(center, this.tempPositions[1]);
+      radius = Cesium.Cartesian3.distance(center, this.tempPositions[this.tempPositions.length - 1]);
     } else if (this.currentCircleEntity) {
       const ellipse = this.currentCircleEntity.ellipse;
       if (ellipse) {
@@ -304,7 +331,7 @@ export class DrawCircle extends BaseDraw {
     // 保留圆心位置的红色球体，删除半径上的点（第二个点）
     this.tempEntities.forEach((entity, index) => {
       if (entity) {
-          this.entities.remove(entity);
+        this.entities.remove(entity);
       }
     });
 
