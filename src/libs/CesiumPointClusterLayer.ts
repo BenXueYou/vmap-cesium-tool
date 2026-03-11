@@ -72,7 +72,7 @@ function toCesiumColor(c: Cesium.Color | string): Cesium.Color {
 
 export default class CesiumPointClusterLayer {
   private viewer: Viewer;
-  private readonly options: Required<Omit<PointClusterLayerOptions, 'onClusterClick' | 'onPointClick' | 'clusterStyleSteps'>> & {
+  private readonly options: Required<Omit<PointClusterLayerOptions, 'onClusterClick' | 'onPointClick' | 'clusterStyleSteps' | 'renderCluster' | 'renderSinglePoint'>> & {
     clusterStyleSteps: ClusterStyleStep[];
     onClusterClick?: PointClusterLayerOptions['onClusterClick'];
     onPointClick?: PointClusterLayerOptions['onPointClick'];
@@ -234,6 +234,12 @@ export default class CesiumPointClusterLayer {
     const count = clusteredEntities.length;
     const style = this.pickStyle(count);
 
+    // 兜底：为 cluster 相关 primitive 绑定 id，避免自定义 renderCluster 时 pick.id 丢失
+    const anyCluster = cluster as any;
+    if (anyCluster.point) anyCluster.point.id = cluster;
+    if (anyCluster.label) anyCluster.label.id = cluster;
+    if (anyCluster.billboard) anyCluster.billboard.id = cluster;
+
     if (this.options.renderCluster) {
       try {
         this.options.renderCluster({ cluster, clusteredEntities, count });
@@ -291,7 +297,7 @@ export default class CesiumPointClusterLayer {
     this.clickHandler.setInputAction((movement: any) => {
       const pos: Cesium.Cartesian2 = movement?.position;
       if (!pos) return;
-
+      
       const picked = this.viewer.scene.pick(pos);
       if (!picked) return;
 

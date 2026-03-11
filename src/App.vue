@@ -29,7 +29,8 @@
       <div class="action-row">
         <select class="action-select" v-model="selected.overlayEdit" @change="() => runAction('overlayEdit')">
           <option disabled value="">{{ tt('ui.group.overlay_edit', '覆盖物编辑') }}</option>
-          <option v-for="opt in actionGroups.overlayEdit" :key="opt.id" :value="opt.id">{{ getOptionLabel(opt) }}</option>
+          <option v-for="opt in actionGroups.overlayEdit" :key="opt.id" :value="opt.id">{{ getOptionLabel(opt) }}
+          </option>
         </select>
       </div>
 
@@ -63,6 +64,11 @@ import * as Cesium from "cesium";
 import { useHeatmapHelper } from "./hooks/useHeatmapHelper";
 import { usePointClusterHelper } from "./hooks/usePointClusterHelper";
 import { i18n } from "./i18n";
+
+import eleCImage from "./assets/images/ter_c.png";
+import imgCImage from "./assets/images/vec_c.png";
+
+
 let viewer = ref<Cesium.Viewer>();
 const message = ref("");
 let mapToolbar: CesiumMapToolbar | null = null;
@@ -199,6 +205,58 @@ const addPointCluster = () => {
       message.value = `点击单点：${String(point.properties?.name ?? point.id ?? '')}`;
       setTimeout(() => (message.value = ""), 1200);
       console.log("single point", point);
+    },
+    renderCluster: ({ cluster, count }) => {
+      const anyCluster: any = cluster as any;
+      if (anyCluster.point) anyCluster.point.show = false;
+      if (anyCluster.label) {
+        anyCluster.label.show = false;
+        anyCluster.label.showBackground = false;
+      }
+
+      // 仅真实聚合显示聚合徽章；避免过渡帧/非聚合帧出现黑色背景块
+      if (count <= 1) {
+        if (anyCluster.billboard) anyCluster.billboard.show = false;
+        return;
+      }
+
+      if (anyCluster.billboard) {
+        const iconSize = count >= 50 ? 56 : 44;
+        anyCluster.billboard.show = true;
+        anyCluster.billboard.image = count >= 50 ? eleCImage : imgCImage;
+        anyCluster.billboard.width = iconSize;
+        anyCluster.billboard.height = iconSize;
+        anyCluster.billboard.verticalOrigin = Cesium.VerticalOrigin.CENTER;
+        anyCluster.billboard.disableDepthTestDistance = Number.POSITIVE_INFINITY;
+      }
+
+      if (anyCluster.label) {
+        anyCluster.label.show = true;
+        anyCluster.label.text = String(count);
+        anyCluster.label.font = "bold 13px sans-serif";
+        anyCluster.label.fillColor = Cesium.Color.WHITE;
+        anyCluster.label.outlineColor = Cesium.Color.BLACK.withAlpha(0.85);
+        anyCluster.label.outlineWidth = 2;
+        anyCluster.label.style = Cesium.LabelStyle.FILL_AND_OUTLINE;
+        anyCluster.label.showBackground = true;
+        anyCluster.label.backgroundColor = Cesium.Color.BLACK.withAlpha(0.45);
+        anyCluster.label.backgroundPadding = new Cesium.Cartesian2(6, 4);
+        anyCluster.label.verticalOrigin = Cesium.VerticalOrigin.CENTER;
+        anyCluster.label.horizontalOrigin = Cesium.HorizontalOrigin.CENTER;
+        anyCluster.label.pixelOffset = new Cesium.Cartesian2(0, 0);
+        anyCluster.label.disableDepthTestDistance = Number.POSITIVE_INFINITY;
+      }
+    },
+    renderSinglePoint: ({ entity, point }) => {
+      if (entity.point) (entity.point as any).show = false;
+      if (entity.label) (entity.label as any).show = false;
+      entity.billboard = new Cesium.BillboardGraphics({
+        show: true,
+        image: point.value && point.value > 1 ? eleCImage : imgCImage,
+        width: 24,
+        height: 24,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      });
     },
   });
 
