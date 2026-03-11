@@ -1487,11 +1487,16 @@ class DrawHelper {
             const willSelfIntersect = wouldCreatePolygonSelfIntersection(existing, position, { allowTouch });
             if (willSelfIntersect && !allowContinue) {
               // 阻止落点，但保持绘制状态，用户可继续选择其他点
-              console.warn('Polygon self-intersection detected; point rejected.');
-              this.drawHintHelper.setOverride(i18n.t('draw.hint.polygon_no_intersection'));
+              this.drawHintHelper.setOverride({
+                text: i18n.t('draw.hint.polygon_no_intersection'),
+                fillColor: Cesium.Color.RED, // 自相交提示用红色
+                outlineColor: Cesium.Color.RED, // 自相交提示用红色
+              });
               return;
             } else {
-              this.drawHintHelper.setOverride('', 0);
+              this.drawHintHelper.setOverride({
+                text: this.drawHintHelper.getDrawHintText(),
+              }, 0);
             }
           }
         }
@@ -1556,11 +1561,17 @@ class DrawHelper {
           const kind = wouldCreatePolygonSelfIntersectionKind(existing, currentMousePosition);
           const willSelfIntersect = wouldCreatePolygonSelfIntersection(existing, currentMousePosition, { allowTouch });
           if (willSelfIntersect && !allowContinue) {
-            this.drawHintHelper.setOverride(i18n.t('draw.hint.polygon_no_intersection'));
+            this.drawHintHelper.setOverride({
+              text: i18n.t('draw.hint.polygon_no_intersection'),
+              fillColor: Cesium.Color.RED, // 自相交提示用红色
+              outlineColor: Cesium.Color.RED, // 自相交提示用红色
+            });
             this.updateDrawingEntity(undefined);
             return;
           } else {
-            this.drawHintHelper.setOverride('', 0);
+            this.drawHintHelper.setOverride({
+              text: this.drawHintHelper.getDrawHintText(),
+            }, 0);
           }
         }
       }

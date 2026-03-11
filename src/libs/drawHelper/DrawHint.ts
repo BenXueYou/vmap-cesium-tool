@@ -8,6 +8,23 @@ type DrawHintState = {
   offsetHeight: number;
 };
 
+const defaultHintOptions: Cesium.LabelGraphics.ConstructorOptions = {
+  font: "14px 'Microsoft YaHei', 'PingFang SC', sans-serif",
+  showBackground: true,
+  backgroundColor: Cesium.Color.BLACK.withAlpha(0.75),
+  fillColor: Cesium.Color.WHITE,
+  outlineColor: Cesium.Color.BLACK,
+  outlineWidth: 2,
+  style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+  pixelOffset: new Cesium.Cartesian2(12, -18),
+  horizontalOrigin: Cesium.HorizontalOrigin.LEFT,
+  verticalOrigin: Cesium.VerticalOrigin.TOP,
+  disableDepthTestDistance: Number.POSITIVE_INFINITY,
+  heightReference: Cesium.HeightReference.NONE,
+  scaleByDistance: new Cesium.NearFarScalar(1.5e2, 1.0, 1.5e7, 0.6),
+};
+
+
 export class DrawHintHelper {
   private entities: Cesium.EntityCollection;
   private getState: () => DrawHintState;
@@ -37,10 +54,20 @@ export class DrawHintHelper {
     }
   }
 
-  public setOverride(text: string, ms: number = 1200): void {
-    this.drawHintOverrideText = text;
+  public setOverride(options: Cesium.LabelGraphics | Cesium.LabelGraphics.ConstructorOptions, ms: number = 1200): void {
+    this.drawHintOverrideText = options.text ? options.text as string : null;
     this.drawHintOverrideUntil = Date.now() + Math.max(0, ms);
     this.refreshTextOnly();
+    if (options && this.drawHintEntity?.label) {
+      if (this.drawHintEntity.label instanceof Cesium.LabelGraphics) {
+        const label = this.drawHintEntity.label;
+        const mergedOptions = { ...defaultHintOptions, ...options };
+        Object.entries(mergedOptions).forEach(([key, value]) => {
+          // @ts-ignore
+          label[key] = value;
+        });
+      }
+    }
   }
 
   public updatePosition(position: Cesium.Cartesian3): void {
@@ -62,20 +89,8 @@ export class DrawHintHelper {
       this.drawHintEntity = this.entities.add({
         position: new Cesium.ConstantPositionProperty(displayPos),
         label: {
+          ...defaultHintOptions,
           text: this.drawHintText,
-          font: "14px 'Microsoft YaHei', 'PingFang SC', sans-serif",
-          showBackground: true,
-          backgroundColor: Cesium.Color.BLACK.withAlpha(0.75),
-          fillColor: Cesium.Color.WHITE,
-          outlineColor: Cesium.Color.BLACK,
-          outlineWidth: 2,
-          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-          pixelOffset: new Cesium.Cartesian2(12, -18),
-          horizontalOrigin: Cesium.HorizontalOrigin.LEFT,
-          verticalOrigin: Cesium.VerticalOrigin.TOP,
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
-          heightReference: Cesium.HeightReference.NONE,
-          scaleByDistance: new Cesium.NearFarScalar(1.5e2, 1.0, 1.5e7, 0.6),
         },
       });
     } else {
@@ -84,6 +99,7 @@ export class DrawHintHelper {
         this.drawHintEntity.label.text = new Cesium.ConstantProperty(this.drawHintText);
       }
     }
+    console.log(this.drawHintEntity,'updatePosition', this.drawHintText);
   }
 
   public refreshTextOnly(): void {
@@ -112,11 +128,11 @@ export class DrawHintHelper {
   }
 
 /**
- * 获取绘图提示文本的私有方法
+ * 获取绘图提示文本的公共方法
  * 根据当前的绘图状态和模式返回相应的提示信息
  * @returns {string} 返回对应的提示文本，如果不在绘图状态则返回空字符串
  */
-  private getDrawHintText(): string {
+  public getDrawHintText(): string {
   // 获取当前状态
     const state = this.getState();
   // 如果不在绘图状态或未开启绘图模式，则返回空字符串
