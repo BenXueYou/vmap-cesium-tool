@@ -67,6 +67,11 @@ const zhCN = {
       stop: "退出当前编辑",
     },
   },
+  layers: {
+    map_type: {
+      place_name: "地名",
+    },
+  },
   draw: {
     start: {
       line: "开始绘制线条：左键添加点，双击完成，右键删除最后一点",

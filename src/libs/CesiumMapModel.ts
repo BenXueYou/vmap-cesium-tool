@@ -95,6 +95,12 @@ export interface MapType {
   id: string;
   name: string;
   nameKey?: string;
+  /** 选中态左上角“地名”文案（可选，未配置时走 i18n 默认 key） */
+  placeNameLabel?: string;
+  /** 选中态左上角“地名”文案 i18n key（可选） */
+  placeNameLabelKey?: string;
+  /** 是否强制始终显示地名层（不受 placeName 开关影响） */
+  forcePlaceName?: boolean;
   thumbnail: string;
   provider: (token: string) => Cesium.ImageryProvider[];
   // 三维地图专用：地形提供者

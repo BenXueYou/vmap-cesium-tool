@@ -67,6 +67,11 @@ const enUS = {
       stop: "Exit current edit",
     },
   },
+  layers: {
+    map_type: {
+      place_name: "Place",
+    },
+  },
   draw: {
     start: {
       line: "Start drawing line: left click to add points, double click to finish, right click to remove last point",

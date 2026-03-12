@@ -23,6 +23,8 @@ export const TDTMapTypes: MapType[] = [
       id: 'normal',
       name: '天地图-普通',
       nameKey: 'map_type.normal',
+      // 普通底图强制显示地名标注，不受地名开关影响
+      forcePlaceName: true,
       thumbnail: VecImg,
       provider: (token: string) => {
         return [
@@ -36,6 +38,7 @@ export const TDTMapTypes: MapType[] = [
             maximumLevel: 18,
             credit: '© 天地图'
           }),
+          // 普通地名标注
           new Cesium.WebMapTileServiceImageryProvider({
             url: `https://t{s}.tianditu.gov.cn/cva_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=cva&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={TileMatrix}&TILEROW={TileRow}&TILECOL={TileCol}&tk=${token}`,
             layer: "cva",
@@ -55,6 +58,10 @@ export const TDTMapTypes: MapType[] = [
       name: '天地图-三维',
       nameKey: 'map_type.3d',
       thumbnail: EleImg,
+      // 选中态左上角“地名”文案示例（可配置，优先用 i18n key）
+      placeNameLabelKey: 'layers.map_type.place_name',
+      // 非 i18n 模式回退文案
+      placeNameLabel: '地名',
       provider: (token: string) => {
         return [
            // 影像底图
@@ -69,7 +76,7 @@ export const TDTMapTypes: MapType[] = [
             maximumLevel: 18,
             credit: '© 天地图'
           }),
-          // 影像标注
+          // 影像地名标注
           new Cesium.WebMapTileServiceImageryProvider({
             url: `https://t{s}.tianditu.gov.cn/cia_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=cia&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={TileMatrix}&TILEROW={TileRow}&TILECOL={TileCol}&tk=${token}`,
             subdomains: ['0', '1', '2', '3', '4', '5', '6', '7'],
@@ -209,6 +216,10 @@ export const TDTMapTypes: MapType[] = [
       id: 'imagery',
       name: '天地图-影像',
       nameKey: 'map_type.imagery',
+      // 选中态左上角“地名”文案示例（可配置，优先用 i18n key）
+      placeNameLabelKey: 'layers.map_type.place_name',
+      // 非 i18n 模式回退文案
+      placeNameLabel: '地名',
       thumbnail: ImgImg,
       provider: (token: string) => {
         return [
@@ -224,7 +235,7 @@ export const TDTMapTypes: MapType[] = [
             maximumLevel: 18,
             credit: '© 天地图'
           }),
-          // 影像标注
+          // 影像地名标注
           new Cesium.WebMapTileServiceImageryProvider({
             url: `https://t{s}.tianditu.gov.cn/cia_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=cia&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={TileMatrix}&TILEROW={TileRow}&TILECOL={TileCol}&tk=${token}`,
             subdomains: ['0', '1', '2', '3', '4', '5', '6', '7'],
@@ -244,6 +255,10 @@ export const TDTMapTypes: MapType[] = [
       name: '天地图-地形',
       nameKey: 'map_type.terrain',
       thumbnail: TerImg,
+      // 选中态左上角“地名”文案示例（可配置，优先用 i18n key）
+      placeNameLabelKey: 'layers.map_type.place_name',
+      // 非 i18n 模式回退文案
+      placeNameLabel: '地名',
       provider: (token: string) => {
         return [
           new Cesium.WebMapTileServiceImageryProvider({
@@ -257,6 +272,7 @@ export const TDTMapTypes: MapType[] = [
             tileMatrixSetID: "GoogleMapsCompatible",
             credit: '© 天地图'
           }),
+          // 地形地名标注
           new Cesium.WebMapTileServiceImageryProvider({
             url: `https://t{s}.tianditu.gov.cn/cta_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=cta&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={TileMatrix}&TILEROW={TileRow}&TILECOL={TileCol}&tk=${token}`,
             subdomains: ['0', '1', '2', '3', '4', '5', '6', '7'],

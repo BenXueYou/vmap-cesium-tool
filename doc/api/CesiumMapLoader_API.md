@@ -48,7 +48,7 @@ async function initCesium(
 
 - 默认禁用一批 Cesium 内置 UI（`timeline/animation/geocoder/homeButton` 等），并隐藏 credit。
 - 当 **未传 `options.terrain` 且未传 `options.terrainProvider`** 时，会自动使用 `createWorldTerrainAsync()`。
-- 当 `options.mapType === 'tiandi'` 时，会清空影像图层并使用 `TDTMapTypes` 中 `imagery` 的 provider 叠加天地图影像（需要天地图 token）。
+- 当 `options.mapType === 'tiandi'` 时，会清空影像图层并使用 `TDTMapTypes` 中 `tdtMapTypeId`（默认 `imagery`）的 provider 叠加天地图影像（需要天地图 token）。
 - 初始视角：
   - `options.isFly !== true`：调用 `setCameraView` 直接 setView
   - `options.isFly === true`：调用 `setCameraFlyTo` 进行飞行
@@ -94,6 +94,7 @@ interface MapCenter {
 ```ts
 interface InitOptions {
   mapType?: string;        // 当前实现仅对 'tiandi' 做了内置处理
+  tdtMapTypeId?: string;   // 天地图底图类型（默认 imagery）
   token?: string;          // 天地图 token（默认从环境读取）
   cesiumToken?: string;    // Cesium Ion token
 
@@ -119,6 +120,7 @@ import { initCesium } from '@xingm/vmap-cesium-toolbar';
 const { viewer } = await initCesium('cesiumContainer', {
   cesiumToken: 'your_cesium_ion_token',
   mapType: 'tiandi',
+  tdtMapTypeId: 'imagery',
   token: 'your_tianditu_token',
   isFly: true,
   flyDuration: 2,

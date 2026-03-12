@@ -104,6 +104,13 @@ import { initCesium } from '@xingm/vmap-cesium-toolbar';
 const { viewer } = await initCesium('cesiumContainer', {
   cesiumToken: 'your_cesium_ion_token',
 });
+
+// 使用天地图时可指定底图类型（默认 imagery）
+const { viewer: tdtViewer } = await initCesium('cesiumContainer', {
+  mapType: 'tiandi',
+  tdtMapTypeId: 'terrain',
+  token: 'your_tianditu_token',
+});
 ```
 
 ## 配置选项
