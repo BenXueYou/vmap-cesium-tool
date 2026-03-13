@@ -32,6 +32,9 @@ const zhCN = {
     overlay: {
       airport: "机场禁飞区",
     },
+    map_type: {
+      place_name: "地名",
+    },
   },
   map_type: {
     normal: "天地图-普通",

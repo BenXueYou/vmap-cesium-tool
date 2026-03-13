@@ -32,6 +32,9 @@ const enUS = {
     overlay: {
       airport: "Airport no-fly zones",
     },
+    map_type: {
+      place_name: "Place",
+    },
   },
   map_type: {
     normal: "TianDiTu - Normal",
