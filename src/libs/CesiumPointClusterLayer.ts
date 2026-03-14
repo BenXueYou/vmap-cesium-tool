@@ -72,6 +72,7 @@ function toCesiumColor(c: Cesium.Color | string): Cesium.Color {
 
 export default class CesiumPointClusterLayer {
   private static readonly CLUSTER_STYLE_MIN_INTERVAL_MS = 33; // ~30fps
+  private static readonly CLICK_PICK_MIN_INTERVAL_MS = 120;
 
   private viewer: Viewer;
   private readonly options: Required<Omit<PointClusterLayerOptions, 'onClusterClick' | 'onPointClick' | 'clusterStyleSteps' | 'renderCluster' | 'renderSinglePoint'>> & {
@@ -91,6 +92,7 @@ export default class CesiumPointClusterLayer {
   private clusterStyleRAF: number | null = null;
   private clusterStyleTimer: number | null = null;
   private lastClusterStyleFlushTime = 0;
+  private lastClickPickTime = 0;
 
   constructor(viewer: Viewer, options: PointClusterLayerOptions = {}) {
     this.viewer = viewer;
@@ -349,6 +351,10 @@ export default class CesiumPointClusterLayer {
     this.clickHandler.setInputAction((movement: any) => {
       const pos: Cesium.Cartesian2 = movement?.position;
       if (!pos) return;
+
+      const now = Date.now();
+      if (now - this.lastClickPickTime < CesiumPointClusterLayer.CLICK_PICK_MIN_INTERVAL_MS) return;
+      this.lastClickPickTime = now;
       
       const picked = this.viewer.scene.pick(pos);
       if (!picked) return;

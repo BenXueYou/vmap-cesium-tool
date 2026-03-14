@@ -29,6 +29,13 @@ export interface CesiumOverlayServiceOptions {
    * 参数为“已回写后的覆盖物 entity”。
    */
   onOverlayEditChange?: (entity: DrawEntity & OverlayEntity) => void;
+
+  /**
+   * 点击 pick 节流间隔（毫秒）。
+   * 用于降低 “贴地几何 + pick + ground pipeline” 的偶发 DataCloneError 风险。
+   * @default 120
+   */
+  clickPickMinIntervalMs?: number;
 }
 
 /**
@@ -60,12 +67,18 @@ export class CesiumOverlayService {
 
   private bulkUpdateDepth = 0;
 
+  private lastClickPickTime = 0;
+  private readonly clickPickMinIntervalMs: number;
+
   // 鼠标 hover 时最多每隔一段时间 pick 一次（降低 pick pass 对 primitive.update 的压力）
   private static readonly HOVER_PICK_MIN_INTERVAL_MS = 66; // ~15fps
   // 鼠标在很小范围抖动时不做 pick
   private static readonly HOVER_PICK_MIN_MOVE_PX = 2;
   // 每次覆盖物发生结构性变更（add/remove）后，暂停 hover pick 一小段时间
   private static readonly HOVER_SUSPEND_AFTER_MUTATION_MS = 180;
+
+  // 点击 pick 的最小间隔（默认 120ms）
+  private static readonly CLICK_PICK_MIN_INTERVAL_MS = 120;
 
   private markOverlayMutated(): void {
     this.overlayMutationRevision++;
@@ -202,6 +215,10 @@ export class CesiumOverlayService {
     this.viewer = viewer;
     this.options = options;
     this.entities = viewer.entities;
+    this.clickPickMinIntervalMs = Math.max(
+      0,
+      options.clickPickMinIntervalMs ?? CesiumOverlayService.CLICK_PICK_MIN_INTERVAL_MS
+    );
 
     // 覆盖物编辑模式 controller（解耦编辑状态机/handler/控制点）
     this.overlayEditor = new OverlayEditController({
@@ -503,6 +520,15 @@ export class CesiumOverlayService {
       const anyPos: any = (click as any).position;
       if (!anyPos || !Number.isFinite(anyPos.x) || !Number.isFinite(anyPos.y)) {
         return;
+      }
+
+      // 点击节流：减少 ground pipeline 在短时间内的多次 pick
+      if (this.clickPickMinIntervalMs > 0) {
+        const now = Date.now();
+        if (now - this.lastClickPickTime < this.clickPickMinIntervalMs) {
+          return;
+        }
+        this.lastClickPickTime = now;
       }
 
       const pickedObject = this.viewer.scene.pick(click.position);
