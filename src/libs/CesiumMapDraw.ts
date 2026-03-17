@@ -3,6 +3,7 @@ import { BaseDraw, DrawLine, DrawPolygon, DrawRectangle, DrawCircle, type DrawCa
 import { DrawHintHelper } from './drawHelper/DrawHint';
 import { wouldCreatePolygonSelfIntersection, wouldCreatePolygonSelfIntersectionKind } from '../utils/selfIntersection';
 import { i18n } from './i18n';
+import { PickGovernor } from './PickGovernor';
 /**
  * Cesium 绘图辅助工具类
  * 支持绘制点、线、多边形、矩形，并提供编辑和删除功能
@@ -54,6 +55,7 @@ class DrawHelper {
   private screenSpaceEventHandler: Cesium.ScreenSpaceEventHandler | null = null;
   // 实体点击处理器（用于触发绘制完成实体的点击回调与选中样式）
   private entityClickHandler: Cesium.ScreenSpaceEventHandler | null = null;
+  private readonly pickGovernor: PickGovernor;
 
   // --- 两阶段地形适配（先 NONE，tilesLoaded 后采样/切换） ---
   private terrainRefineQueue: Set<Cesium.Entity> = new Set();
@@ -346,6 +348,11 @@ class DrawHelper {
     this.viewer = viewer;
     this.scene = viewer.scene;
     this.entities = viewer.entities;
+    this.pickGovernor = new PickGovernor({
+      profiles: {
+        draw: { minIntervalMs: 120, minMovePx: 0 },
+      },
+    });
     this.drawHintHelper = new DrawHintHelper(
       this.entities,
       () => ({
@@ -624,7 +631,11 @@ class DrawHelper {
         if (this.isDrawing) return; // 绘制时忽略实体点击
         // 绘制刚结束/切换状态的短窗口内，禁用 pick，避免与 OverlayService 等其它 handler 争用
         if (this.isPickBlocked()) return;
-        const picked = this.scene.pick(click.position as any);
+        const clickPos: any = (click as any).position;
+        if (!clickPos || !Number.isFinite(clickPos.x) || !Number.isFinite(clickPos.y)) return;
+        if (!this.pickGovernor.shouldPick('draw', clickPos)) return;
+
+        const picked = this.scene.pick(clickPos);
         const entity = picked && (picked as any).id as Cesium.Entity | undefined;
         if (!entity) return;
 

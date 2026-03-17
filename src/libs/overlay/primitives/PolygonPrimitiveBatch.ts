@@ -181,6 +181,11 @@ export class PolygonPrimitiveBatch {
     }, 0);
   }
 
+  private assertCloneableInstanceId(id: unknown, owner: string): string | number {
+    if (typeof id === 'string' || typeof id === 'number') return id;
+    throw new Error(`[PolygonPrimitiveBatch] GeometryInstance.id must be cloneable (string/number). owner=${owner}, actual=${typeof id}`);
+  }
+
   private rebuild(): void {
     if (this.fillPrimitive) {
       try { this.fillCollection.remove(this.fillPrimitive); } catch {}
@@ -206,10 +211,20 @@ export class PolygonPrimitiveBatch {
         vertexFormat: Cesium.PerInstanceColorAppearance.VERTEX_FORMAT,
       });
 
+      let fillId: string | number;
+      let borderId: string | number;
+      try {
+        fillId = this.assertCloneableInstanceId(rec.instanceIds.fill, `${rec.polygonId}:fill`);
+        borderId = this.assertCloneableInstanceId(rec.instanceIds.border, `${rec.polygonId}:border`);
+      } catch (e) {
+        console.error(e);
+        continue;
+      }
+
       fillInstances.push(
         new Cesium.GeometryInstance({
           geometry: fillGeom,
-          id: rec.instanceIds.fill,
+          id: fillId,
           attributes: {
             color: Cesium.ColorGeometryInstanceAttribute.fromColor(fillColor),
           },
@@ -224,7 +239,7 @@ export class PolygonPrimitiveBatch {
       borderInstances.push(
         new Cesium.GeometryInstance({
           geometry: borderGeom,
-          id: rec.instanceIds.border,
+          id: borderId,
           attributes: {
             color: Cesium.ColorGeometryInstanceAttribute.fromColor(borderColor),
           },

@@ -52,7 +52,7 @@
 </template>
 
 <script lang="ts" setup>
-import { onMounted, ref, onBeforeUnmount, reactive } from "vue";
+import { onMounted, ref, shallowRef, markRaw, onBeforeUnmount, reactive } from "vue";
 import { initCesium, setCameraView } from "./libs/CesiumMapLoader";
 import { CesiumMapToolbar } from "./libs/CesiumMapToolbar";
 import type { ToolbarConfig } from "./libs/CesiumMapModel";
@@ -76,7 +76,7 @@ const CLUSTER_LABEL_EYE_OFFSET_FRONT = new Cesium.Cartesian3(0, 0, -10);
 const CLUSTER_BILLBOARD_EYE_OFFSET = new Cesium.Cartesian3(0, 0, 0);
 
 
-let viewer = ref<Cesium.Viewer>();
+let viewer = shallowRef<Cesium.Viewer>();
 const message = ref("");
 const hideClusterLabelDuringMove = ref(false);
 let mapToolbar: CesiumMapToolbar | null = null;
@@ -689,7 +689,7 @@ onMounted(async () => {
   );
   // 调试用：挂到全局
   (window as any).cesiumViewer = cesiumViewer;
-  viewer.value = cesiumViewer;
+  viewer.value = markRaw(cesiumViewer);
 
   const onCameraMoveStart = () => {
     hideClusterLabelDuringMove.value = true;

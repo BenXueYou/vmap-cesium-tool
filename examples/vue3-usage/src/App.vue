@@ -16,7 +16,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, markRaw } from "vue";
 import { CesiumMapToolbar, initCesium, i18n } from "vmap-cesium-toolbar";
 import * as Cesium from "cesium";
 import { getViteTdToken } from "./common";
@@ -85,7 +85,7 @@ onMounted(async () => {
     },
     cesiumToken
   );
-  viewer = cesiumViewer;
+  viewer = markRaw(cesiumViewer);
 
   const cesiumContainer = document.getElementById("cesiumContainer");
   if (cesiumContainer) {

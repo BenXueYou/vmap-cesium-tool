@@ -15,6 +15,7 @@ import { MapRing, type RingOptions } from './overlay/MapRing';
 import type { OverlayPosition } from './overlay/types';
 import { OverlayEditController } from './overlay/OverlayEditController';
 import { OverlayHighlight } from './overlay/OverlayHighlight';
+import { PickGovernor } from './PickGovernor';
 
 export interface CesiumOverlayServiceOptions {
   /**
@@ -62,18 +63,12 @@ export class CesiumOverlayService {
   // hover pick 的负载控制：在“批量增删覆盖物 / ground primitive 异步重建”窗口期内，减少 pick 频率以避免触发 Cesium worker/update 的边界问题
   private overlayMutationRevision = 0;
   private hoverSuspendUntil = 0;
-  private lastHoverPickTime = 0;
-  private lastHoverPickPos: Cesium.Cartesian2 | null = null;
 
   private bulkUpdateDepth = 0;
 
-  private lastClickPickTime = 0;
   private readonly clickPickMinIntervalMs: number;
+  private readonly pickGovernor: PickGovernor;
 
-  // 鼠标 hover 时最多每隔一段时间 pick 一次（降低 pick pass 对 primitive.update 的压力）
-  private static readonly HOVER_PICK_MIN_INTERVAL_MS = 66; // ~15fps
-  // 鼠标在很小范围抖动时不做 pick
-  private static readonly HOVER_PICK_MIN_MOVE_PX = 2;
   // 每次覆盖物发生结构性变更（add/remove）后，暂停 hover pick 一小段时间
   private static readonly HOVER_SUSPEND_AFTER_MUTATION_MS = 180;
 
@@ -84,6 +79,7 @@ export class CesiumOverlayService {
     this.overlayMutationRevision++;
     // 批量增删时会连续调用多次：这里始终把暂停窗口往后推
     this.hoverSuspendUntil = Date.now() + CesiumOverlayService.HOVER_SUSPEND_AFTER_MUTATION_MS;
+    this.pickGovernor.suspend(CesiumOverlayService.HOVER_SUSPEND_AFTER_MUTATION_MS);
   }
 
   /**
@@ -103,6 +99,7 @@ export class CesiumOverlayService {
     this.lastHoverTargets = null;
     // 也暂停一小段时间，让 ground primitive 的异步任务先启动/稳定
     this.hoverSuspendUntil = Math.max(this.hoverSuspendUntil, Date.now() + CesiumOverlayService.HOVER_SUSPEND_AFTER_MUTATION_MS);
+    this.pickGovernor.suspend(CesiumOverlayService.HOVER_SUSPEND_AFTER_MUTATION_MS);
   }
 
   /**
@@ -113,6 +110,7 @@ export class CesiumOverlayService {
     if (this.bulkUpdateDepth === 0) {
       // 批量更新结束后的短窗口内仍暂停 pick，让异步构建收尾
       this.hoverSuspendUntil = Math.max(this.hoverSuspendUntil, Date.now() + CesiumOverlayService.HOVER_SUSPEND_AFTER_MUTATION_MS);
+      this.pickGovernor.suspend(CesiumOverlayService.HOVER_SUSPEND_AFTER_MUTATION_MS);
     }
   }
 
@@ -219,6 +217,11 @@ export class CesiumOverlayService {
       0,
       options.clickPickMinIntervalMs ?? CesiumOverlayService.CLICK_PICK_MIN_INTERVAL_MS
     );
+    this.pickGovernor = new PickGovernor({
+      profiles: {
+        click: { minIntervalMs: this.clickPickMinIntervalMs, minMovePx: 0 },
+      },
+    });
 
     // 覆盖物编辑模式 controller（解耦编辑状态机/handler/控制点）
     this.overlayEditor = new OverlayEditController({
@@ -522,13 +525,9 @@ export class CesiumOverlayService {
         return;
       }
 
-      // 点击节流：减少 ground pipeline 在短时间内的多次 pick
-      if (this.clickPickMinIntervalMs > 0) {
-        const now = Date.now();
-        if (now - this.lastClickPickTime < this.clickPickMinIntervalMs) {
-          return;
-        }
-        this.lastClickPickTime = now;
+      // 点击统一经 PickGovernor 节流
+      if (!this.pickGovernor.shouldPick('click', anyPos)) {
+        return;
       }
 
       const pickedObject = this.viewer.scene.pick(click.position);
@@ -675,20 +674,9 @@ export class CesiumOverlayService {
             return;
           }
 
-          const t = Date.now();
-          if (t - this.lastHoverPickTime < CesiumOverlayService.HOVER_PICK_MIN_INTERVAL_MS) {
+          if (!this.pickGovernor.shouldPick('hover', pickPos)) {
             return;
           }
-          if (this.lastHoverPickPos) {
-            const dx = pickPos.x - this.lastHoverPickPos.x;
-            const dy = pickPos.y - this.lastHoverPickPos.y;
-            const min = CesiumOverlayService.HOVER_PICK_MIN_MOVE_PX;
-            if ((dx * dx + dy * dy) < (min * min)) {
-              return;
-            }
-          }
-          this.lastHoverPickTime = t;
-          this.lastHoverPickPos = new Cesium.Cartesian2(pickPos.x, pickPos.y);
 
           let pickedObject: any = null;
           try {

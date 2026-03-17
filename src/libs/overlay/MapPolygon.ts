@@ -3,6 +3,7 @@ import type { Viewer, Entity, Cartesian3, Color, HeightReference } from "cesium"
 import type { OverlayPosition, OverlayEntity } from './types';
 import { PolygonPrimitiveBatch } from './primitives/PolygonPrimitiveBatch';
 import { PolygonPrimitiveLayerStack } from './primitives/PolygonPrimitiveLayerStack';
+import { isMacPlatform } from '../PickGovernor';
 
 /**
  * Polygon 选项
@@ -105,6 +106,9 @@ export class MapPolygon {
   }
 
   private canUsePrimitive(options: PolygonOptions): boolean {
+    // macOS 上优先稳定性：禁用 primitive ground 异步路径，规避 DataCloneError。
+    if (isMacPlatform()) return false;
+
     const ringThickness = (options.outlineWidth && options.outlineWidth > 1) ? options.outlineWidth : 0;
     if (!(ringThickness > 0)) return false;
     const clampToGround = options.clampToGround ?? true;

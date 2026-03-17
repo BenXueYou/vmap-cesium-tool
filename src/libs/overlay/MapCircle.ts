@@ -3,6 +3,7 @@ import type { Viewer, Entity, Cartesian3, Color, HeightReference } from "cesium"
 import type { OverlayPosition, OverlayEntity } from './types';
 import { CirclePrimitiveBatch } from './primitives/CirclePrimitiveBatch';
 import { CirclePrimitiveLayerStack } from './primitives/CirclePrimitiveLayerStack';
+import { isMacPlatform } from '../PickGovernor';
 
 /**
  * Circle 选项
@@ -117,6 +118,9 @@ export class MapCircle {
   }
 
   private canUsePrimitive(options: CircleOptions): boolean {
+    // macOS 上优先稳定性：禁用 primitive ground 异步路径，规避 DataCloneError。
+    if (isMacPlatform()) return false;
+
     const ringThickness = (options.outlineWidth && options.outlineWidth > 1) ? options.outlineWidth : 0;
     if (!(ringThickness > 0)) return false;
     const clampToGround = options.clampToGround ?? true;

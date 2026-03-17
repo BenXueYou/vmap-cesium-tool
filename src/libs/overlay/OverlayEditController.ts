@@ -2,6 +2,7 @@ import * as Cesium from "cesium";
 import type { Viewer } from "cesium";
 import type { DrawEntity } from "../drawHelper";
 import type { OverlayEntity } from "./types";
+import { PickGovernor } from "../PickGovernor";
 import {
   buildCircleHandles,
   buildPointHandles,
@@ -68,6 +69,7 @@ type OverlayEditDragSnapshot =
 export class OverlayEditController {
   private enabled = false;
   private handler: Cesium.ScreenSpaceEventHandler | null = null;
+  private readonly pickGovernor: PickGovernor;
 
   private onChange: OverlayEditChangeCallback | null = null;
 
@@ -104,6 +106,11 @@ export class OverlayEditController {
 
   constructor(private readonly host: OverlayEditHost, options: OverlayEditControllerOptions = {}) {
     this.onChange = options.onChange ?? null;
+    this.pickGovernor = new PickGovernor({
+      profiles: {
+        edit: { minIntervalMs: 80, minMovePx: 0 },
+      },
+    });
   }
 
   public setOnChange(cb?: OverlayEditChangeCallback | null): void {
@@ -481,7 +488,15 @@ export class OverlayEditController {
         }
 
         // 获取鼠标点击位置的实体
-        const picked = viewer.scene.pick(e.position as any);
+        const pickPos: any = (e as any).position;
+        if (!pickPos || !Number.isFinite(pickPos.x) || !Number.isFinite(pickPos.y)) {
+          return;
+        }
+        if (!this.pickGovernor.shouldPick('edit', pickPos)) {
+          return;
+        }
+
+        const picked = viewer.scene.pick(pickPos);
         const pickedEntity = picked && ((picked as any).id as Cesium.Entity | undefined);
         if (!pickedEntity || !(pickedEntity as any).__vmapOverlayEditHandle) {
           return;
@@ -576,7 +591,11 @@ export class OverlayEditController {
           // ignore
         }
 
-        const picked = viewer.scene.pick(e.position as any);
+        const pickPos: any = (e as any).position;
+        if (!pickPos || !Number.isFinite(pickPos.x) || !Number.isFinite(pickPos.y)) return;
+        if (!this.pickGovernor.shouldPick('edit', pickPos)) return;
+
+        const picked = viewer.scene.pick(pickPos);
         const pickedEntity = picked && ((picked as any).id as Cesium.Entity | undefined);
         if (!pickedEntity || !(pickedEntity as any).__vmapOverlayEditHandle) return;
         const meta = (pickedEntity as any).__vmapOverlayEditHandleMeta as any;

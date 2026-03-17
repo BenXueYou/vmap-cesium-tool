@@ -3,6 +3,7 @@ import type { Viewer, Entity, Color, HeightReference } from "cesium";
 import type { OverlayEntity } from './types';
 import { RectanglePrimitiveBatch } from './primitives/RectanglePrimitiveBatch';
 import { RectanglePrimitiveLayerStack } from './primitives/RectanglePrimitiveLayerStack';
+import { isMacPlatform } from '../PickGovernor';
 
 /**
  * Rectangle 选项
@@ -107,6 +108,9 @@ export class MapRectangle {
   }
 
   private canUsePrimitive(options: RectangleOptions): boolean {
+    // macOS 上优先稳定性：禁用 primitive ground 异步路径，规避 DataCloneError。
+    if (isMacPlatform()) return false;
+
     const ringThickness = (options.outlineWidth && options.outlineWidth > 1) ? options.outlineWidth : 0;
     if (!(ringThickness > 0)) return false;
     const clampToGround = options.clampToGround ?? true;

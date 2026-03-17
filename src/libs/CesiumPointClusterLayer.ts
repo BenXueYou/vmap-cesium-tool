@@ -1,5 +1,6 @@
 import * as Cesium from 'cesium';
 import type { Viewer, CustomDataSource, Entity, ScreenSpaceEventHandler } from 'cesium';
+import { PickGovernor } from './PickGovernor';
 
 export interface ClusterPoint {
   /** 业务 id（可选，建议传以便稳定更新） */
@@ -92,13 +93,18 @@ export default class CesiumPointClusterLayer {
   private clusterStyleRAF: number | null = null;
   private clusterStyleTimer: number | null = null;
   private lastClusterStyleFlushTime = 0;
-  private lastClickPickTime = 0;
+  private readonly pickGovernor: PickGovernor;
 
   constructor(viewer: Viewer, options: PointClusterLayerOptions = {}) {
     this.viewer = viewer;
 
     const layerId = options.id || `vmap-point-cluster-${Math.random().toString(36).slice(2)}`;
     this.layerId = layerId;
+    this.pickGovernor = new PickGovernor({
+      profiles: {
+        cluster: { minIntervalMs: CesiumPointClusterLayer.CLICK_PICK_MIN_INTERVAL_MS, minMovePx: 0 },
+      },
+    });
 
     this.options = {
       id: layerId,
@@ -352,9 +358,7 @@ export default class CesiumPointClusterLayer {
       const pos: Cesium.Cartesian2 = movement?.position;
       if (!pos) return;
 
-      const now = Date.now();
-      if (now - this.lastClickPickTime < CesiumPointClusterLayer.CLICK_PICK_MIN_INTERVAL_MS) return;
-      this.lastClickPickTime = now;
+      if (!this.pickGovernor.shouldPick('cluster', pos)) return;
       
       const picked = this.viewer.scene.pick(pos);
       if (!picked) return;

@@ -178,6 +178,11 @@ export class CirclePrimitiveBatch {
     }, 0);
   }
 
+  private assertCloneableInstanceId(id: unknown, owner: string): string | number {
+    if (typeof id === 'string' || typeof id === 'number') return id;
+    throw new Error(`[CirclePrimitiveBatch] GeometryInstance.id must be cloneable (string/number). owner=${owner}, actual=${typeof id}`);
+  }
+
   private rebuild(): void {
     // 清理旧的图元（适用于“基本静态”的批量场景）
     if (this.ringPrimitive) {
@@ -204,10 +209,20 @@ export class CirclePrimitiveBatch {
         vertexFormat: Cesium.PerInstanceColorAppearance.VERTEX_FORMAT,
       });
 
+      let ringId: string | number;
+      let fillId: string | number;
+      try {
+        ringId = this.assertCloneableInstanceId(rec.instanceIds.outer, `${rec.circleId}:outer`);
+        fillId = this.assertCloneableInstanceId(rec.instanceIds.inner, `${rec.circleId}:inner`);
+      } catch (e) {
+        console.error(e);
+        continue;
+      }
+
       ringInstances.push(
         new Cesium.GeometryInstance({
           geometry: ringGeom,
-          id: rec.instanceIds.outer,
+          id: ringId,
           attributes: {
             color: Cesium.ColorGeometryInstanceAttribute.fromColor(ringColor),
           },
@@ -222,7 +237,7 @@ export class CirclePrimitiveBatch {
       fillInstances.push(
         new Cesium.GeometryInstance({
           geometry: fillGeom,
-          id: rec.instanceIds.inner,
+          id: fillId,
           attributes: {
             color: Cesium.ColorGeometryInstanceAttribute.fromColor(fillColor),
           },

@@ -1,4 +1,4 @@
-import { ref, type Ref } from "vue";
+import { ref, shallowRef, markRaw, type Ref } from "vue";
 import * as Cesium from "cesium";
 import type { Entity } from "cesium";
 import type { OverlayEntity } from '../libs/overlay/types';
@@ -24,18 +24,18 @@ export function useOverlayHelper(
   viewer: Ref<Cesium.Viewer | undefined>,
   message: Ref<string>
 ) {
-  const overlayService = ref<CesiumOverlayService | null>(null);
-  const markerHandler = ref<Cesium.ScreenSpaceEventHandler | null>(null);
+  const overlayService = shallowRef<CesiumOverlayService | null>(null);
+  const markerHandler = shallowRef<Cesium.ScreenSpaceEventHandler | null>(null);
   const markerEntities: Entity[] = [];
-  const lastRectangleB = ref<Entity | null>(null);
-  const lastRectangleE = ref<Entity | null>(null);
+  const lastRectangleB = shallowRef<Entity | null>(null);
+  const lastRectangleE = shallowRef<Entity | null>(null);
 
   /**
    * 初始化覆盖物服务
    */
   const initOverlayService = (options: OverlayHelperOptions = {}) => {
     if (!viewer.value) return;
-    overlayService.value = new CesiumOverlayService(viewer.value, {
+    overlayService.value = markRaw(new CesiumOverlayService(viewer.value, {
       onOverlayEditChange: (entity) => {
         const hasCustom = typeof options.onOverlayEditChange === 'function';
         if (!hasCustom) {
@@ -51,7 +51,7 @@ export function useOverlayHelper(
           // ignore
         }
       },
-    });
+    }));
   };
 
   /**
@@ -80,7 +80,7 @@ export function useOverlayHelper(
     message.value = i18n.t("overlay.marker_mode");
 
     // 创建点击事件处理器
-    markerHandler.value = new Cesium.ScreenSpaceEventHandler(viewer.value.scene.canvas);
+    markerHandler.value = markRaw(new Cesium.ScreenSpaceEventHandler(viewer.value.scene.canvas));
 
     // 左键点击添加标记点
     markerHandler.value.setInputAction((click: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {

@@ -3,6 +3,7 @@ import type { Entity, Cartesian3 } from "cesium";
 import { BaseDraw, type DrawResult, type DrawOptions } from './BaseDraw';
 import { formatDistance, isValidCartesian3 } from '../../utils/calc';
 import { i18n } from '../i18n';
+import { isMacPlatform } from '../PickGovernor';
 
 /**
  * 画线绘制类
@@ -13,6 +14,7 @@ export class DrawLine extends BaseDraw {
   private currentTotalLabel: Entity | null = null;
   private currentLinePositions: Cartesian3[] = [];
   private isTotalLabelWarmedUp: boolean = false;
+  private readonly avoidGroundPipeline: boolean = isMacPlatform();
 
   /**
    * 清理当前线段/总距离标签（不影响线实体本身）
@@ -125,7 +127,7 @@ export class DrawLine extends BaseDraw {
           ),
           width: strokeWidth,
           material: strokeColor,
-          clampToGround: this.offsetHeight === 0,
+          clampToGround: this.offsetHeight === 0 && !this.avoidGroundPipeline,
         },
       });
       this.tempEntities.push(this.currentLineEntity);
@@ -207,7 +209,7 @@ export class DrawLine extends BaseDraw {
           positions: groundPositions,
           width: strokeWidth,
           material: strokeColor,
-          clampToGround: true,
+          clampToGround: !this.avoidGroundPipeline,
         },
       });
       (finalEntity as any)._groundPositions = groundPositions;

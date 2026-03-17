@@ -171,6 +171,11 @@ export class RectanglePrimitiveBatch {
     }, 0);
   }
 
+  private assertCloneableInstanceId(id: unknown, owner: string): string | number {
+    if (typeof id === 'string' || typeof id === 'number') return id;
+    throw new Error(`[RectanglePrimitiveBatch] GeometryInstance.id must be cloneable (string/number). owner=${owner}, actual=${typeof id}`);
+  }
+
   private rebuild(): void {
     if (this.ringPrimitive) {
       try { this.ringCollection.remove(this.ringPrimitive); } catch {}
@@ -196,10 +201,20 @@ export class RectanglePrimitiveBatch {
         vertexFormat: Cesium.PerInstanceColorAppearance.VERTEX_FORMAT,
       });
 
+      let ringId: string | number;
+      let fillId: string | number;
+      try {
+        ringId = this.assertCloneableInstanceId(rec.instanceIds.outer, `${rec.rectangleId}:outer`);
+        fillId = this.assertCloneableInstanceId(rec.instanceIds.inner, `${rec.rectangleId}:inner`);
+      } catch (e) {
+        console.error(e);
+        continue;
+      }
+
       ringInstances.push(
         new Cesium.GeometryInstance({
           geometry: ringGeom,
-          id: rec.instanceIds.outer,
+          id: ringId,
           attributes: {
             color: Cesium.ColorGeometryInstanceAttribute.fromColor(ringColor),
           },
@@ -214,7 +229,7 @@ export class RectanglePrimitiveBatch {
       fillInstances.push(
         new Cesium.GeometryInstance({
           geometry: fillGeom,
-          id: rec.instanceIds.inner,
+          id: fillId,
           attributes: {
             color: Cesium.ColorGeometryInstanceAttribute.fromColor(fillColor),
           },

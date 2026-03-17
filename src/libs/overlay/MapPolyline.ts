@@ -1,6 +1,7 @@
 import * as Cesium from "cesium";
 import type { Viewer, Entity, Cartesian3, Color } from "cesium";
 import type { OverlayPosition, OverlayEntity } from './types';
+import { isMacPlatform } from '../PickGovernor';
 
 /**
  * Polyline 选项
@@ -26,6 +27,7 @@ export interface PolylineOptions {
 export class MapPolyline {
   private viewer: Viewer;
   private entities: Cesium.EntityCollection;
+  private readonly avoidGroundPipeline: boolean = isMacPlatform();
 
   constructor(viewer: Viewer) {
     this.viewer = viewer;
@@ -116,7 +118,7 @@ export class MapPolyline {
     
     const material = this.resolveMaterial(options.material);
 
-    const clampToGround = options.clampToGround ?? false;
+    const clampToGround = (options.clampToGround ?? false) && !this.avoidGroundPipeline;
     const groundHeightEpsilon = clampToGround ? Math.max(0, Number(options.groundHeightEpsilon ?? 0)) : 0;
     const finalPositions = (clampToGround && groundHeightEpsilon > 0)
       ? this.elevatePositions(positions, groundHeightEpsilon)
