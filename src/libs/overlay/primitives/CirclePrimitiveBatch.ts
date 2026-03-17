@@ -96,15 +96,14 @@ export class CirclePrimitiveBatch {
     fillColor: Cesium.Color;
     visible: boolean;
   }): void {
-    const circleId = String(args.circleId);
-    this.records.set(circleId, {
-      circleId,
+    this.records.set(args.circleId, {
+      circleId: args.circleId,
       parts: args.parts,
       // IMPORTANT: GeometryInstance.id must be structured-cloneable when GroundPrimitive is asynchronous.
       // Use pure string ids here; picking will resolve them back to proxy entities via suffix normalization.
       instanceIds: {
-        outer: `${circleId}__outer`,
-        inner: `${circleId}__fill`,
+        outer: `${args.circleId}__outer`,
+        inner: `${args.circleId}__fill`,
       },
       ringPositions: args.ringPositions,
       fillPositions: args.fillPositions,
@@ -117,30 +116,29 @@ export class CirclePrimitiveBatch {
   }
 
   public remove(circleId: string): void {
-    const key = String(circleId);
-    if (!this.records.has(key)) return;
-    this.records.delete(key);
-    this.pendingColorApplyIds.delete(key);
+    if (!this.records.has(circleId)) return;
+    this.records.delete(circleId);
+    this.pendingColorApplyIds.delete(circleId);
     this.scheduleRebuild();
   }
 
   public setVisible(circleId: string, visible: boolean): void {
-    const rec = this.records.get(String(circleId));
+    const rec = this.records.get(circleId);
     if (!rec) return;
     rec.visible = visible;
-    this.applyCurrentColors(String(circleId));
+    this.applyCurrentColors(circleId);
   }
 
   public setColors(circleId: string, ringColor: Cesium.Color, fillColor: Cesium.Color): void {
-    const rec = this.records.get(String(circleId));
+    const rec = this.records.get(circleId);
     if (!rec) return;
     rec.ringColor = ringColor;
     rec.fillColor = fillColor;
-    this.applyCurrentColors(String(circleId));
+    this.applyCurrentColors(circleId);
   }
 
   private scheduleApplyColors(circleId: string): void {
-    this.pendingColorApplyIds.add(String(circleId));
+    this.pendingColorApplyIds.add(circleId);
     if (this.colorApplyScheduled) return;
     this.colorApplyScheduled = true;
 

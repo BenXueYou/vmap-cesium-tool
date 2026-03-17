@@ -91,13 +91,12 @@ export class RectanglePrimitiveBatch {
     fillColor: Cesium.Color;
     visible: boolean;
   }): void {
-    const rectangleId = String(args.rectangleId);
-    this.records.set(rectangleId, {
-      rectangleId,
+    this.records.set(args.rectangleId, {
+      rectangleId: args.rectangleId,
       parts: args.parts,
       instanceIds: {
-        outer: `${rectangleId}__outer`,
-        inner: `${rectangleId}__fill`,
+        outer: `${args.rectangleId}__outer`,
+        inner: `${args.rectangleId}__fill`,
       },
       outerPositions: args.outerPositions,
       innerPositions: args.innerPositions,
@@ -110,30 +109,29 @@ export class RectanglePrimitiveBatch {
   }
 
   public remove(rectangleId: string): void {
-    const key = String(rectangleId);
-    if (!this.records.has(key)) return;
-    this.records.delete(key);
-    this.pendingColorApplyIds.delete(key);
+    if (!this.records.has(rectangleId)) return;
+    this.records.delete(rectangleId);
+    this.pendingColorApplyIds.delete(rectangleId);
     this.scheduleRebuild();
   }
 
   public setVisible(rectangleId: string, visible: boolean): void {
-    const rec = this.records.get(String(rectangleId));
+    const rec = this.records.get(rectangleId);
     if (!rec) return;
     rec.visible = visible;
-    this.applyCurrentColors(String(rectangleId));
+    this.applyCurrentColors(rectangleId);
   }
 
   public setColors(rectangleId: string, ringColor: Cesium.Color, fillColor: Cesium.Color): void {
-    const rec = this.records.get(String(rectangleId));
+    const rec = this.records.get(rectangleId);
     if (!rec) return;
     rec.ringColor = ringColor;
     rec.fillColor = fillColor;
-    this.applyCurrentColors(String(rectangleId));
+    this.applyCurrentColors(rectangleId);
   }
 
   private scheduleApplyColors(rectangleId: string): void {
-    this.pendingColorApplyIds.add(String(rectangleId));
+    this.pendingColorApplyIds.add(rectangleId);
     if (this.colorApplyScheduled) return;
     this.colorApplyScheduled = true;
 
