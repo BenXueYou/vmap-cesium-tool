@@ -22,6 +22,8 @@ export interface RectangleOptions {
   outlineWidth?: number;
   /** 是否贴地（默认：在粗边框模式下为 true） */
   clampToGround?: boolean;
+  /** 贴地抬高量（米，clampToGround=true 时生效） */
+  groundHeightEpsilon?: number;
   /** 悬空时的基准高度（米，clampToGround=false 时有效） */
   height?: number;
   heightReference?: HeightReference;
@@ -122,6 +124,7 @@ export class MapRectangle {
 
     const ringThickness = (options.outlineWidth && options.outlineWidth > 1) ? options.outlineWidth : 0;
     const clampToGround = options.clampToGround ?? true;
+    const groundHeightEpsilon = clampToGround ? Math.max(0, Number(options.groundHeightEpsilon ?? 0)) : 0;
     if (!(ringThickness > 0) || !clampToGround || options.extrudedHeight !== undefined) {
       console.warn('[vmap-cesium-tool] Rectangle renderMode=primitive is not supported for the given options; falling back to Entity.');
       return this.add({ ...options, renderMode: 'entity' });
@@ -164,21 +167,23 @@ export class MapRectangle {
     outerEntity._outerRectangle = options.coordinates;
     outerEntity._clampToGround = true;
     outerEntity._baseHeight = 0;
+    outerEntity._groundHeightEpsilon = groundHeightEpsilon;
 
     // 保存原始颜色，供高亮恢复
     outerEntity._primitiveRingBaseColor = ringColor;
     outerEntity._primitiveFillBaseColor = fillColor;
     innerEntity._primitiveRingBaseColor = ringColor;
     innerEntity._primitiveFillBaseColor = fillColor;
+    innerEntity._groundHeightEpsilon = groundHeightEpsilon;
 
     if (options.onClick) {
       outerEntity._onClick = options.onClick;
       innerEntity._onClick = options.onClick;
     }
 
-    const outerPositions = this.rectangleToPositions(options.coordinates, 0);
+    const outerPositions = this.rectangleToPositions(options.coordinates, groundHeightEpsilon);
     const innerRect = this.shrinkRectangle(options.coordinates, ringThickness);
-    const innerPositions = this.rectangleToPositions(innerRect, 0);
+    const innerPositions = this.rectangleToPositions(innerRect, groundHeightEpsilon);
 
     // 记录外圈边界（闭合），供高亮时绘制 glow 边框使用
     const outerClosed = outerPositions.slice();
@@ -276,12 +281,13 @@ export class MapRectangle {
     const ringThickness = (options.outlineWidth && options.outlineWidth > 1) ? options.outlineWidth : 0;
     if (ringThickness && ringThickness > 0) {
       const clampToGround = options.clampToGround ?? true;
+      const groundHeightEpsilon = clampToGround ? Math.max(0, Number(options.groundHeightEpsilon ?? 0)) : 0;
       const baseHeight = clampToGround ? 0 : (options.height ?? 0);
       const heightReference = clampToGround
-        ? Cesium.HeightReference.CLAMP_TO_GROUND
+        ? (groundHeightEpsilon > 0 ? Cesium.HeightReference.RELATIVE_TO_GROUND : Cesium.HeightReference.CLAMP_TO_GROUND)
         : (options.heightReference ?? Cesium.HeightReference.NONE);
       const heightEpsilon = options.heightEpsilon ?? (clampToGround ? 0 : 0.1);
-      const ringHeight = baseHeight + heightEpsilon;
+      const ringHeight = clampToGround ? groundHeightEpsilon : (baseHeight + heightEpsilon);
 
       const outerPositions = this.rectangleToPositions(options.coordinates, 0);
       const innerRect = this.shrinkRectangle(options.coordinates, ringThickness);
@@ -294,7 +300,8 @@ export class MapRectangle {
           material: new Cesium.ColorMaterialProperty(options.outlineColor ? this.resolveColor(options.outlineColor) : Cesium.Color.BLACK),
           outline: false,
           heightReference,
-          ...(clampToGround ? {} : { height: ringHeight }),
+          ...(!clampToGround ? { height: ringHeight } : {}),
+          ...(clampToGround && ringHeight > 0 ? { height: ringHeight } : {}),
         },
       });
 
@@ -305,7 +312,8 @@ export class MapRectangle {
           material,
           outline: false,
           heightReference,
-          ...(clampToGround ? {} : { height: ringHeight }),
+          ...(!clampToGround ? { height: ringHeight } : {}),
+          ...(clampToGround && ringHeight > 0 ? { height: ringHeight } : {}),
           extrudedHeight: options.extrudedHeight,
         },
       });
@@ -334,15 +342,21 @@ export class MapRectangle {
       outerEntity._outerRectangle = options.coordinates;
       outerEntity._clampToGround = clampToGround;
       outerEntity._baseHeight = baseHeight;
+      outerEntity._groundHeightEpsilon = groundHeightEpsilon;
       outerEntity._ringHeightEpsilon = heightEpsilon;
+
+      innerEntity._groundHeightEpsilon = groundHeightEpsilon;
 
       return outer;
     }
 
     // 非环形：默认贴地（可通过 clampToGround:false 或传入 heightReference 覆盖）
     const clampToGround = options.clampToGround ?? true;
+    const groundHeightEpsilon = clampToGround ? Math.max(0, Number(options.groundHeightEpsilon ?? 0)) : 0;
     const heightReference =
-      options.heightReference ?? (clampToGround ? Cesium.HeightReference.CLAMP_TO_GROUND : Cesium.HeightReference.NONE);
+      options.heightReference ?? (clampToGround
+        ? (groundHeightEpsilon > 0 ? Cesium.HeightReference.RELATIVE_TO_GROUND : Cesium.HeightReference.CLAMP_TO_GROUND)
+        : Cesium.HeightReference.NONE);
 
     const entity = this.entities.add({
       id,
@@ -354,6 +368,7 @@ export class MapRectangle {
         outlineWidth: options.outlineWidth ?? 1,
         heightReference,
         ...(!clampToGround && options.height !== undefined ? { height: options.height } : {}),
+        ...(clampToGround && groundHeightEpsilon > 0 ? { height: groundHeightEpsilon } : {}),
         extrudedHeight: options.extrudedHeight,
       },
     });
@@ -369,6 +384,7 @@ export class MapRectangle {
     overlayEntity._highlightEntities = [entity];
 
     (entity as OverlayEntity)._clampToGround = clampToGround;
+    (entity as OverlayEntity)._groundHeightEpsilon = groundHeightEpsilon;
 
     return entity;
   }
@@ -389,9 +405,10 @@ export class MapRectangle {
       if (!inner) return;
 
       const thickness = root._ringThickness ?? 0;
-      const outerPositions = this.rectangleToPositions(coordinates, 0);
+      const groundHeightEpsilon = root._groundHeightEpsilon ?? 0;
+      const outerPositions = this.rectangleToPositions(coordinates, groundHeightEpsilon);
       const innerRect = this.shrinkRectangle(coordinates, thickness);
-      const innerPositions = this.rectangleToPositions(innerRect, 0);
+      const innerPositions = this.rectangleToPositions(innerRect, groundHeightEpsilon);
 
       // 记录外圈边界（闭合），供高亮时绘制 glow 边框使用
       const outerClosed = outerPositions.slice();
@@ -420,9 +437,10 @@ export class MapRectangle {
     const thickness = overlayEntity._ringThickness;
     if (entity.polygon && inner && thickness) {
       const clampToGround = overlayEntity._clampToGround ?? true;
+      const groundHeightEpsilon = overlayEntity._groundHeightEpsilon ?? 0;
       const baseHeight = clampToGround ? 0 : (overlayEntity._baseHeight ?? 0);
       const heightEpsilon = overlayEntity._ringHeightEpsilon ?? (clampToGround ? 0 : 0.1);
-      const ringHeight = baseHeight + heightEpsilon;
+      const ringHeight = clampToGround ? groundHeightEpsilon : (baseHeight + heightEpsilon);
 
       const outerPositions = this.rectangleToPositions(coordinates, 0);
       const innerRect = this.shrinkRectangle(coordinates, thickness);
@@ -434,14 +452,25 @@ export class MapRectangle {
       // 确保内层填充高度与外层一致
       if (inner.rectangle) {
         if (clampToGround) {
-          (inner.rectangle as any).height = undefined;
+          (inner.rectangle as any).heightReference = new Cesium.ConstantProperty(
+            groundHeightEpsilon > 0 ? Cesium.HeightReference.RELATIVE_TO_GROUND : Cesium.HeightReference.CLAMP_TO_GROUND
+          );
+          (inner.rectangle as any).height = ringHeight > 0 ? new Cesium.ConstantProperty(ringHeight) : undefined;
         } else {
           (inner.rectangle as any).height = new Cesium.ConstantProperty(ringHeight);
         }
       }
       // 外层 polygon 高度（悬空时）
-      if (!clampToGround && entity.polygon) {
-        (entity.polygon as any).height = new Cesium.ConstantProperty(ringHeight);
+      if (entity.polygon) {
+        if (clampToGround) {
+          (entity.polygon as any).heightReference = new Cesium.ConstantProperty(
+            groundHeightEpsilon > 0 ? Cesium.HeightReference.RELATIVE_TO_GROUND : Cesium.HeightReference.CLAMP_TO_GROUND
+          );
+          (entity.polygon as any).height = ringHeight > 0 ? new Cesium.ConstantProperty(ringHeight) : undefined;
+        } else {
+          (entity.polygon as any).heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.NONE);
+          (entity.polygon as any).height = new Cesium.ConstantProperty(ringHeight);
+        }
       }
       overlayEntity._outerRectangle = coordinates;
     } else if (entity.rectangle) {
@@ -503,8 +532,9 @@ export class MapRectangle {
         if (outerRect) {
           const clampToGround = overlayEntity._clampToGround ?? true;
           const baseHeight = clampToGround ? 0 : (overlayEntity._baseHeight ?? 0);
+          const groundHeightEpsilon = overlayEntity._groundHeightEpsilon ?? 0;
           const heightEpsilon = overlayEntity._ringHeightEpsilon ?? (clampToGround ? 0 : 0.1);
-          const ringHeight = baseHeight + heightEpsilon;
+          const ringHeight = clampToGround ? groundHeightEpsilon : (baseHeight + heightEpsilon);
 
           const outerPositions = this.rectangleToPositions(outerRect, 0);
           const innerRect = this.shrinkRectangle(outerRect, thickness);
@@ -515,13 +545,24 @@ export class MapRectangle {
           inner.rectangle!.coordinates = new Cesium.ConstantProperty(innerRect);
           if (inner.rectangle) {
             if (clampToGround) {
-              (inner.rectangle as any).height = undefined;
+              (inner.rectangle as any).heightReference = new Cesium.ConstantProperty(
+                groundHeightEpsilon > 0 ? Cesium.HeightReference.RELATIVE_TO_GROUND : Cesium.HeightReference.CLAMP_TO_GROUND
+              );
+              (inner.rectangle as any).height = ringHeight > 0 ? new Cesium.ConstantProperty(ringHeight) : undefined;
             } else {
               (inner.rectangle as any).height = new Cesium.ConstantProperty(ringHeight);
             }
           }
-          if (!clampToGround && entity.polygon) {
-            (entity.polygon as any).height = new Cesium.ConstantProperty(ringHeight);
+          if (entity.polygon) {
+            if (clampToGround) {
+              (entity.polygon as any).heightReference = new Cesium.ConstantProperty(
+                groundHeightEpsilon > 0 ? Cesium.HeightReference.RELATIVE_TO_GROUND : Cesium.HeightReference.CLAMP_TO_GROUND
+              );
+              (entity.polygon as any).height = ringHeight > 0 ? new Cesium.ConstantProperty(ringHeight) : undefined;
+            } else {
+              (entity.polygon as any).heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.NONE);
+              (entity.polygon as any).height = new Cesium.ConstantProperty(ringHeight);
+            }
           }
         }
       }

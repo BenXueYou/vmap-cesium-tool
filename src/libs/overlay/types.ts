@@ -94,6 +94,8 @@ export interface OverlayEntity extends Entity {
 	_clampToGround?: boolean;
 	/** 复合形状的基准高度（米，clampToGround=false 时有效） */
 	_baseHeight?: number;
+	/** 贴地抬高量（米，clampToGround=true 时有效） */
+	_groundHeightEpsilon?: number;
 	_isThickOutline?: boolean;
 	_outlineWidth?: number;
 	_isRing?: boolean;

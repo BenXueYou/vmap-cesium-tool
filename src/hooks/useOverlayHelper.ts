@@ -1014,16 +1014,13 @@ export function useOverlayHelper(
     // Test A: primitive ✅（粗边框 + 贴地 + 纯色材质）
     const polyA = overlayService.value.addPolygon({
       positions: [
-        [lon - 0.01, lat - 0.008],
-        [lon + 0.01, lat - 0.008],
-        [lon + 0.012, lat + 0.006],
-        [lon - 0.004, lat + 0.01],
+        [120.21751417622207,30.184703422552086],[120.22314943122323,30.178983194555553],[120.22552491001976,30.18638485910404]
       ],
       // 预期：填充为半透明橙色，边框为不透明橙色（hover/click 高亮可叠加，click 优先）
       material: Cesium.Color.ORANGE.withAlpha(0.5),
       outline: true,
       outlineColor: Cesium.Color.ORANGE,
-      outlineWidth: 10,
+      outlineWidth: 2,
       hoverHighlight: true,
       clickHighlight: true,
       renderMode: 'primitive',
@@ -1039,15 +1036,12 @@ export function useOverlayHelper(
     // 预期：边框永远压在所有填充之上，重叠区域也能看清边界。
     const polyDDetect = overlayService.value.addPolygon({
       positions: [
-        [lon - 0.004, lat - 0.002],
-        [lon + 0.014, lat - 0.002],
-        [lon + 0.016, lat + 0.01],
-        [lon - 0.002, lat + 0.012],
+        [120.22101034907904,30.186384587348854],[120.22712033372981,30.18435026721259],[120.21805792406063,30.179867317901735]
       ],
       material: Cesium.Color.BLUE.withAlpha(0.25),
       outline: true,
       outlineColor: Cesium.Color.BLUE,
-      outlineWidth: 10,
+      outlineWidth: 2,
       renderMode: 'primitive',
       layerKey: 'detect',
       hoverHighlight: true,

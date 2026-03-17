@@ -93,12 +93,13 @@ export class PolygonPrimitiveBatch {
     borderColor: Cesium.Color;
     visible: boolean;
   }): void {
-    this.records.set(args.polygonId, {
-      polygonId: args.polygonId,
+    const polygonId = String(args.polygonId);
+    this.records.set(polygonId, {
+      polygonId,
       parts: args.parts,
       instanceIds: {
-        fill: `${args.polygonId}__fill`,
-        border: `${args.polygonId}__border`,
+        fill: `${polygonId}__fill`,
+        border: `${polygonId}__border`,
       },
       fillPositions: args.fillPositions,
       borderPositions: args.borderPositions,
@@ -112,29 +113,30 @@ export class PolygonPrimitiveBatch {
   }
 
   public remove(polygonId: string): void {
-    if (!this.records.has(polygonId)) return;
-    this.records.delete(polygonId);
-    this.pendingColorApplyIds.delete(polygonId);
+    const key = String(polygonId);
+    if (!this.records.has(key)) return;
+    this.records.delete(key);
+    this.pendingColorApplyIds.delete(key);
     this.scheduleRebuild();
   }
 
   public setVisible(polygonId: string, visible: boolean): void {
-    const rec = this.records.get(polygonId);
+    const rec = this.records.get(String(polygonId));
     if (!rec) return;
     rec.visible = visible;
-    this.applyCurrentColors(polygonId);
+    this.applyCurrentColors(String(polygonId));
   }
 
   public setColors(polygonId: string, borderColor: Cesium.Color, fillColor: Cesium.Color): void {
-    const rec = this.records.get(polygonId);
+    const rec = this.records.get(String(polygonId));
     if (!rec) return;
     rec.borderColor = borderColor;
     rec.fillColor = fillColor;
-    this.applyCurrentColors(polygonId);
+    this.applyCurrentColors(String(polygonId));
   }
 
   private scheduleApplyColors(polygonId: string): void {
-    this.pendingColorApplyIds.add(polygonId);
+    this.pendingColorApplyIds.add(String(polygonId));
     if (this.colorApplyScheduled) return;
     this.colorApplyScheduled = true;
 

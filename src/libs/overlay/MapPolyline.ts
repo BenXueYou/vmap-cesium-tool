@@ -10,6 +10,8 @@ export interface PolylineOptions {
   width?: number;
   material?: Cesium.MaterialProperty | Color | string;
   clampToGround?: boolean;
+  /** 贴地抬高量（米，clampToGround=true 时生效） */
+  groundHeightEpsilon?: number;
   /** 点击该覆盖物时是否高亮显示（默认 false）。支持传入自定义颜色等参数 */
   clickHighlight?: boolean | { color?: Color | string; fillAlpha?: number };
   /** 鼠标移入该覆盖物时是否高亮显示（默认 false）。支持传入自定义颜色等参数 */
@@ -98,6 +100,13 @@ export class MapPolyline {
     return material as Cesium.MaterialProperty;
   }
 
+  private elevatePositions(positions: Cesium.Cartesian3[], heightMeters: number): Cesium.Cartesian3[] {
+    return positions.map((p) => {
+      const c = Cesium.Cartographic.fromCartesian(p);
+      return Cesium.Cartesian3.fromRadians(c.longitude, c.latitude, heightMeters);
+    });
+  }
+
   /**
    * 添加 Polyline（折线）
    */
@@ -107,13 +116,19 @@ export class MapPolyline {
     
     const material = this.resolveMaterial(options.material);
 
+    const clampToGround = options.clampToGround ?? false;
+    const groundHeightEpsilon = clampToGround ? Math.max(0, Number(options.groundHeightEpsilon ?? 0)) : 0;
+    const finalPositions = (clampToGround && groundHeightEpsilon > 0)
+      ? this.elevatePositions(positions, groundHeightEpsilon)
+      : positions;
+
     const entity = this.entities.add({
       id,
       polyline: {
-        positions,
+        positions: finalPositions,
         width: options.width ?? 2,
         material,
-        clampToGround: options.clampToGround ?? false,
+        clampToGround,
       },
     });
 
@@ -126,6 +141,7 @@ export class MapPolyline {
     overlayEntity._clickHighlight = options.clickHighlight ?? false;
     overlayEntity._hoverHighlight = options.hoverHighlight ?? false;
     overlayEntity._highlightEntities = [entity];
+    overlayEntity._groundHeightEpsilon = groundHeightEpsilon;
 
     return entity;
   }
@@ -136,7 +152,14 @@ export class MapPolyline {
   public updatePositions(entity: Entity, positions: OverlayPosition[]): void {
     const newPositions = positions.map(pos => this.convertPosition(pos));
     if (entity.polyline) {
-      entity.polyline.positions = new Cesium.ConstantProperty(newPositions);
+      const overlay = entity as OverlayEntity;
+      const clampToGround = (entity.polyline as any).clampToGround?.getValue?.(Cesium.JulianDate.now?.()) ?? (entity.polyline as any).clampToGround;
+      const isClamp = typeof clampToGround === 'boolean' ? clampToGround : false;
+      const groundHeightEpsilon = overlay._groundHeightEpsilon ?? 0;
+      const finalPositions = (isClamp && groundHeightEpsilon > 0)
+        ? this.elevatePositions(newPositions, groundHeightEpsilon)
+        : newPositions;
+      entity.polyline.positions = new Cesium.ConstantProperty(finalPositions);
     }
   }
 

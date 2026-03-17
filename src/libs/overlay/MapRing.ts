@@ -38,6 +38,8 @@ export interface RingOptions {
   glowPower?: number;
   /** 是否贴地（默认 true） */
   clampToGround?: boolean;
+  /** 贴地抬高量（米，clampToGround=true 时生效） */
+  groundHeightEpsilon?: number;
   /** 圆环分段数（默认 128），越大越圆滑 */
   segments?: number;
   /** 覆盖物点击回调 */
@@ -205,7 +207,8 @@ export class MapRing {
       (entity.polyline as any)?.clampToGround?.getValue?.(Cesium.JulianDate.now?.()) ?? (entity.polyline as any)?.clampToGround;
     const currentClamp = typeof clampFromEntity === "boolean" ? clampFromEntity : true;
     const isClamp = override?.clampToGround ?? currentClamp;
-    const heightMeters = isClamp ? 0 : (center.height ?? 0);
+    const groundHeightEpsilon = overlay._groundHeightEpsilon ?? 0;
+    const heightMeters = isClamp ? groundHeightEpsilon : (center.height ?? 0);
 
     return this.generateCirclePositions(center, radius, heightMeters, nextSegments);
   }
@@ -252,11 +255,12 @@ export class MapRing {
     const width = options.glowWidth ?? options.width ?? 8;
     const segments = options.segments ?? 128;
     const clampToGround = options.clampToGround ?? true;
+    const groundHeightEpsilon = clampToGround ? Math.max(0, Number(options.groundHeightEpsilon ?? 0)) : 0;
     const showInnerLine = options.showInnerLine ?? true;
 
     const centerCartesian = this.convertPosition(options.position);
     const centerCarto = Cesium.Cartographic.fromCartesian(centerCartesian);
-    const heightMeters = clampToGround ? 0 : (centerCarto.height ?? 0);
+    const heightMeters = clampToGround ? groundHeightEpsilon : (centerCarto.height ?? 0);
 
     const ringPositions = this.generateCirclePositions(centerCarto, options.radius, heightMeters, segments);
     const glowMaterial = this.resolveGlowMaterial(options.color, options.glowPower);
@@ -310,6 +314,7 @@ export class MapRing {
     overlayEntity._ringGapColor = options.gapColor;
     overlayEntity._ringShowInnerLine = showInnerLine;
     overlayEntity._innerEntity = innerEntity;
+    overlayEntity._groundHeightEpsilon = groundHeightEpsilon;
 
     if (options.onClick) {
       overlayEntity._onClick = options.onClick;
@@ -350,7 +355,8 @@ export class MapRing {
 
     const clampToGround = (entity.polyline as any).clampToGround?.getValue?.(Cesium.JulianDate.now?.()) ?? (entity.polyline as any).clampToGround;
     const isClamp = typeof clampToGround === "boolean" ? clampToGround : true;
-    const heightMeters = isClamp ? 0 : (centerCarto.height ?? 0);
+    const groundHeightEpsilon = (overlay._groundHeightEpsilon ?? 0);
+    const heightMeters = isClamp ? groundHeightEpsilon : (centerCarto.height ?? 0);
     const ringPositions = this.generateCirclePositions(centerCarto, radius, heightMeters, segments);
     entity.polyline.positions = new Cesium.ConstantProperty(ringPositions);
     if (overlay._innerEntity?.polyline) {
@@ -371,7 +377,8 @@ export class MapRing {
 
     const clampToGround = (entity.polyline as any).clampToGround?.getValue?.(Cesium.JulianDate.now?.()) ?? (entity.polyline as any).clampToGround;
     const isClamp = typeof clampToGround === "boolean" ? clampToGround : true;
-    const heightMeters = isClamp ? 0 : (center.height ?? 0);
+    const groundHeightEpsilon = (overlay._groundHeightEpsilon ?? 0);
+    const heightMeters = isClamp ? groundHeightEpsilon : (center.height ?? 0);
     const ringPositions = this.generateCirclePositions(center, radius, heightMeters, segments);
     entity.polyline.positions = new Cesium.ConstantProperty(ringPositions);
     if (overlay._innerEntity?.polyline) {
@@ -388,7 +395,7 @@ export class MapRing {
     options: Partial<
       Pick<
         RingOptions,
-        "color" | "showInnerLine" | "lineColor" | "lineStyle" | "lineMaterialMode" | "stripeRepeat" | "dashLength" | "dashPattern" | "gapColor" | "width" | "glowWidth" | "lineWidth" | "glowPower" | "clampToGround" | "segments"
+        "color" | "showInnerLine" | "lineColor" | "lineStyle" | "lineMaterialMode" | "stripeRepeat" | "dashLength" | "dashPattern" | "gapColor" | "width" | "glowWidth" | "lineWidth" | "glowPower" | "clampToGround" | "segments" | "groundHeightEpsilon"
       >
     >
   ): void {
@@ -510,9 +517,14 @@ export class MapRing {
       }
     }
 
+    if (options.groundHeightEpsilon !== undefined) {
+      overlay._groundHeightEpsilon = Math.max(0, Number(options.groundHeightEpsilon) || 0);
+    }
+
     if ((segmentsChanged || clampChanged) && center && radius !== undefined) {
       const isClamp = options.clampToGround ?? true;
-      const heightMeters = isClamp ? 0 : (center.height ?? 0);
+      const groundHeightEpsilon = overlay._groundHeightEpsilon ?? 0;
+      const heightMeters = isClamp ? groundHeightEpsilon : (center.height ?? 0);
       const ringPositions = this.generateCirclePositions(center, radius, heightMeters, nextSegments ?? 128);
       entity.polyline.positions = new Cesium.ConstantProperty(ringPositions);
       if (overlay._innerEntity?.polyline) {

@@ -32,6 +32,8 @@ export interface CircleOptions {
    * - false：填充与边框都使用 position 高度悬空。
    */
   clampToGround?: boolean; // 仅在 entity 模式下有效, 是否贴地
+  /** 贴地抬高量（米，clampToGround=true 时生效） */
+  groundHeightEpsilon?: number;
   heightReference?: HeightReference; // 几何体高度，绝对高度（默认）NONE: 0；贴地：CLAMP_TO_GROUND: 1; 相对地面:RELATIVE_TO_GROUND: 2
   extrudedHeight?: number; // 拉伸高度（仅 entity 模式）
   heightEpsilon?: number; // 高度容差，用于环形方案
@@ -137,6 +139,7 @@ export class MapCircle {
     // 仅支持：粗边框 + 贴地 + 纯色
     const ringThickness = (options.outlineWidth && options.outlineWidth > 1) ? options.outlineWidth : 0; // 边框厚度
     const clampToGround = options.clampToGround ?? true; // 是否贴地
+    const groundHeightEpsilon = clampToGround ? Math.max(0, Number(options.groundHeightEpsilon ?? 0)) : 0;
     const fillColor = this.resolveMaterialColor(options.material); // 解析填充颜色
     // 检查是否满足primitive支持条件，如果不满足则回退到entity模式
     if (!(ringThickness > 0) || !clampToGround || !fillColor) {
@@ -148,7 +151,7 @@ export class MapCircle {
     // 转换位置坐标
     const position = this.convertPosition(options.position);
     const baseCartoRaw = Cesium.Cartographic.fromCartesian(position); // 转换为地理坐标
-    const baseCarto0 = new Cesium.Cartographic(baseCartoRaw.longitude, baseCartoRaw.latitude, 0); // 设置高度为0
+    const baseCarto0 = new Cesium.Cartographic(baseCartoRaw.longitude, baseCartoRaw.latitude, groundHeightEpsilon);
 
 
 
@@ -160,8 +163,8 @@ export class MapCircle {
 
 
     // 生成圆形位置点
-    const ringPositions = this.generateCirclePositions(baseCarto0, outerRadius, 0, ringSegments); // 外环位置点
-    const fillPositions = this.generateCirclePositions(baseCarto0, innerRadius, 0, ringSegments); // 内填充位置点
+    const ringPositions = this.generateCirclePositions(baseCarto0, outerRadius, groundHeightEpsilon, ringSegments);
+    const fillPositions = this.generateCirclePositions(baseCarto0, innerRadius, groundHeightEpsilon, ringSegments);
 
     const ringColor = options.outlineColor ? this.resolveColor(options.outlineColor) : Cesium.Color.BLACK; // 环颜色
 
@@ -210,6 +213,7 @@ export class MapCircle {
     outerEntity._fillMaterial = fillColor;
     outerEntity._primitiveRingBaseColor = ringColor;
     outerEntity._primitiveFillBaseColor = fillColor;
+    outerEntity._groundHeightEpsilon = groundHeightEpsilon;
 
     // 记录外圈边界（闭合），供高亮时绘制 glow 边框使用
     const ringClosed = ringPositions.slice();
@@ -220,6 +224,7 @@ export class MapCircle {
     innerEntity._primitiveRingBaseColor = ringColor;
     innerEntity._primitiveFillBaseColor = fillColor;
     innerEntity._primitiveOutlinePositions = outerEntity._primitiveOutlinePositions;
+    innerEntity._groundHeightEpsilon = groundHeightEpsilon;
 
     // 入 batch（若提供 layerKey，则进入分层渲染栈）
     const batch = layerKey ? this.getLayeredPrimitiveBatch(layerKey) : this.getPrimitiveBatch();
@@ -323,14 +328,15 @@ export class MapCircle {
 
     if (ringThickness > 0) {
       const clampToGround = options.clampToGround ?? true;
+      const groundHeightEpsilon = clampToGround ? Math.max(0, Number(options.groundHeightEpsilon ?? 0)) : 0;
       const baseCartoRaw = Cesium.Cartographic.fromCartesian(position);
       const baseHeight = clampToGround ? 0 : ((baseCartoRaw?.height ?? 0) as number);
       const heightReference = clampToGround
-        ? Cesium.HeightReference.CLAMP_TO_GROUND
+        ? (groundHeightEpsilon > 0 ? Cesium.HeightReference.RELATIVE_TO_GROUND : Cesium.HeightReference.CLAMP_TO_GROUND)
         : (options.heightReference ?? Cesium.HeightReference.NONE);
 
       const heightEpsilon = options.heightEpsilon ?? (clampToGround ? 0 : 0.01);
-      const ringHeight = baseHeight + heightEpsilon;
+      const ringHeight = clampToGround ? groundHeightEpsilon : (baseHeight + heightEpsilon);
 
       const baseCarto = new Cesium.Cartographic(baseCartoRaw.longitude, baseCartoRaw.latitude, 0);
       const centerCartesian = Cesium.Cartesian3.fromRadians(baseCartoRaw.longitude, baseCartoRaw.latitude, 0);
@@ -353,7 +359,8 @@ export class MapCircle {
           material: new Cesium.ColorMaterialProperty(options.outlineColor ? this.resolveColor(options.outlineColor) : Cesium.Color.BLACK),
           outline: false,
           heightReference,
-          ...(clampToGround ? {} : { height: ringHeight }),
+          ...(!clampToGround ? { height: ringHeight } : {}),
+          ...(clampToGround && ringHeight > 0 ? { height: ringHeight } : {}),
         },
       });
 
@@ -365,7 +372,8 @@ export class MapCircle {
           material: material instanceof Cesium.Color ? new Cesium.ColorMaterialProperty(material) : (material as Cesium.MaterialProperty),
           outline: false,
           heightReference,
-          ...(clampToGround ? {} : { height: ringHeight }),
+          ...(!clampToGround ? { height: ringHeight } : {}),
+          ...(clampToGround && ringHeight > 0 ? { height: ringHeight } : {}),
           extrudedHeight: options.extrudedHeight,
         },
       });
@@ -395,6 +403,7 @@ export class MapCircle {
       outerEntity._ringThickness = ringThickness;
       outerEntity._fillMaterial = material;
       outerEntity._ringHeightEpsilon = heightEpsilon;
+      outerEntity._groundHeightEpsilon = groundHeightEpsilon;
       outerEntity._centerCartographic = new Cesium.Cartographic(baseCartoRaw.longitude, baseCartoRaw.latitude, baseHeight);
       outerEntity._outerRadius = outerRadius;
       outerEntity._innerRadius = innerRadius;
@@ -402,18 +411,23 @@ export class MapCircle {
       outerEntity._clampToGround = clampToGround;
       outerEntity._baseHeight = baseHeight;
 
+      innerEntity._groundHeightEpsilon = groundHeightEpsilon;
+
       return outer;
     } else {
       // 非环形：默认贴地（可通过 clampToGround:false 或传入 heightReference 覆盖）
       const clampToGround = options.clampToGround ?? true;
+      const groundHeightEpsilon = clampToGround ? Math.max(0, Number(options.groundHeightEpsilon ?? 0)) : 0;
       const heightReference =
-        options.heightReference ?? (clampToGround ? Cesium.HeightReference.CLAMP_TO_GROUND : Cesium.HeightReference.NONE);
+        options.heightReference ?? (clampToGround
+          ? (groundHeightEpsilon > 0 ? Cesium.HeightReference.RELATIVE_TO_GROUND : Cesium.HeightReference.CLAMP_TO_GROUND)
+          : Cesium.HeightReference.NONE);
 
       // Cesium 的 ellipse 高度以 ellipse.height 为准（position 的高度不一定会被当作图形高度使用）。
       // 因此统一策略：position 始终使用地表点（height=0），悬空高度通过 ellipse.height 表达。
       const carto = Cesium.Cartographic.fromCartesian(position);
       const surfacePosition = Cesium.Cartesian3.fromRadians(carto.longitude, carto.latitude, 0);
-      const heightMeters = clampToGround ? 0 : (carto.height ?? 0);
+      const heightMeters = clampToGround ? groundHeightEpsilon : (carto.height ?? 0);
 
       const entity = this.entities.add({
         id,
@@ -443,6 +457,7 @@ export class MapCircle {
 
       (entity as OverlayEntity)._clampToGround = clampToGround;
       (entity as OverlayEntity)._baseHeight = heightMeters;
+      (entity as OverlayEntity)._groundHeightEpsilon = groundHeightEpsilon;
 
       return entity;
     }
@@ -534,6 +549,7 @@ export class MapCircle {
     if (overlay._overlayType === 'circle-primitive') {
       const root = entity as OverlayEntity;
       const id = String(root.id);
+      const groundHeightEpsilon = root._groundHeightEpsilon ?? 0;
 
       const thickness = root._ringThickness ?? 0;
       const outerRadius = root._outerRadius ?? 0;
@@ -541,10 +557,10 @@ export class MapCircle {
       const innerRadius = Math.max(0, outerRadius - thickness);
 
       const carto = Cesium.Cartographic.fromCartesian(newPosition);
-      const baseCarto0 = new Cesium.Cartographic(carto.longitude, carto.latitude, 0);
-      root._centerCartographic = new Cesium.Cartographic(carto.longitude, carto.latitude, 0);
-      const ringPositions = this.generateCirclePositions(baseCarto0, outerRadius, 0, segments);
-      const fillPositions = this.generateCirclePositions(baseCarto0, innerRadius, 0, segments);
+      const baseCarto0 = new Cesium.Cartographic(carto.longitude, carto.latitude, groundHeightEpsilon);
+      root._centerCartographic = new Cesium.Cartographic(carto.longitude, carto.latitude, groundHeightEpsilon);
+      const ringPositions = this.generateCirclePositions(baseCarto0, outerRadius, groundHeightEpsilon, segments);
+      const fillPositions = this.generateCirclePositions(baseCarto0, innerRadius, groundHeightEpsilon, segments);
 
       const ringClosed = ringPositions.slice();
       if (ringClosed.length >= 2) ringClosed.push(ringClosed[0]);
@@ -585,9 +601,10 @@ export class MapCircle {
     }
 
     const clampToGround = overlay._clampToGround ?? false;
+    const groundHeightEpsilon = overlay._groundHeightEpsilon ?? 0;
     const baseHeight = clampToGround ? 0 : (carto.height ?? 0);
     const heightEpsilon = overlay._ringHeightEpsilon ?? 0;
-    const ringHeight = baseHeight + heightEpsilon;
+    const ringHeight = clampToGround ? groundHeightEpsilon : (baseHeight + heightEpsilon);
     overlay._baseHeight = baseHeight;
 
     const surfacePosition = Cesium.Cartesian3.fromRadians(carto.longitude, carto.latitude, 0);
@@ -615,10 +632,12 @@ export class MapCircle {
 
       // 高度策略：贴地=CLAMP_TO_GROUND；悬空=NONE + height
       (entity.polygon as any).heightReference = new Cesium.ConstantProperty(
-        clampToGround ? Cesium.HeightReference.CLAMP_TO_GROUND : Cesium.HeightReference.NONE
+        clampToGround
+          ? (groundHeightEpsilon > 0 ? Cesium.HeightReference.RELATIVE_TO_GROUND : Cesium.HeightReference.CLAMP_TO_GROUND)
+          : Cesium.HeightReference.NONE
       );
       if (clampToGround) {
-        (entity.polygon as any).height = undefined;
+        (entity.polygon as any).height = ringHeight > 0 ? new Cesium.ConstantProperty(ringHeight) : undefined;
       } else {
         (entity.polygon as any).height = new Cesium.ConstantProperty(ringHeight);
       }
@@ -628,10 +647,12 @@ export class MapCircle {
         inner.position = new Cesium.ConstantPositionProperty(surfacePosition);
         if (inner.polygon) {
           (inner.polygon as any).heightReference = new Cesium.ConstantProperty(
-            clampToGround ? Cesium.HeightReference.CLAMP_TO_GROUND : Cesium.HeightReference.NONE
+            clampToGround
+              ? (groundHeightEpsilon > 0 ? Cesium.HeightReference.RELATIVE_TO_GROUND : Cesium.HeightReference.CLAMP_TO_GROUND)
+              : Cesium.HeightReference.NONE
           );
           if (clampToGround) {
-            (inner.polygon as any).height = undefined;
+            (inner.polygon as any).height = ringHeight > 0 ? new Cesium.ConstantProperty(ringHeight) : undefined;
           } else {
             (inner.polygon as any).height = new Cesium.ConstantProperty(ringHeight);
           }
@@ -645,9 +666,11 @@ export class MapCircle {
     overlay._baseHeight = clampToGround ? 0 : baseHeight;
     if (entity.ellipse) {
       entity.ellipse.heightReference = new Cesium.ConstantProperty(
-        clampToGround ? Cesium.HeightReference.CLAMP_TO_GROUND : Cesium.HeightReference.NONE
+        clampToGround
+          ? (groundHeightEpsilon > 0 ? Cesium.HeightReference.RELATIVE_TO_GROUND : Cesium.HeightReference.CLAMP_TO_GROUND)
+          : Cesium.HeightReference.NONE
       );
-      entity.ellipse.height = new Cesium.ConstantProperty(clampToGround ? 0 : baseHeight);
+      entity.ellipse.height = new Cesium.ConstantProperty(clampToGround ? groundHeightEpsilon : baseHeight);
     }
   }
 
@@ -664,13 +687,14 @@ export class MapCircle {
       const id = String(root.id);
       const inner = root._innerEntity;
       if (!inner) return;
+      const groundHeightEpsilon = root._groundHeightEpsilon ?? 0;
 
       const thickness2 = root._ringThickness ?? 0;
       const clampToGround = true;
       if (!clampToGround) return;
 
       const carto = root._centerCartographic
-        ? new Cesium.Cartographic(root._centerCartographic.longitude, root._centerCartographic.latitude, 0)
+        ? new Cesium.Cartographic(root._centerCartographic.longitude, root._centerCartographic.latitude, groundHeightEpsilon)
         : (() => {
             // 尝试从 inner/outer 的 id 推断没有位置；primitive 模式必须有 centerCartographic，缺失则直接返回
             return undefined;
@@ -681,8 +705,8 @@ export class MapCircle {
       root._outerRadius = radius;
       root._innerRadius = Math.max(0, radius - thickness2);
 
-      const ringPositions = this.generateCirclePositions(carto, root._outerRadius, 0, segments);
-      const fillPositions = this.generateCirclePositions(carto, root._innerRadius, 0, segments);
+      const ringPositions = this.generateCirclePositions(carto, root._outerRadius, groundHeightEpsilon, segments);
+      const fillPositions = this.generateCirclePositions(carto, root._innerRadius, groundHeightEpsilon, segments);
 
       const ringClosed = ringPositions.slice();
       if (ringClosed.length >= 2) ringClosed.push(ringClosed[0]);
@@ -710,8 +734,9 @@ export class MapCircle {
       if (!center) return;
       const clampToGround = overlayEntity._clampToGround ?? false;
       const baseHeight = overlayEntity._baseHeight ?? 0;
+      const groundHeightEpsilon = overlayEntity._groundHeightEpsilon ?? 0;
       const heightEpsilon = overlayEntity._ringHeightEpsilon ?? 0;
-      const ringHeight = baseHeight + heightEpsilon;
+      const ringHeight = clampToGround ? groundHeightEpsilon : (baseHeight + heightEpsilon);
       const segments = overlayEntity._ringSegments ?? 256;
 
       overlayEntity._outerRadius = radius;
@@ -724,20 +749,28 @@ export class MapCircle {
         new Cesium.PolygonHierarchy(outerPositions, [new Cesium.PolygonHierarchy(holePositions)])
       );
       (entity.polygon as any).heightReference = new Cesium.ConstantProperty(
-        clampToGround ? Cesium.HeightReference.CLAMP_TO_GROUND : Cesium.HeightReference.NONE
+        clampToGround
+          ? (groundHeightEpsilon > 0 ? Cesium.HeightReference.RELATIVE_TO_GROUND : Cesium.HeightReference.CLAMP_TO_GROUND)
+          : Cesium.HeightReference.NONE
       );
       if (!clampToGround) {
         (entity.polygon as any).height = new Cesium.ConstantProperty(ringHeight);
+      } else {
+        (entity.polygon as any).height = ringHeight > 0 ? new Cesium.ConstantProperty(ringHeight) : undefined;
       }
 
       const inner = overlayEntity._innerEntity;
       if (inner && inner.polygon) {
         inner.polygon.hierarchy = new Cesium.ConstantProperty(new Cesium.PolygonHierarchy(holePositions));
         (inner.polygon as any).heightReference = new Cesium.ConstantProperty(
-          clampToGround ? Cesium.HeightReference.CLAMP_TO_GROUND : Cesium.HeightReference.NONE
+          clampToGround
+            ? (groundHeightEpsilon > 0 ? Cesium.HeightReference.RELATIVE_TO_GROUND : Cesium.HeightReference.CLAMP_TO_GROUND)
+            : Cesium.HeightReference.NONE
         );
         if (!clampToGround) {
           (inner.polygon as any).height = new Cesium.ConstantProperty(ringHeight);
+        } else {
+          (inner.polygon as any).height = ringHeight > 0 ? new Cesium.ConstantProperty(ringHeight) : undefined;
         }
       }
       return;

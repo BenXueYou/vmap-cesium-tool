@@ -26,6 +26,8 @@ export interface PolygonOptions {
    * - false：填充与边框都在统一的 baseHeight 上悬空。
    */
   clampToGround?: boolean;
+  /** 贴地抬高量（米，clampToGround=true 时生效） */
+  groundHeightEpsilon?: number;
   heightReference?: HeightReference;
   extrudedHeight?: number;
   /** 点击该覆盖物时是否高亮显示（默认 false）。支持传入自定义颜色等参数 */
@@ -121,6 +123,7 @@ export class MapPolygon {
 
     const ringThickness = (options.outlineWidth && options.outlineWidth > 1) ? options.outlineWidth : 0;
     const clampToGround = options.clampToGround ?? true;
+    const groundHeightEpsilon = clampToGround ? Math.max(0, Number(options.groundHeightEpsilon ?? 0)) : 0;
     if (!(ringThickness > 0) || !clampToGround || options.extrudedHeight !== undefined) {
       console.warn('[vmap-cesium-tool] Polygon renderMode=primitive is not supported for the given options; falling back to Entity.');
       return this.add({ ...options, renderMode: 'entity' });
@@ -169,15 +172,17 @@ export class MapPolygon {
     fillEntity._outlineWidth = borderWidth;
     fillEntity._clampToGround = true;
     fillEntity._baseHeight = 0;
+    fillEntity._groundHeightEpsilon = groundHeightEpsilon;
 
     // 保存原始颜色，供高亮恢复使用
     fillEntity._primitiveFillBaseColor = fillColor;
     fillEntity._primitiveBorderBaseColor = borderColor;
     borderEntity._primitiveFillBaseColor = fillColor;
     borderEntity._primitiveBorderBaseColor = borderColor;
+    borderEntity._groundHeightEpsilon = groundHeightEpsilon;
 
     // 贴地：统一把高度压到 0
-    const surfacePositions = this.elevatePositions(positions, 0);
+    const surfacePositions = this.elevatePositions(positions, groundHeightEpsilon);
     const borderBase = surfacePositions;
     const borderPositions: Cesium.Cartesian3[] = borderBase.slice();
     if (borderPositions.length >= 2) borderPositions.push(borderBase[0]);
@@ -375,9 +380,10 @@ export class MapPolygon {
     const ringThickness = (options.outlineWidth && options.outlineWidth > 1) ? options.outlineWidth : 0;
     if (ringThickness && ringThickness > 0) {
       const clampToGround = options.clampToGround ?? true;
+      const groundHeightEpsilon = clampToGround ? Math.max(0, Number(options.groundHeightEpsilon ?? 0)) : 0;
       const baseHeight = clampToGround ? 0 : (Cesium.Cartographic.fromCartesian(positions[0])?.height ?? 0);
       const heightReference = clampToGround
-        ? Cesium.HeightReference.CLAMP_TO_GROUND
+        ? (groundHeightEpsilon > 0 ? Cesium.HeightReference.RELATIVE_TO_GROUND : Cesium.HeightReference.CLAMP_TO_GROUND)
         : (options.heightReference ?? Cesium.HeightReference.NONE);
 
       // 填充多边形：使用统一的 height/heightReference（不要和边框的 clampToGround 混用）
@@ -391,13 +397,14 @@ export class MapPolygon {
           material: this.resolveMaterial(options.material ?? Cesium.Color.ORANGE.withAlpha(0.5)),
           outline: false,
           heightReference,
-          ...(clampToGround ? {} : { height: baseHeight }),
+          ...(!clampToGround && baseHeight !== undefined ? { height: baseHeight } : {}),
+          ...(clampToGround && groundHeightEpsilon > 0 ? { height: groundHeightEpsilon } : {}),
           extrudedHeight: options.extrudedHeight,
         },
       });
 
       // 构造闭合边界路径
-      const borderPositionsBase = this.elevatePositions(positions, baseHeight);
+      const borderPositionsBase = this.elevatePositions(positions, clampToGround ? groundHeightEpsilon : baseHeight);
       const borderPositions: Cesium.Cartesian3[] = borderPositionsBase.slice();
       if (borderPositions.length >= 2) borderPositions.push(borderPositionsBase[0]);
 
@@ -437,14 +444,20 @@ export class MapPolygon {
       fillEntity._outlineWidth = ringThickness;
       fillEntity._clampToGround = clampToGround;
       fillEntity._baseHeight = baseHeight;
+      fillEntity._groundHeightEpsilon = groundHeightEpsilon;
+
+      borderEntity._groundHeightEpsilon = groundHeightEpsilon;
 
       return fill;
     }
 
     // 非粗边框：默认贴地（可通过 clampToGround:false 或传入 heightReference 覆盖）
     const clampToGround = options.clampToGround ?? true;
+    const groundHeightEpsilon = clampToGround ? Math.max(0, Number(options.groundHeightEpsilon ?? 0)) : 0;
     const heightReference =
-      options.heightReference ?? (clampToGround ? Cesium.HeightReference.CLAMP_TO_GROUND : Cesium.HeightReference.NONE);
+      options.heightReference ?? (clampToGround
+        ? (groundHeightEpsilon > 0 ? Cesium.HeightReference.RELATIVE_TO_GROUND : Cesium.HeightReference.CLAMP_TO_GROUND)
+        : Cesium.HeightReference.NONE);
     const hierarchy = clampToGround ? this.elevatePositions(positions, 0) : positions;
 
     const entity = this.entities.add({
@@ -456,6 +469,7 @@ export class MapPolygon {
         outlineColor: options.outlineColor ? this.resolveColor(options.outlineColor) : Cesium.Color.BLACK,
         outlineWidth: options.outlineWidth ?? 1,
         heightReference,
+        ...(clampToGround && groundHeightEpsilon > 0 ? { height: groundHeightEpsilon } : {}),
         extrudedHeight: options.extrudedHeight,
       },
     });
@@ -471,6 +485,7 @@ export class MapPolygon {
     overlayEntity._highlightEntities = [entity];
 
     (entity as OverlayEntity)._clampToGround = clampToGround;
+    (entity as OverlayEntity)._groundHeightEpsilon = groundHeightEpsilon;
 
     return entity;
   }
@@ -490,7 +505,8 @@ export class MapPolygon {
       const border = root._borderEntity;
       if (!border) return;
       const id = String(root.id);
-      const surfacePositions = this.elevatePositions(newPositions, 0);
+      const groundHeightEpsilon = root._groundHeightEpsilon ?? 0;
+      const surfacePositions = this.elevatePositions(newPositions, groundHeightEpsilon);
       const borderBase = surfacePositions;
       const borderPositions: Cesium.Cartesian3[] = borderBase.slice();
       if (borderPositions.length >= 2) borderPositions.push(borderBase[0]);
@@ -520,18 +536,25 @@ export class MapPolygon {
     const isThick = overlayEntity._isThickOutline;
     if (entity.polygon && border && isThick) {
       const clampToGround = overlayEntity._clampToGround ?? true;
+      const groundHeightEpsilon = overlayEntity._groundHeightEpsilon ?? 0;
       const baseHeight = clampToGround ? 0 : (Cesium.Cartographic.fromCartesian(newPositions[0])?.height ?? 0);
       overlayEntity._baseHeight = baseHeight;
 
       // 更新填充：保持与 add() 一致的 height 策略
       const surfacePositions = this.elevatePositions(newPositions, 0);
       entity.polygon.hierarchy = new Cesium.ConstantProperty(new Cesium.PolygonHierarchy(surfacePositions));
-      if (!clampToGround) {
+      if (clampToGround) {
+        (entity.polygon as any).heightReference = new Cesium.ConstantProperty(
+          groundHeightEpsilon > 0 ? Cesium.HeightReference.RELATIVE_TO_GROUND : Cesium.HeightReference.CLAMP_TO_GROUND
+        );
+        (entity.polygon as any).height = groundHeightEpsilon > 0 ? new Cesium.ConstantProperty(groundHeightEpsilon) : undefined;
+      } else {
+        (entity.polygon as any).heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.NONE);
         (entity.polygon as any).height = new Cesium.ConstantProperty(baseHeight);
       }
 
       // 更新边框折线（闭合）
-      const borderBase = this.elevatePositions(newPositions, baseHeight);
+      const borderBase = this.elevatePositions(newPositions, clampToGround ? groundHeightEpsilon : baseHeight);
       const closed = borderBase.slice();
       if (closed.length >= 2) closed.push(borderBase[0]);
       if (border.polyline) {
@@ -540,10 +563,14 @@ export class MapPolygon {
       }
     } else if (entity.polygon) {
       const clampToGround = overlayEntity._clampToGround ?? false;
+      const groundHeightEpsilon = overlayEntity._groundHeightEpsilon ?? 0;
       const hierarchy = clampToGround ? this.elevatePositions(newPositions, 0) : newPositions;
       entity.polygon.hierarchy = new Cesium.ConstantProperty(new Cesium.PolygonHierarchy(hierarchy));
       if (clampToGround) {
-        entity.polygon.heightReference = new Cesium.ConstantProperty(Cesium.HeightReference.CLAMP_TO_GROUND);
+        entity.polygon.heightReference = new Cesium.ConstantProperty(
+          groundHeightEpsilon > 0 ? Cesium.HeightReference.RELATIVE_TO_GROUND : Cesium.HeightReference.CLAMP_TO_GROUND
+        );
+        (entity.polygon as any).height = groundHeightEpsilon > 0 ? new Cesium.ConstantProperty(groundHeightEpsilon) : undefined;
       }
     }
   }
