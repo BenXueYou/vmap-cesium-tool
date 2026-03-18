@@ -148,7 +148,7 @@ interface ToolbarCallbacks {
 
 ### 搜索功能
 
-支持地名搜索和坐标定位：
+支持路网搜索和坐标定位：
 
 ```javascript
 // 搜索回调

@@ -69,7 +69,7 @@ const enUS = {
   },
   layers: {
     map_type: {
-      place_name: "Place",
+      place_name: "road network",
     },
   },
   draw: {

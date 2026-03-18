@@ -48,13 +48,13 @@ export class MapLayersService {
   }
 
   /**
-   * 初始化当前地图上下文：用于“初始底图不是通过 switchMapType 加载”时的地名层识别。
+   * 初始化当前地图上下文：用于“初始底图不是通过 switchMapType 加载”时的路网层识别。
    */
   private bootstrapCurrentMapContext(): void {
     const mapType = this.config.mapTypes.find(mt => mt.id === this.config.currentMapType) || null;
     this.currentMapTypeConfig = mapType;
 
-    // 常规约定：第 2 个 imagery layer 为地名层（cva/cia/cta）
+    // 常规约定：第 2 个 imagery layer 为路网层（cva/cia/cta）
     if (this.viewer.imageryLayers.length >= 2) {
       const layer = this.viewer.imageryLayers.get(1);
       (layer as any)[MapLayersService.PLACE_NAME_LAYER_TAG] = true;
@@ -305,7 +305,7 @@ export class MapLayersService {
       `;
       mapTypeItem.appendChild(checkmark);
 
-      // 左上角“地名”勾选交互（forcePlaceName 时不展示开关，始终显示地名层）
+      // 左上角“路网”勾选交互（forcePlaceName 时不展示开关，始终显示路网层）
       if ((mapType.placeNameLabel || mapType.placeNameLabelKey) && !mapType.forcePlaceName) {
         const placeNameToggle = document.createElement('div');
         placeNameToggle.className = 'layers-place-name-toggle';
@@ -346,7 +346,7 @@ export class MapLayersService {
         if (this.useI18n) {
           this.i18n.bindElement(placeNameLabel, placeNameLabelKey, 'text');
         } else {
-          placeNameLabel.textContent = mapType.placeNameLabel || '地名';
+          placeNameLabel.textContent = mapType.placeNameLabel || '路网';
         }
         placeNameLabel.style.cssText = `
           font-size: 12px;
@@ -574,7 +574,7 @@ export class MapLayersService {
       height: this.viewer.camera.positionCartographic.height
     };
 
-    // 清理之前的三维地名服务实例
+    // 清理之前的三维路网服务实例
     if (this.currentGeoWTFS) {
       try {
         if (typeof this.currentGeoWTFS.destroy === 'function') {
@@ -583,7 +583,7 @@ export class MapLayersService {
           this.currentGeoWTFS.remove();
         }
       } catch (error) {
-        console.warn('清理三维地名服务失败:', error);
+        console.warn('清理三维路网服务失败:', error);
       }
       this.currentGeoWTFS = null;
     }
@@ -599,7 +599,7 @@ export class MapLayersService {
     this.currentPlaceNameProvider = layers.length >= 2 ? (layers[1] as Cesium.ImageryProvider) : null;
 
     layers.forEach((provider, idx) => {
-      // 约定：provider[1] 为地名注记层，交给 placeName 开关控制
+      // 约定：provider[1] 为路网注记层，交给 placeName 开关控制
       if (idx === 1) return;
       const imageryLayer = this.viewer.imageryLayers.addImageryProvider(provider);
       this.currentMapLayers.push(imageryLayer);
@@ -783,7 +783,7 @@ export class MapLayersService {
           this.currentGeoWTFS.remove();
         }
       } catch (error) {
-        console.warn('销毁三维地名服务失败:', error);
+        console.warn('销毁三维路网服务失败:', error);
       }
       this.currentGeoWTFS = null;
     }

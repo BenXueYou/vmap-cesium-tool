@@ -33,7 +33,7 @@ const enUS = {
       airport: "Airport no-fly zones",
     },
     map_type: {
-      place_name: "Place",
+      place_name: "road network",
     },
   },
   map_type: {
