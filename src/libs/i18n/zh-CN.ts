@@ -33,7 +33,7 @@ const zhCN = {
       airport: "机场禁飞区",
     },
     map_type: {
-      place_name: "地名",
+      place_name: "路网",
     },
   },
   map_type: {

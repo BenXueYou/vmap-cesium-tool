@@ -69,7 +69,7 @@ const zhCN = {
   },
   layers: {
     map_type: {
-      place_name: "地名",
+      place_name: "路网",
     },
   },
   draw: {

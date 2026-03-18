@@ -46,7 +46,7 @@ export class CesiumMapToolbar {
   // 禁飞区相关状态（用于图层服务配置）
   private isNoFlyZoneChecked: boolean = true;
 
-  // 三维地名服务实例
+  // 三维路网服务实例
   private currentGeoWTFS: any = null;
 
   // 当前测量模式：none（未测量）、distance（测距）、area（测面）
@@ -972,7 +972,7 @@ export class CesiumMapToolbar {
     // 清理禁飞区服务
     this.notFlyZonesService.destroy();
 
-    // 清理三维地名服务实例
+    // 清理三维路网服务实例
     if (this.currentGeoWTFS) {
       try {
         if (typeof this.currentGeoWTFS.destroy === 'function') {
@@ -981,7 +981,7 @@ export class CesiumMapToolbar {
           this.currentGeoWTFS.remove();
         }
       } catch (error) {
-        console.warn('销毁三维地名服务失败:', error);
+        console.warn('销毁三维路网服务失败:', error);
       }
       this.currentGeoWTFS = null;
     }
