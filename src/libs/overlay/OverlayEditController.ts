@@ -4,12 +4,14 @@ import type { DrawEntity } from "../drawHelper";
 import type { OverlayEntity } from "./types";
 import { PickGovernor } from "../PickGovernor";
 import {
+  DEFAULT_OPTIONS,
   buildCircleHandles,
   buildPointHandles,
   buildPolygonHandles,
   buildPolylineHandles,
   buildRectangleHandles,
   type HandleHelpers,
+  type OverlayEditOptions,
   updateCircleHandlePositions,
   updatePointHandlePositions,
   updatePolygonHandlePositions,
@@ -24,6 +26,8 @@ export interface OverlayEditControllerOptions {
    * 回调参数为“已回写后的覆盖物 entity”。
    */
   onChange?: OverlayEditChangeCallback;
+  /** 编辑功能配置项，默认为全开（除 rotate） */
+  editCapabilities?: OverlayEditOptions;
 }
 
 export interface OverlayEditHost {
@@ -66,35 +70,62 @@ type OverlayEditDragSnapshot =
   | { kind: "circle"; center: Cesium.Cartesian3; radiusMeters: number }
   | { kind: "point"; center: Cesium.Cartesian3 };
 
+/**
+ * 覆盖物编辑控制器类，用于管理地图上覆盖物的编辑操作
+ * 支持多边形、矩形、圆形、折线和点等类型的编辑
+ */
 export class OverlayEditController {
+  // 编辑状态标志
   private enabled = false;
+  // 屏幕空间事件处理器，用于处理用户交互
   private handler: Cesium.ScreenSpaceEventHandler | null = null;
+  // 拾取控制器，用于控制拾取频率和精度
   private readonly pickGovernor: PickGovernor;
 
+  // 编辑变化回调函数
   private onChange: OverlayEditChangeCallback | null = null;
 
+  // 当前编辑的目标实体
   private editingTarget: (DrawEntity & OverlayEntity) | null = null;
+  // 当前编辑的类型
   private editingKind: OverlayEditingKind | null = null;
+  // 当前编辑的选项
+  private editingOptions: OverlayEditOptions | null = null;
 
+  // 编辑位置数组
   private editingPositions: Cesium.Cartesian3[] = [];
+  // 编辑圆形的中心点
   private editingCircleCenter: Cesium.Cartesian3 | null = null;
+  // 编辑圆形的半径（米）
   private editingCircleRadiusMeters = 0;
+  // 编辑点的位置
   private editingPointPosition: Cesium.Cartesian3 | null = null;
 
+  // 处理实体数组
   private handleEntities: Cesium.Entity[] = [];
+  // 拖拽状态
   private dragging: OverlayEditDragging = null;
 
+  // 拖拽快照
   private dragSnapshot: OverlayEditDragSnapshot = null;
+  // 拖拽是否发生变化标志
   private dragChanged = false;
 
+  // 移动开始时的中心点
   private moveStartCenter: Cesium.Cartographic | null = null;
+  // 移动开始时的位置数组
   private moveStartPositions: Cesium.Cartesian3[] | null = null;
 
+  // 变换开始时的中心点
   private transformStartCenter: Cesium.Cartesian3 | null = null;
+  // 变换开始时的位置数组
   private transformStartPositions: Cesium.Cartesian3[] | null = null;
+  // 旋转开始角度
   private rotateStartAngle = 0;
+  // 缩放开始距离
   private scaleStartDistance = 1;
 
+  // 相机控制器备份
   private cameraBackup: null | {
     enableInputs?: boolean;
     enableRotate?: boolean;
@@ -104,8 +135,17 @@ export class OverlayEditController {
     enableLook?: boolean;
   } = null;
 
+  /**
+   * 构造函数
+   * @param host 覆盖物编辑宿主对象
+   * @param options 配置选项
+   */
   constructor(private readonly host: OverlayEditHost, options: OverlayEditControllerOptions = {}) {
     this.onChange = options.onChange ?? null;
+    this.editingOptions = {
+      ...DEFAULT_OPTIONS,
+      ...(options.editCapabilities || {}),
+    }; // 初始化拾取控制器
     this.pickGovernor = new PickGovernor({
       profiles: {
         edit: { minIntervalMs: 80, minMovePx: 0 },
@@ -113,10 +153,18 @@ export class OverlayEditController {
     });
   }
 
+  /**
+   * 设置编辑变化回调函数
+   * @param cb 回调函数
+   */
   public setOnChange(cb?: OverlayEditChangeCallback | null): void {
     this.onChange = cb ?? null;
   }
 
+  /**
+   * 设置编辑器启用状态
+   * @param enabled 是否启用
+   */
   public setEnabled(enabled: boolean): void {
     const next = !!enabled;
     if (this.enabled === next) return;
@@ -128,17 +176,28 @@ export class OverlayEditController {
       return;
     }
 
-    this.ensureHandler();
+    this.ensureHandler(DEFAULT_OPTIONS);
   }
 
+  /**
+   * 获取编辑器启用状态
+   * @returns 是否启用
+   */
   public getEnabled(): boolean {
     return this.enabled;
   }
 
+  /**
+   * 判断是否正在编辑
+   * @returns 是否正在编辑
+   */
   public isEditing(): boolean {
     return !!this.editingTarget;
   }
 
+  /**
+   * 销毁编辑器
+   */
   public destroy(): void {
     this.setEnabled(false);
   }
@@ -170,9 +229,20 @@ export class OverlayEditController {
    * 主动开始编辑某个覆盖物。
    * @returns true 表示成功进入编辑
    */
-  public start(entityOrId: (DrawEntity & OverlayEntity) | string): boolean {
-    const entity = typeof entityOrId === "string" ? this.host.getOverlayById(entityOrId) : entityOrId;
+  public start(
+    entityOrId: (DrawEntity & OverlayEntity) | string,
+    options?: OverlayEditOptions
+  ): boolean {
+    // 👇 定义完整的默认配置（根据你的业务逻辑调整默认值）
+
+    const editOptions: OverlayEditOptions = { ...DEFAULT_OPTIONS, ...options };
+
+    // 后续逻辑不变...
+    const entity = typeof entityOrId === "string"
+      ? this.host.getOverlayById(entityOrId)
+      : entityOrId;
     if (!entity) return false;
+
     const target = this.resolveEditTarget(entity);
     if ((target as any).__vmapOverlayEditHandle) return false;
     if ((target as any)._drawType !== undefined) return false;
@@ -181,7 +251,7 @@ export class OverlayEditController {
     const kind = this.detectEditableKind(target);
     if (!kind) return false;
 
-    this.ensureHandler();
+    this.ensureHandler(editOptions);
     this.stop();
 
     this.editingTarget = target;
@@ -200,7 +270,11 @@ export class OverlayEditController {
         return false;
       }
       this.editingPositions = positions;
-      this.handleEntities = buildPolygonHandles(this.editingPositions, this.getHandleHelpers());
+      this.handleEntities = buildPolygonHandles(
+        this.editingPositions,
+        this.getHandleHelpers(),
+        editOptions
+      );
       return true;
     }
 
@@ -212,7 +286,11 @@ export class OverlayEditController {
       }
       const baseHeight = this.getRectangleEditHeight(entity);
       this.editingPositions = this.rectangleToPositions(rect, baseHeight);
-      this.handleEntities = buildRectangleHandles(this.editingPositions, this.getHandleHelpers());
+      this.handleEntities = buildRectangleHandles(
+        this.editingPositions,
+        this.getHandleHelpers(),
+        editOptions
+      );
       return true;
     }
 
@@ -224,7 +302,12 @@ export class OverlayEditController {
       }
       this.editingCircleCenter = info.center;
       this.editingCircleRadiusMeters = info.radiusMeters;
-      this.handleEntities = buildCircleHandles(this.editingCircleCenter, this.editingCircleRadiusMeters, this.getHandleHelpers());
+      this.handleEntities = buildCircleHandles(
+        this.editingCircleCenter,
+        this.editingCircleRadiusMeters,
+        this.getHandleHelpers(),
+        editOptions
+      );
       return true;
     }
 
@@ -235,7 +318,11 @@ export class OverlayEditController {
         return false;
       }
       this.editingPositions = positions;
-      this.handleEntities = buildPolylineHandles(this.editingPositions, this.getHandleHelpers());
+      this.handleEntities = buildPolylineHandles(
+        this.editingPositions,
+        this.getHandleHelpers(),
+        editOptions
+      );
       return true;
     }
 
@@ -246,14 +333,24 @@ export class OverlayEditController {
         return false;
       }
       this.editingPointPosition = pos;
-      this.handleEntities = buildPointHandles(this.editingPointPosition, this.getHandleHelpers());
+      this.handleEntities = buildPointHandles(
+        this.editingPointPosition,
+        this.getHandleHelpers(),
+        editOptions
+      );
       return true;
     }
 
     return false;
   }
 
+  /**
+   * 解析编辑目标实体，根据特定条件返回合适的实体对象
+   * @param entity 输入的实体对象，需要同时满足DrawEntity和OverlayEntity类型
+   * @returns 返回解析后的实体对象，可能是原始实体或符合条件的其他实体
+   */
   private resolveEditTarget(entity: (DrawEntity & OverlayEntity)): (DrawEntity & OverlayEntity) {
+    // 尝试获取实体的id属性
     const id = (entity as any).id;
     if (typeof id === "string" && id.endsWith("__fill")) {
       const rootId = id.replace(/__fill$/, "");
@@ -460,7 +557,7 @@ export class OverlayEditController {
    * 确保屏幕空间事件处理器已初始化
    * 如果处理器不存在，则创建一个新的处理器并设置各种交互事件
    */
-  private ensureHandler(): void {
+  private ensureHandler(options: OverlayEditOptions): void {
     // 如果处理器已存在，直接返回
     if (this.handler) return;
 
@@ -524,7 +621,7 @@ export class OverlayEditController {
           if (this.editingKind === "polyline") this.applyEditedPolyline();
           this.dragChanged = true;
 
-          this.rebuildHandles();
+          this.rebuildHandles(options);
           return;
         }
 
@@ -612,7 +709,7 @@ export class OverlayEditController {
         this.editingPositions.splice(idx, 1);
         if (this.editingKind === "polygon") this.applyEditedPolygon();
         if (this.editingKind === "polyline") this.applyEditedPolyline();
-        this.rebuildHandles();
+        this.rebuildHandles(options);
       }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
 
       /**
@@ -640,7 +737,7 @@ export class OverlayEditController {
               this.applyEditedPolygon();
               this.dragChanged = true;
               if (!updatePolygonHandlePositions(this.editingPositions, this.handleEntities, this.getHandleHelpers())) {
-                this.rebuildHandles();
+                this.rebuildHandles(options);
               }
             }
           }
@@ -654,7 +751,7 @@ export class OverlayEditController {
             this.applyEditedPolygon();
             this.dragChanged = true;
             if (!updatePolygonHandlePositions(this.editingPositions, this.handleEntities, this.getHandleHelpers())) {
-              this.rebuildHandles();
+              this.rebuildHandles(options);
             }
           }
 
@@ -673,7 +770,7 @@ export class OverlayEditController {
               this.applyEditedPolyline();
               this.dragChanged = true;
               if (!updatePolylineHandlePositions(this.editingPositions, this.handleEntities, this.getHandleHelpers())) {
-                this.rebuildHandles();
+                this.rebuildHandles(options);
               }
             }
           }
@@ -686,7 +783,7 @@ export class OverlayEditController {
             this.applyEditedPolyline();
             this.dragChanged = true;
             if (!updatePolylineHandlePositions(this.editingPositions, this.handleEntities, this.getHandleHelpers())) {
-              this.rebuildHandles();
+              this.rebuildHandles(options);
             }
           }
 
@@ -711,7 +808,7 @@ export class OverlayEditController {
             this.applyEditedPolyline();
             this.dragChanged = true;
             if (!updatePolylineHandlePositions(this.editingPositions, this.handleEntities, this.getHandleHelpers())) {
-              this.rebuildHandles();
+              this.rebuildHandles(options);
             }
           }
 
@@ -729,7 +826,7 @@ export class OverlayEditController {
               this.editingPositions[idx] = pos;
               this.applyEditedRectangle();
               this.dragChanged = true;
-              this.rebuildHandles();
+              this.rebuildHandles(options);
             }
           }
           if (this.dragging.type === "move") {
@@ -739,7 +836,7 @@ export class OverlayEditController {
             this.editingPositions = this.computeMovedPositions(this.moveStartCenter, this.moveStartPositions, pos);
             this.applyEditedRectangle();
             this.dragChanged = true;
-            this.rebuildHandles();
+            this.rebuildHandles(options);
           }
           return;
         }
@@ -757,7 +854,7 @@ export class OverlayEditController {
             this.applyEditedCircle();
             this.dragChanged = true;
             if (!updateCircleHandlePositions(this.editingCircleCenter, this.editingCircleRadiusMeters, this.handleEntities, this.getHandleHelpers())) {
-              this.rebuildHandles();
+              this.rebuildHandles(options);
             }
             return;
           }
@@ -772,7 +869,7 @@ export class OverlayEditController {
             this.applyEditedCircle();
             this.dragChanged = true;
             if (!updateCircleHandlePositions(this.editingCircleCenter, this.editingCircleRadiusMeters, this.handleEntities, this.getHandleHelpers())) {
-              this.rebuildHandles();
+              this.rebuildHandles(options);
             }
             return;
           }
@@ -787,7 +884,7 @@ export class OverlayEditController {
             this.applyEditedPoint();
             this.dragChanged = true;
             if (!updatePointHandlePositions(this.editingPointPosition, this.handleEntities)) {
-              this.rebuildHandles();
+              this.rebuildHandles(options);
             }
           }
           return;
@@ -1087,30 +1184,34 @@ export class OverlayEditController {
     this.handleEntities = [];
   }
 
-  private rebuildHandles(): void {
+  /**
+   * 重建处理句柄的方法
+   * 根据当前编辑的几何图形类型，调用相应的构建函数创建处理句柄
+   */
+  private rebuildHandles(ops: OverlayEditOptions): void {
     if (!this.editingKind) return;
     this.clearHandles();
 
     const helpers = this.getHandleHelpers();
 
     if (this.editingKind === "polygon") {
-      this.handleEntities = buildPolygonHandles(this.editingPositions, helpers);
+      this.handleEntities = buildPolygonHandles(this.editingPositions, helpers, ops);
       return;
     }
     if (this.editingKind === "rectangle") {
-      this.handleEntities = buildRectangleHandles(this.editingPositions, helpers);
+      this.handleEntities = buildRectangleHandles(this.editingPositions, helpers, ops);
       return;
     }
     if (this.editingKind === "circle") {
-      this.handleEntities = buildCircleHandles(this.editingCircleCenter, this.editingCircleRadiusMeters, helpers);
+      this.handleEntities = buildCircleHandles(this.editingCircleCenter, this.editingCircleRadiusMeters, helpers, ops);
       return;
     }
     if (this.editingKind === "polyline") {
-      this.handleEntities = buildPolylineHandles(this.editingPositions, helpers);
+      this.handleEntities = buildPolylineHandles(this.editingPositions, helpers, ops);
       return;
     }
     if (this.editingKind === "point") {
-      this.handleEntities = buildPointHandles(this.editingPointPosition, helpers);
+      this.handleEntities = buildPointHandles(this.editingPointPosition, helpers, ops);
       return;
     }
   }

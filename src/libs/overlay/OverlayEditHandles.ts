@@ -10,6 +10,52 @@ export type HandleStyle = { color: Cesium.Color; outlineColor: Cesium.Color; pix
  */
 export type CreateHandle = (position: Cesium.Cartesian3, style: HandleStyle, meta: any) => Cesium.Entity;
 
+
+export interface OverlayEditOptions {
+  vertex: {
+    enable?: boolean;
+    color?: Cesium.Color;
+    outlineColor?: Cesium.Color;
+    outlineWidth?: number;
+    pixelSize?: number;
+  } | boolean;
+  mid: {
+    enable?: boolean;
+    color?: Cesium.Color;
+    outlineColor?: Cesium.Color;
+    outlineWidth?: number;
+    pixelSize?: number;
+  } | boolean;
+  move: {
+    enable?: boolean;
+    color?: Cesium.Color;
+    outlineColor?: Cesium.Color;
+    outlineWidth?: number;
+    pixelSize?: number;
+  } | boolean;
+  rotate: {
+    enable?: boolean;
+    color?: Cesium.Color;
+    outlineColor?: Cesium.Color;
+    outlineWidth?: number;
+    pixelSize?: number;
+  } | boolean;
+  scale: {
+    enable?: boolean;
+    color?: Cesium.Color;
+    outlineColor?: Cesium.Color;
+    outlineWidth?: number;
+    pixelSize?: number;
+  } | boolean;
+}
+
+export const DEFAULT_OPTIONS: OverlayEditOptions = {
+  vertex: true,
+  mid: true,
+  move: false,
+  rotate: false,   // 例如：矩形/多边形可旋转，点不可旋转？按需设
+  scale: false    // 例如：折线可缩放，点/圆不可缩放？按需设,
+};
 /**
  * 构建/更新句柄所需的依赖函数集合
  */
@@ -21,33 +67,71 @@ export interface HandleHelpers {
   circleRadiusHandlePosition: (center: Cesium.Cartesian3, radiusMeters: number) => Cesium.Cartesian3;
 }
 
+
+// 公共工具函数：解析样式配置
+function getStyle(opt: any, def: { color: Cesium.Color; outlineColor: Cesium.Color; pixelSize: number }) {
+  if (opt === false) return null;
+  if (opt === true || !opt) return def;
+  return {
+    color: opt.color || def.color,
+    outlineColor: opt.outlineColor || def.outlineColor,
+    pixelSize: typeof opt.pixelSize === 'number' ? opt.pixelSize : def.pixelSize
+  };
+}
+
 /**
  * 构建多边形编辑句柄（顶点/中点/整体移动）
  */
-export function buildPolygonHandles(verts: Cesium.Cartesian3[], helpers: HandleHelpers): Cesium.Entity[] {
+export function buildPolygonHandles(
+  verts: Cesium.Cartesian3[],
+  helpers: HandleHelpers,
+  options: OverlayEditOptions
+): Cesium.Entity[] {
   if (!verts || verts.length < 3) return [];
 
   const handles: Cesium.Entity[] = [];
-  const vertexStyle = { color: Cesium.Color.fromCssColorString("#1e88e5"), outlineColor: Cesium.Color.WHITE, pixelSize: 10 };
-  const midStyle = { color: Cesium.Color.fromCssColorString("#ec407a"), outlineColor: Cesium.Color.WHITE, pixelSize: 8 };
-  const moveStyle = { color: Cesium.Color.fromCssColorString("#43a047"), outlineColor: Cesium.Color.WHITE, pixelSize: 11 };
 
-  for (let i = 0; i < verts.length; i++) {
-    const h = helpers.createHandle(verts[i], vertexStyle, { type: "vertex", index: i });
-    handles.push(h);
+  const vertexStyle = getStyle(options.vertex, {
+    color: Cesium.Color.fromCssColorString("#1e88e5"),
+    outlineColor: Cesium.Color.WHITE,
+    pixelSize: 10
+  });
+  const midStyle = getStyle(options.mid, {
+    color: Cesium.Color.fromCssColorString("#ec407a"),
+    outlineColor: Cesium.Color.WHITE,
+    pixelSize: 8
+  });
+  const moveStyle = getStyle(options.move, {
+    color: Cesium.Color.fromCssColorString("#43a047"),
+    outlineColor: Cesium.Color.WHITE,
+    pixelSize: 11
+  });
+
+  // 顶点句柄
+  if (vertexStyle) {
+    for (let i = 0; i < verts.length; i++) {
+      const h = helpers.createHandle(verts[i], vertexStyle, { type: "vertex", index: i });
+      handles.push(h);
+    }
   }
 
-  for (let i = 0; i < verts.length; i++) {
-    const a = verts[i];
-    const b = verts[(i + 1) % verts.length];
-    const mid = Cesium.Cartesian3.midpoint(a, b, new Cesium.Cartesian3());
-    const h = helpers.createHandle(mid, midStyle, { type: "mid", index: i });
-    handles.push(h);
+  // 中点句柄
+  if (midStyle) {
+    for (let i = 0; i < verts.length; i++) {
+      const a = verts[i];
+      const b = verts[(i + 1) % verts.length];
+      const mid = Cesium.Cartesian3.midpoint(a, b, new Cesium.Cartesian3());
+      const h = helpers.createHandle(mid, midStyle, { type: "mid", index: i });
+      handles.push(h);
+    }
   }
 
-  const center = helpers.computePolygonCenterCartesian(verts);
-  const moveHandle = helpers.createHandle(center, moveStyle, { type: "move" });
-  handles.push(moveHandle);
+  // 移动句柄
+  if (moveStyle) {
+    const center = helpers.computePolygonCenterCartesian(verts);
+    const moveHandle = helpers.createHandle(center, moveStyle, { type: "move" });
+    handles.push(moveHandle);
+  }
 
   return handles;
 }
@@ -55,21 +139,38 @@ export function buildPolygonHandles(verts: Cesium.Cartesian3[], helpers: HandleH
 /**
  * 构建矩形编辑句柄（顶点/边中点/整体移动）
  */
-export function buildRectangleHandles(verts: Cesium.Cartesian3[], helpers: HandleHelpers): Cesium.Entity[] {
+export function buildRectangleHandles(
+  verts: Cesium.Cartesian3[],
+  helpers: HandleHelpers,
+  options: OverlayEditOptions
+): Cesium.Entity[] {
   if (!verts || verts.length !== 4) return [];
 
   const handles: Cesium.Entity[] = [];
-  const vertexStyle = { color: Cesium.Color.fromCssColorString("#1e88e5"), outlineColor: Cesium.Color.WHITE, pixelSize: 10 };
-  const moveStyle = { color: Cesium.Color.fromCssColorString("#43a047"), outlineColor: Cesium.Color.WHITE, pixelSize: 11 };
 
-  for (let i = 0; i < verts.length; i++) {
-    const h = helpers.createHandle(verts[i], vertexStyle, { type: "vertex", index: i });
-    handles.push(h);
+  const vertexStyle = getStyle(options.vertex, {
+    color: Cesium.Color.fromCssColorString("#1e88e5"),
+    outlineColor: Cesium.Color.WHITE,
+    pixelSize: 10
+  });
+  const moveStyle = getStyle(options.move, {
+    color: Cesium.Color.fromCssColorString("#43a047"),
+    outlineColor: Cesium.Color.WHITE,
+    pixelSize: 11
+  });
+
+  if (vertexStyle) {
+    for (let i = 0; i < verts.length; i++) {
+      const h = helpers.createHandle(verts[i], vertexStyle, { type: "vertex", index: i });
+      handles.push(h);
+    }
   }
 
-  const center = helpers.computePolygonCenterCartesian(verts);
-  const moveHandle = helpers.createHandle(center, moveStyle, { type: "move" });
-  handles.push(moveHandle);
+  if (moveStyle) {
+    const center = helpers.computePolygonCenterCartesian(verts);
+    const moveHandle = helpers.createHandle(center, moveStyle, { type: "move" });
+    handles.push(moveHandle);
+  }
 
   return handles;
 }
@@ -77,39 +178,79 @@ export function buildRectangleHandles(verts: Cesium.Cartesian3[], helpers: Handl
 /**
  * 构建折线编辑句柄（顶点/中点/整体移动/旋转/缩放）
  */
-export function buildPolylineHandles(verts: Cesium.Cartesian3[], helpers: HandleHelpers): Cesium.Entity[] {
+export function buildPolylineHandles(
+  verts: Cesium.Cartesian3[],
+  helpers: HandleHelpers,
+  options: OverlayEditOptions
+): Cesium.Entity[] {
   if (!verts || verts.length < 2) return [];
 
   const handles: Cesium.Entity[] = [];
-  const vertexStyle = { color: Cesium.Color.fromCssColorString("#1e88e5"), outlineColor: Cesium.Color.WHITE, pixelSize: 10 };
-  const midStyle = { color: Cesium.Color.fromCssColorString("#ec407a"), outlineColor: Cesium.Color.WHITE, pixelSize: 8 };
-  const moveStyle = { color: Cesium.Color.fromCssColorString("#43a047"), outlineColor: Cesium.Color.WHITE, pixelSize: 11 };
-  const rotateStyle = { color: Cesium.Color.fromCssColorString("#6d4c41"), outlineColor: Cesium.Color.WHITE, pixelSize: 9 };
-  const scaleStyle = { color: Cesium.Color.fromCssColorString("#8e24aa"), outlineColor: Cesium.Color.WHITE, pixelSize: 9 };
 
-  for (let i = 0; i < verts.length; i++) {
-    const h = helpers.createHandle(verts[i], vertexStyle, { type: "vertex", index: i });
-    handles.push(h);
+  const vertexStyle = getStyle(options.vertex, {
+    color: Cesium.Color.fromCssColorString("#1e88e5"),
+    outlineColor: Cesium.Color.WHITE,
+    pixelSize: 10
+  });
+  const midStyle = getStyle(options.mid, {
+    color: Cesium.Color.fromCssColorString("#ec407a"),
+    outlineColor: Cesium.Color.WHITE,
+    pixelSize: 8
+  });
+  const moveStyle = getStyle(options.move, {
+    color: Cesium.Color.fromCssColorString("#43a047"),
+    outlineColor: Cesium.Color.WHITE,
+    pixelSize: 11
+  });
+  const rotateStyle = getStyle(options.rotate, {
+    color: Cesium.Color.fromCssColorString("#6d4c41"),
+    outlineColor: Cesium.Color.WHITE,
+    pixelSize: 9
+  });
+  const scaleStyle = getStyle(options.scale, {
+    color: Cesium.Color.fromCssColorString("#8e24aa"),
+    outlineColor: Cesium.Color.WHITE,
+    pixelSize: 9
+  });
+
+  if (vertexStyle) {
+    for (let i = 0; i < verts.length; i++) {
+      const h = helpers.createHandle(verts[i], vertexStyle, { type: "vertex", index: i });
+      handles.push(h);
+    }
   }
 
-  for (let i = 0; i < verts.length - 1; i++) {
-    const a = verts[i];
-    const b = verts[i + 1];
-    const mid = Cesium.Cartesian3.midpoint(a, b, new Cesium.Cartesian3());
-    const h = helpers.createHandle(mid, midStyle, { type: "mid", index: i });
-    handles.push(h);
+  if (midStyle) {
+    for (let i = 0; i < verts.length - 1; i++) {
+      const a = verts[i];
+      const b = verts[i + 1];
+      const mid = Cesium.Cartesian3.midpoint(a, b, new Cesium.Cartesian3());
+      const h = helpers.createHandle(mid, midStyle, { type: "mid", index: i });
+      handles.push(h);
+    }
   }
 
-  const center = helpers.computePolygonCenterCartesian(verts);
-  const moveHandle = helpers.createHandle(center, moveStyle, { type: "move" });
-  handles.push(moveHandle);
+  if (moveStyle) {
+    const center = helpers.computePolygonCenterCartesian(verts);
+    const moveHandle = helpers.createHandle(center, moveStyle, { type: "move" });
+    handles.push(moveHandle);
+  }
 
-  const handleRadius = helpers.computePolylineHandleRadius(verts, center);
-  const rotateHandlePos = helpers.offsetByMeters(center, handleRadius, 0);
-  const scaleHandlePos = helpers.offsetByMeters(center, handleRadius, 90);
-  const rotateHandle = helpers.createHandle(rotateHandlePos, rotateStyle, { type: "rotate" });
-  const scaleHandle = helpers.createHandle(scaleHandlePos, scaleStyle, { type: "scale" });
-  handles.push(rotateHandle, scaleHandle);
+  if (rotateStyle) {
+    const center = helpers.computePolygonCenterCartesian(verts);
+    const handleRadius = helpers.computePolylineHandleRadius(verts, center);
+    const rotateHandlePos = helpers.offsetByMeters(center, handleRadius, 0);
+    const rotateHandle = helpers.createHandle(rotateHandlePos, rotateStyle, { type: "rotate" });
+    handles.push(rotateHandle);
+  }
+
+  if (scaleStyle) {
+    const center = helpers.computePolygonCenterCartesian(verts);
+    const handleRadius = helpers.computePolylineHandleRadius(verts, center);
+    const scaleHandlePos = helpers.offsetByMeters(center, handleRadius, 90);
+    const scaleHandle = helpers.createHandle(scaleHandlePos, scaleStyle, { type: "scale" });
+    handles.push(scaleHandle);
+  }
 
   return handles;
 }
@@ -117,9 +258,19 @@ export function buildPolylineHandles(verts: Cesium.Cartesian3[], helpers: Handle
 /**
  * 构建点编辑句柄
  */
-export function buildPointHandles(pos: Cesium.Cartesian3 | null, helpers: HandleHelpers): Cesium.Entity[] {
+export function buildPointHandles(
+  pos: Cesium.Cartesian3 | null,
+  helpers: HandleHelpers,
+  options: OverlayEditOptions
+): Cesium.Entity[] {
   if (!pos) return [];
-  const centerStyle = { color: Cesium.Color.fromCssColorString("#43a047"), outlineColor: Cesium.Color.WHITE, pixelSize: 11 };
+
+  const centerStyle = getStyle(options.move, {
+    color: Cesium.Color.fromCssColorString("#43a047"),
+    outlineColor: Cesium.Color.WHITE,
+    pixelSize: 11
+  });
+  if (!centerStyle) return [];
   const h = helpers.createHandle(pos, centerStyle, { type: "point" });
   return [h];
 }
@@ -130,18 +281,33 @@ export function buildPointHandles(pos: Cesium.Cartesian3 | null, helpers: Handle
 export function buildCircleHandles(
   center: Cesium.Cartesian3 | null,
   radiusMeters: number,
-  helpers: HandleHelpers
+  helpers: HandleHelpers,
+  options: OverlayEditOptions
 ): Cesium.Entity[] {
   if (!center) return [];
 
-  const centerStyle = { color: Cesium.Color.fromCssColorString("#1e88e5"), outlineColor: Cesium.Color.WHITE, pixelSize: 10 };
-  const radiusStyle = { color: Cesium.Color.fromCssColorString("#ec407a"), outlineColor: Cesium.Color.WHITE, pixelSize: 9 };
+  const centerStyle = getStyle(options.vertex, {
+    color: Cesium.Color.fromCssColorString("#1e88e5"),
+    outlineColor: Cesium.Color.WHITE,
+    pixelSize: 10
+  });
+  const radiusStyle = getStyle(options.mid, {
+    color: Cesium.Color.fromCssColorString("#ec407a"),
+    outlineColor: Cesium.Color.WHITE,
+    pixelSize: 9
+  });
 
-  const centerHandle = helpers.createHandle(center, centerStyle, { type: "center" });
-  const radiusHandlePos = helpers.circleRadiusHandlePosition(center, radiusMeters);
-  const radiusHandle = helpers.createHandle(radiusHandlePos, radiusStyle, { type: "radius" });
-
-  return [centerHandle, radiusHandle];
+  const handles: Cesium.Entity[] = [];
+  if (centerStyle) {
+    const centerHandle = helpers.createHandle(center, centerStyle, { type: "center" });
+    handles.push(centerHandle);
+  }
+  if (radiusStyle) {
+    const radiusHandlePos = helpers.circleRadiusHandlePosition(center, radiusMeters);
+    const radiusHandle = helpers.createHandle(radiusHandlePos, radiusStyle, { type: "radius" });
+    handles.push(radiusHandle);
+  }
+  return handles;
 }
 
 /**
