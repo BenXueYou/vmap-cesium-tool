@@ -710,6 +710,11 @@ export class OverlayEditController {
         if (this.editingKind === "polygon") this.applyEditedPolygon();
         if (this.editingKind === "polyline") this.applyEditedPolyline();
         this.rebuildHandles(options);
+
+        // 触发 onChange 回调
+        if (this.editingTarget && this.onChange) {
+          this.emitChange(this.editingTarget);
+        }
       }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
 
       /**
