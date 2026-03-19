@@ -674,11 +674,11 @@ export class OverlayEditController {
 
       /**
        * 处理鼠标右键点击事件
-       * 用于删除多边形的顶点
+       * 用于删除多边形的顶点或点覆盖物
        */
       this.handler.setInputAction((e: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
         if (!this.enabled) return;
-        if (!this.editingTarget || (this.editingKind !== "polygon" && this.editingKind !== "polyline")) return;
+        if (!this.editingTarget || (this.editingKind !== "polygon" && this.editingKind !== "polyline" && this.editingKind !== "point")) return;
         if (!e.position) return;
 
         try {
@@ -696,7 +696,20 @@ export class OverlayEditController {
         const pickedEntity = picked && ((picked as any).id as Cesium.Entity | undefined);
         if (!pickedEntity || !(pickedEntity as any).__vmapOverlayEditHandle) return;
         const meta = (pickedEntity as any).__vmapOverlayEditHandleMeta as any;
-        if (!meta || meta.type !== "vertex" || typeof meta.index !== "number") return;
+        if (!meta) return;
+
+        // 处理点类型删除
+        if (this.editingKind === "point" && meta.type === "point") {
+          // 触发 onChange 回调，然后停止编辑
+          if (this.editingTarget && this.onChange) {
+            this.emitChange(this.editingTarget);
+          }
+          this.stop();
+          return;
+        }
+
+        // 多边形和折线顶点删除
+        if (meta.type !== "vertex" || typeof meta.index !== "number") return;
 
         // 确保多边形至少保留3个顶点，折线至少保留2个顶点
         if (this.editingKind === "polygon" && this.editingPositions.length <= 3) return;
