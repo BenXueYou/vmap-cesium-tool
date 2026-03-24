@@ -13,35 +13,35 @@ export type CreateHandle = (position: Cesium.Cartesian3, style: HandleStyle, met
 
 export interface OverlayEditOptions {
   vertex: {
-    enable?: boolean;
-    color?: Cesium.Color;
-    outlineColor?: Cesium.Color;
-    outlineWidth?: number;
-    pixelSize?: number;
+    enable?: boolean; // 是否启用顶点句柄
+    color?: Cesium.Color; // 句柄颜色
+    outlineColor?: Cesium.Color; // 句柄描边颜色
+    outlineWidth?: number; // 句柄描边宽度
+    pixelSize?: number; // 句柄像素大小
   } | boolean;
   mid: {
-    enable?: boolean;
-    color?: Cesium.Color;
-    outlineColor?: Cesium.Color;
-    outlineWidth?: number;
-    pixelSize?: number;
+    enable?: boolean; // 是否启用边中点句柄（多边形/折线）
+    color?: Cesium.Color; // 句柄颜色
+    outlineColor?: Cesium.Color; // 句柄描边颜色
+    outlineWidth?: number; // 句柄描边宽度
+    pixelSize?: number; // 句柄像素大小
   } | boolean;
   move: {
-    enable?: boolean;
-    color?: Cesium.Color;
-    outlineColor?: Cesium.Color;
-    outlineWidth?: number;
-    pixelSize?: number;
+    enable?: boolean; // 是否启用整体移动句柄（所有类型）
+    color?: Cesium.Color; // 句柄颜色
+    outlineColor?: Cesium.Color; // 句柄描边颜色
+    outlineWidth?: number; // 句柄描边宽度
+    pixelSize?: number; // 句柄像素大小
   } | boolean;
-  rotate: {
-    enable?: boolean;
-    color?: Cesium.Color;
-    outlineColor?: Cesium.Color;
-    outlineWidth?: number;
+  rotate: { 
+    enable?: boolean; // 是否启用旋转句柄（例如：矩形/多边形可旋转，点不可旋转？按需设）
+    color?: Cesium.Color; // 句柄颜色
+    outlineColor?: Cesium.Color; // 句柄描边颜色
+    outlineWidth?: number; // 
     pixelSize?: number;
   } | boolean;
   scale: {
-    enable?: boolean;
+    enable?: boolean; // 是否启用缩放句柄（例如：折线可缩放，点/圆不可缩放？按需设）
     color?: Cesium.Color;
     outlineColor?: Cesium.Color;
     outlineWidth?: number;
@@ -264,7 +264,6 @@ export function buildPointHandles(
   options: OverlayEditOptions
 ): Cesium.Entity[] {
   if (!pos) return [];
-
   const centerStyle = getStyle(options.move, {
     color: Cesium.Color.fromCssColorString("#43a047"),
     outlineColor: Cesium.Color.WHITE,

@@ -16,6 +16,7 @@ import type { OverlayPosition } from './overlay/types';
 import { OverlayEditController } from './overlay/OverlayEditController';
 import { OverlayHighlight } from './overlay/OverlayHighlight';
 import { PickGovernor } from './PickGovernor';
+import { OverlayEditOptions } from "./overlay/OverlayEditHandles";
 
 export interface CesiumOverlayServiceOptions {
   /**
@@ -37,6 +38,9 @@ export interface CesiumOverlayServiceOptions {
    * @default 120
    */
   clickPickMinIntervalMs?: number;
+
+  /** 编辑功能配置项，默认为全开（除 rotate） */
+  overlayEditOptions?: OverlayEditOptions;
 }
 
 /**
@@ -287,6 +291,7 @@ export class CesiumOverlayService {
       },
     }, {
       onChange: options.onOverlayEditChange,
+      overlayEditOptions: options.overlayEditOptions,
     });
 
     // this.enableTranslucentPicking();
@@ -319,21 +324,6 @@ export class CesiumOverlayService {
     // hover handler 在大屏/高负载场景可能带来高频 pick/drillPick 压力，可通过配置禁用
     if (this.options.enableHoverHandler !== false) {
       this.setupEntityHoverHandler();
-    }
-  }
-
-  /**
-   * Cesium 默认可能无法 pick 到半透明覆盖物（例如 alpha < 1 的填充面）。
-   * 开启 pickTranslucentDepth 后，hover/click 才能稳定命中半透明面。
-   */
-  private enableTranslucentPicking(): void {
-    try {
-      const scene: any = this.viewer.scene as any;
-      if (scene && 'pickTranslucentDepth' in scene) {
-        scene.pickTranslucentDepth = true;
-      }
-    } catch {
-      // ignore
     }
   }
 
@@ -575,9 +565,11 @@ export class CesiumOverlayService {
    * 开启/关闭覆盖物编辑模式。
    * - 开启后：点击覆盖物会进入编辑，并显示可拖拽控制点。
    * - 关闭后：退出编辑并移除控制点。
+   * @param enabled 是否启用编辑模式
+   * @param overlayEditOptions 编辑功能配置项，可选。不传时使用构造函数传入的配置或默认配置
    */
-  public setOverlayEditMode(enabled: boolean): void {
-    this.overlayEditor.setEnabled(enabled);
+  public setOverlayEditMode(enabled: boolean, overlayEditOptions?: OverlayEditOptions): void {
+    this.overlayEditor.setEnabled(enabled, overlayEditOptions);
   }
 
   /** 当前是否处于覆盖物编辑模式（全局开关） */
@@ -594,8 +586,8 @@ export class CesiumOverlayService {
    * 主动开始编辑某个覆盖物。
    * @returns true 表示成功进入编辑
    */
-  public startOverlayEdit(entityOrId: (DrawEntity & OverlayEntity) | string): boolean {
-    return this.overlayEditor.start(entityOrId);
+  public startOverlayEdit(entityOrId: (DrawEntity & OverlayEntity) | string, options?: OverlayEditOptions): boolean {
+    return this.overlayEditor.start(entityOrId, options);
   }
 
   /**

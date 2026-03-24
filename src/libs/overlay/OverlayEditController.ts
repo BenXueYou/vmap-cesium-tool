@@ -27,7 +27,7 @@ export interface OverlayEditControllerOptions {
    */
   onChange?: OverlayEditChangeCallback;
   /** 编辑功能配置项，默认为全开（除 rotate） */
-  editCapabilities?: OverlayEditOptions;
+  overlayEditOptions?: OverlayEditOptions;
 }
 
 export interface OverlayEditHost {
@@ -144,7 +144,7 @@ export class OverlayEditController {
     this.onChange = options.onChange ?? null;
     this.editingOptions = {
       ...DEFAULT_OPTIONS,
-      ...(options.editCapabilities || {}),
+      ...(options.overlayEditOptions || {}),
     }; // 初始化拾取控制器
     this.pickGovernor = new PickGovernor({
       profiles: {
@@ -164,8 +164,9 @@ export class OverlayEditController {
   /**
    * 设置编辑器启用状态
    * @param enabled 是否启用
+   * @param options 编辑功能配置项，可选。不传时使用构造函数传入的配置或默认配置
    */
-  public setEnabled(enabled: boolean): void {
+  public setEnabled(enabled: boolean, options?: OverlayEditOptions): void {
     const next = !!enabled;
     if (this.enabled === next) return;
     this.enabled = next;
@@ -176,7 +177,15 @@ export class OverlayEditController {
       return;
     }
 
-    this.ensureHandler(DEFAULT_OPTIONS);
+    // 更新编辑选项
+    if (options) {
+      this.editingOptions = {
+        ...DEFAULT_OPTIONS,
+        ...options,
+      };
+    }
+
+    this.ensureHandler(this.editingOptions || DEFAULT_OPTIONS);
   }
 
   /**
@@ -235,7 +244,10 @@ export class OverlayEditController {
   ): boolean {
     // 👇 定义完整的默认配置（根据你的业务逻辑调整默认值）
 
-    const editOptions: OverlayEditOptions = { ...DEFAULT_OPTIONS, ...options };
+    const editOptions: OverlayEditOptions = {
+      ...(this.editingOptions || DEFAULT_OPTIONS),
+      ...options
+    };
 
     // 后续逻辑不变...
     const entity = typeof entityOrId === "string"
