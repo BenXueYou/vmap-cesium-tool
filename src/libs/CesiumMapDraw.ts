@@ -2,8 +2,8 @@ import * as Cesium from "cesium";
 import { BaseDraw, DrawLine, DrawPolygon, DrawRectangle, DrawCircle, type DrawCallbacks, type DrawOptions, type DrawEntity, toggleSelectedStyle } from './drawHelper';
 import { DrawHintHelper } from './drawHelper/DrawHint';
 import { wouldCreatePolygonSelfIntersection, wouldCreatePolygonSelfIntersectionKind } from '../utils/selfIntersection';
-import { i18n } from './i18n';
-import { PickGovernor } from './PickGovernor';
+import { i18n } from '../i18n';
+import { PickGovernor } from '../utils/PickGovernor';
 /**
  * Cesium 绘图辅助工具类
  * 支持绘制点、线、多边形、矩形，并提供编辑和删除功能

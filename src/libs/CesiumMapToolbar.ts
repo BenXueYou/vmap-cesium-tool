@@ -8,16 +8,14 @@ import { MapLayersService } from './toolBar/MapLayersService';
 import { NotFlyZonesService } from './toolBar/NotFlyZonesService';
 import type {
   ButtonConfig, MapType, ToolbarConfig,
-  SearchCallback, MeasurementCallback, ZoomCallback, CustomButtonConfig
-} from './CesiumMapModel';
+  SearchCallback, MeasurementCallback, ZoomCallback, CustomButtonConfig, ResolvedButtonConfig
+} from '../core/types';
 
 import { TDTMapTypes } from './config/CesiumMapConfig'
 import { formatDistance, calculatePolygonArea } from '../utils/calc';
 
 import { defaultButtons, defaultMeasureItems, defaultToolBarStyle } from './toolBar/MapToolBarConfig'
-import { i18n, type I18nLike } from '../libs/i18n';
-
-type ResolvedButtonConfig = Omit<ButtonConfig, 'icon'> & { icon: string | HTMLElement } & { titleKey?: string };
+import { i18n, type I18nLike } from '../i18n';
 
 /**
  * Cesium地图工具栏类
@@ -326,7 +324,7 @@ export class CesiumMapToolbar {
   /**
    * 获取所有按钮配置（包括默认按钮和自定义按钮），并添加 sort 值
    */
-  private resolveIcon(customIcon: CustomButtonConfig['icon'], fallbackIcon: string): string | HTMLElement {
+  private resolveIcon(customIcon: CustomButtonConfig['icon'], fallbackIcon: string | HTMLElement): string | HTMLElement {
     if (customIcon === false) return fallbackIcon;
     if (customIcon instanceof HTMLElement) return customIcon;
     if (typeof customIcon === 'string') return customIcon;
@@ -368,7 +366,13 @@ export class CesiumMapToolbar {
         color: customButton?.color ?? (btn as ButtonConfig).color ?? defaultButton?.color,
         sort: customButton?.sort ?? (btn as ButtonConfig).sort ?? defaultButton?.sort,
         callback: customButton?.callback ?? (btn as ButtonConfig).callback ?? defaultButton?.callback,
-        activeIcon: (customButton && customButton.activeIcon !== false ? customButton.activeIcon : (btn as ButtonConfig).activeIcon) ?? defaultButton?.activeIcon,
+        activeIcon: customButton?.activeIcon !== false ? customButton?.activeIcon : ((btn as ButtonConfig).activeIcon ?? defaultButton?.activeIcon),
+        enabled: customButton?.enabled ?? true,
+        visible: customButton?.visible ?? true,
+        padding: customButton?.padding,
+        onClick: customButton?.onClick,
+        resolvedIcon: resolvedIcon,
+        resolvedTitle: (customButton?.title ?? (btn as ButtonConfig).title ?? defaultButton?.title ?? '') as string,
       };
     });
 
