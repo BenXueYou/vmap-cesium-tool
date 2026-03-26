@@ -1,25 +1,10 @@
 import type { MapType } from '../CesiumMapModel';
+import { DEFAULT_MAP_TYPES } from '../../core/services/toolbar/config';
 
 /**
- * 天地图类型配置 - 简化的存根实现
+ * 旧版天地图类型配置。
+ * 直接复用 core 常量，保持默认配置单源化。
  */
-export const TDTMapTypes: MapType[] = [
-  {
-    id: 'vec',
-    name: '矢量地图',
-    nameKey: 'map.types.vec',
-    provider: (token: string) => [],
-  },
-  {
-    id: 'img',
-    name: '影像地图',
-    nameKey: 'map.types.img',
-    provider: (token: string) => [],
-  },
-  {
-    id: 'ter',
-    name: '地形地图',
-    nameKey: 'map.types.ter',
-    provider: (token: string) => [],
-  },
-];
+export const TDTMapTypes: MapType[] = DEFAULT_MAP_TYPES.map((mapType) => ({
+  ...mapType,
+}));

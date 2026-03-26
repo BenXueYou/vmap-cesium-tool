@@ -15,10 +15,6 @@ export class ToolbarButton extends BaseComponent {
    * @param styleConfig 样式配置
    */
   constructor(config: CustomButtonConfig, styleConfig: StyleConfig = {}) {
-
-    // 设置默认样式
-    console.log('ToolbarButton config:', config, 'styleConfig:', styleConfig);
-
     super('button', {
       className: 'vmap-toolbar-button',
       style: {

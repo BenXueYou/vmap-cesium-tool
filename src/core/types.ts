@@ -1,6 +1,7 @@
 import * as Cesium from 'cesium';
 import type { Cartesian3, Cartographic, Color, MaterialProperty, Rectangle, Entity } from 'cesium';
 import type { I18nLike } from '../i18n';
+import type { ToolbarCallbacks } from './services/toolbar/types';
 
 /**
  * 核心类型定义 - 整合所有地图插件相关的类型
@@ -13,14 +14,20 @@ import type { I18nLike } from '../i18n';
  */
 export interface ToolbarConfig {
   position?: 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left';
+  direction?: 'row' | 'column';
   buttonSize?: number;
   buttonSpacing?: number;
+  padding?: string;
   backgroundColor?: string;
   borderColor?: string;
   borderRadius?: number;
   borderWidth?: number;
   boxShadow?: string;
   zIndex?: number;
+  offsetTop?: number;
+  offsetRight?: number;
+  offsetBottom?: number;
+  offsetLeft?: number;
   buttons?: CustomButtonConfig[];
   useI18n?: boolean;
   i18n?: I18nLike;
@@ -146,6 +153,36 @@ export interface MapType {
   geoWTFS?: (token: string, viewer: Cesium.Viewer) => any | null;
 }
 
+export interface LayersPanelStyleConfig {
+  containerStyle?: Partial<CSSStyleDeclaration>;
+  sectionStyle?: Partial<CSSStyleDeclaration>;
+  sectionTitleStyle?: Partial<CSSStyleDeclaration>;
+  mapTypesGridStyle?: Partial<CSSStyleDeclaration>;
+  mapTypeCardStyle?: Partial<CSSStyleDeclaration>;
+  mapTypeCardSelectedStyle?: Partial<CSSStyleDeclaration>;
+  mapTypeCardHoverStyle?: Partial<CSSStyleDeclaration>;
+  mapTypeCardSelectedHoverStyle?: Partial<CSSStyleDeclaration>;
+  mapTypeThumbnailStyle?: Partial<CSSStyleDeclaration>;
+  mapTypeLabelStyle?: Partial<CSSStyleDeclaration>;
+  mapTypeCheckmarkStyle?: Partial<CSSStyleDeclaration>;
+  mapTypeCheckmarkSelectedStyle?: Partial<CSSStyleDeclaration>;
+  placeNameBadgeStyle?: Partial<CSSStyleDeclaration>;
+  placeNameCheckboxStyle?: Partial<CSSStyleDeclaration>;
+  placeNameTextStyle?: Partial<CSSStyleDeclaration>;
+  noFlyZoneItemStyle?: Partial<CSSStyleDeclaration>;
+  noFlyZoneItemHoverStyle?: Partial<CSSStyleDeclaration>;
+  noFlyZoneCheckboxStyle?: Partial<CSSStyleDeclaration>;
+  noFlyZoneLabelStyle?: Partial<CSSStyleDeclaration>;
+  noFlyZoneDotStyle?: Partial<CSSStyleDeclaration>;
+}
+
+export interface ToolbarLayersMenuOptions {
+  mapTypes?: MapType[];
+  defaultPlaceNameChecked?: boolean;
+  defaultNoFlyZoneChecked?: boolean;
+  panelStyle?: LayersPanelStyleConfig;
+}
+
 // ==================== 地图提供商类型 ====================
 
 /**
@@ -265,6 +302,57 @@ export interface MapPluginOptions {
   layers?: LayersConfig;
   /** Cesium Ion Token */
   cesiumToken?: string;
+  /** 服务装配配置 */
+  services?: MapPluginServicesOptions;
+}
+
+/**
+ * Toolbar 服务装配配置
+ */
+export interface ToolbarPluginOptions {
+  /** 是否启用 ToolbarService */
+  enabled?: boolean;
+  /** 工具栏挂载容器，默认使用地图容器 */
+  container?: HTMLElement;
+  /** 工具栏配置 */
+  config?: ToolbarConfig;
+  /** 是否使用默认按钮，默认 true */
+  useDefaultButtons?: boolean;
+  /** 自定义按钮配置 */
+  buttonConfigs?: CustomButtonConfig[];
+  /** 图层菜单配置 */
+  layersMenu?: ToolbarLayersMenuOptions;
+  /** 工具栏回调 */
+  callbacks?: ToolbarCallbacks;
+}
+
+/**
+ * Overlay 服务装配配置
+ */
+export interface OverlayPluginOptions {
+  /** 是否启用 OverlayService，默认 true */
+  enabled?: boolean;
+  /** 是否启用 hover 处理器 */
+  enableHoverHandler?: boolean;
+  /** 点击节流间隔 */
+  clickPickMinIntervalMs?: number;
+}
+
+/**
+ * Draw 服务装配配置
+ */
+export interface DrawPluginOptions {
+  /** 是否启用 DrawService，默认 true */
+  enabled?: boolean;
+}
+
+/**
+ * MapPlugin 服务装配总配置
+ */
+export interface MapPluginServicesOptions {
+  toolbar?: boolean | ToolbarPluginOptions;
+  overlay?: boolean | OverlayPluginOptions;
+  draw?: boolean | DrawPluginOptions;
 }
 
 // ==================== 地图工具配置（向后兼容） ====================

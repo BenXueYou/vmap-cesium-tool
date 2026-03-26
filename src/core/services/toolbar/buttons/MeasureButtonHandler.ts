@@ -53,6 +53,13 @@ export class MeasureButtonHandler extends BaseButtonHandler {
     this.options = options;
   }
 
+  updateOptions(options: Partial<MeasureButtonHandlerOptions>): void {
+    this.options = {
+      ...this.options,
+      ...options,
+    };
+  }
+
   /**
    * 初始化按钮
    * @param button 按钮实例

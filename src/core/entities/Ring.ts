@@ -30,6 +30,8 @@ export interface RingOptions extends BaseOverlayOptions {
   gapColor?: Color | string;
   /** 外环宽度（默认 8） */
   width?: number;
+  /** 兼容旧版边线宽度配置 */
+  lineWidth?: number;
   /** 发光强度（0-1，默认 0.25） */
   glowPower?: number;
   /** 是否贴地（默认 true） */
@@ -38,6 +40,8 @@ export interface RingOptions extends BaseOverlayOptions {
   groundHeightEpsilon?: number;
   /** 圆环分段数（默认 128） */
   segments?: number;
+  /** 兼容旧版发光宽度配置 */
+  glowWidth?: number;
 }
 
 /**

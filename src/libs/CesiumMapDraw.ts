@@ -361,7 +361,7 @@ class DrawHelper {
         tempPositions: this.tempPositions,
         offsetHeight: this.offsetHeight,
       }),
-      (key, params) => i18n.t(key, params)
+      (key: string, params?: Record<string, unknown>) => i18n.t(key, params)
     );
 
     // 兜底触发统计：用于确认 NaN 恢复逻辑是否曾经触发过

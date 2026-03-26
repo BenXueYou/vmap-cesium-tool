@@ -7,25 +7,39 @@ import type { Viewer } from 'cesium';
  */
 export class NotFlyZonesService {
   private viewer: Viewer;
+  private visible: boolean;
 
   constructor(viewer: Viewer, config?: any) {
     this.viewer = viewer;
+    this.visible = Boolean(config?.autoLoad);
   }
 
   showNoFlyZones(): Promise<void> {
+    this.visible = true;
     return Promise.resolve();
   }
 
   hideNoFlyZones(): void {
-    // 存根实现
+    this.visible = false;
   }
 
   toggleVisibility(): void {
-    // 存根实现
+    this.visible = !this.visible;
   }
 
   getNoFlyZoneVisible(): boolean {
-    // 存根实现
-    return false;
+    return this.visible;
+  }
+
+  toggleNoFlyZones(): Promise<void> {
+    if (this.visible) {
+      this.hideNoFlyZones();
+      return Promise.resolve();
+    }
+    return this.showNoFlyZones();
+  }
+
+  destroy(): void {
+    this.visible = false;
   }
 }

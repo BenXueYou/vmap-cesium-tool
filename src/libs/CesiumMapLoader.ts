@@ -12,7 +12,7 @@ interface InitOptions {
   terrain?: Terrain, // 地形
   terrainProvider?: TerrainProvider // 地形提供者
   mapType?: string // 地图类型，默认为天地图
-  tdtMapTypeId?: string // 天地图底图类型，默认 imagery
+  tdtMapTypeId?: string // 天地图底图类型，默认 img
   imageryProvider?: Cesium.UrlTemplateImageryProvider // 自定义影像图层提供r
   imageryLayers?: Cesium.ImageryLayerCollection // 自定义影像图层集合
   terrainShadows?: Cesium.ShadowMode // 地形阴影
@@ -164,9 +164,9 @@ export async function initCesium(
     // 添加天地图影像图层
     if (options.mapType === 'tiandi') {
       viewer.imageryLayers.removeAll();
-      const tdtMapTypeId = options.tdtMapTypeId || 'imagery';
+      const tdtMapTypeId = options.tdtMapTypeId || 'img';
       const tdtMapType = TDTMapTypes.find((type: { id: string }) => type.id === tdtMapTypeId)
-        || TDTMapTypes.find((type: { id: string }) => type.id === 'imagery');
+        || TDTMapTypes.find((type: { id: string }) => type.id === 'img');
       tdtMapType?.provider(token).forEach((provider: Cesium.ImageryProvider) => {
         viewer.imageryLayers.addImageryProvider(provider);
       });

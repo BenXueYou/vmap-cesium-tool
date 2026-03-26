@@ -24,6 +24,8 @@ export interface PolygonOptions extends BaseOverlayOptions {
   heightReference?: HeightReference;
   /** 拉伸高度 */
   extrudedHeight?: number;
+  /** 兼容旧版渲染模式配置 */
+  renderMode?: 'auto' | 'entity' | 'primitive';
 }
 
 /**

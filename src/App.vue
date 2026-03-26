@@ -6,277 +6,204 @@
 
 <script lang="ts" setup>
 import { onMounted, ref, shallowRef, onBeforeUnmount } from "vue";
+import * as Cesium from 'cesium';
 import { getViteTdToken, getViteCesiumToken } from "./utils/common.ts";
-import {
-  createMapPlugin,
-  MapPlugin,
-  OverlayService,
-  DrawService,
-  HeatmapLayer,
-  PointClusterLayer,
-} from "./index.ts";
-import { createToolbarService } from "./core/services/toolbar";
-import {
-  DEFAULT_BUTTON_CONFIGS,
-  DEFAULT_TOOLBAR_STYLE,
-} from "./core/constants";
+import { createMapPlugin, MapPlugin, ToolbarService } from "./index.ts";
 import searchIcon from "./assets/images/toolbar/search@3x.png";
 import measureIcon from "./assets/images/toolbar/measure@3x.png";
-import view2dIcon from "./assets/images/toolbar/view_2d@3x.png";
 import layersIcon from "./assets/images/toolbar/layers@3x.png";
 import locationIcon from "./assets/images/toolbar/location@3x.png";
 import zoomInIcon from "./assets/images/toolbar/zoom-in@3x.png";
 import zoomOutIcon from "./assets/images/toolbar/zoom-out@3x.png";
 import fullscreenIcon from "./assets/images/toolbar/fullscreen@3x.png";
-import * as Cesium from 'cesium';
 
-// 响应式数据
+const toolbarLayersMenu = {
+  defaultPlaceNameChecked: true,
+  defaultNoFlyZoneChecked: false,
+  panelStyle: {
+    containerStyle: {
+      background: 'linear-gradient(180deg, rgba(7, 33, 74, 0.96) 0%, rgba(3, 18, 45, 0.96) 100%)',
+      border: '1px solid rgba(76, 160, 255, 0.36)',
+      borderRadius: '2px',
+      boxShadow: '0 18px 42px rgba(3, 12, 30, 0.42)',
+    },
+    sectionTitleStyle: {
+      color: '#e8f3ff',
+      letterSpacing: '0.08em',
+    },
+    mapTypeCardStyle: {
+      borderRadius: '2px',
+      border: '1px solid rgba(78, 138, 229, 0.28)',
+      boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.08)',
+    },
+    mapTypeCardSelectedStyle: {
+      border: '1px solid rgba(83, 185, 255, 0.92)',
+      boxShadow: '0 0 0 1px rgba(83, 185, 255, 0.22), 0 12px 28px rgba(5, 15, 33, 0.42)',
+    },
+    placeNameBadgeStyle: {
+      background: 'rgba(8, 19, 38, 0.86)',
+      border: '1px solid rgba(93, 178, 255, 0.36)',
+      color: '#eff7ff',
+    },
+    noFlyZoneItemStyle: {
+      background: 'rgba(11, 28, 62, 0.82)',
+      borderRadius: '14px',
+      border: '1px solid rgba(76, 160, 255, 0.22)',
+    },
+  },
+};
+
 const cesiumContainer = ref<HTMLElement>();
 const mapPlugin = shallowRef<MapPlugin | null>(null);
-const overlayService = shallowRef<OverlayService | null>(null);
-const drawService = shallowRef<DrawService | null>(null);
-let toolbarService: any = null;
+const toolbarService = shallowRef<ToolbarService | null>(null);
 
-console.log('组件初始化 - 变量已定义', getViteCesiumToken());
-
-// 初始化地图
 const initMap = async () => {
   try {
     const cesiumTokenValue = getViteCesiumToken();
     const tdTokenValue = getViteTdToken();
-    console.log('使用天地图 token:', tdTokenValue, '使用 Cesium token:', cesiumTokenValue ? '[已提供]' : '[未提供]');
 
-    // 1. 创建地图插件 - 新框架的核心入口
-    // 使用分层配置结构：viewerOptions | camera | layers
-    mapPlugin.value = await createMapPlugin('cesiumContainer', {
-      // Cesium Ion token
+    mapPlugin.value = createMapPlugin('cesiumContainer', {
       cesiumToken: cesiumTokenValue,
-      
-      // Cesium Viewer 原生配置（可选）
       viewerOptions: {
-        // 可以在这里添加更多 Cesium 原生配置
-        // terrainProvider: await createWorldTerrainAsync(),
+        animation: false,
+        timeline: false,
+        navigationHelpButton: false,
       },
-      
-      // 相机/视图配置
       camera: {
-        center: [116.3974, 39.9093, 1000] as [number, number, number], // 北京天安门 [经度，纬度，高度]
-        pitch: -45,    // 俯仰角（度）
-        heading: 0,    // 朝向角（度）
-        roll: 0,       // 翻滚角（度）
+        center: [116.3974, 39.9093, 1000] as [number, number, number],
+        pitch: -45,
+        heading: 0,
+        roll: 0,
       },
-      
-      // 图层配置 - 默认使用天地图
       layers: {
-        type: 'tdt',  // 地图提供商类型：'tdt' | 'gaode' | 'baidu' | 'osm' | 'custom'
+        type: 'tdt',
         tdt: {
-          mapTypeId: 'img',     // 天地图子类型：'vec' | 'img' | 'ter'
-          token: tdTokenValue,  // 天地图 token
-          showLabel: true,      // 是否显示注记层
-        }
-      }
+          mapTypeId: 'img',
+          token: tdTokenValue,
+          showLabel: true,
+        },
+      },
+      services: {
+        overlay: true,
+        draw: true,
+        toolbar: {
+          enabled: true,
+          config: {
+            position: 'bottom-right',
+            buttonSize: 36,
+            buttonSpacing: 8,
+            backgroundColor: 'transparent',
+            borderColor: 'transparent',
+            zIndex: 1100,
+          },
+          layersMenu: toolbarLayersMenu,
+          buttonConfigs: [
+            {
+              id: 'search',
+              icon: searchIcon,
+              backgroundColor: 'rgba(0, 0, 0, 0.52)',
+              borderColor: 'rgba(9, 109, 236, 0.85)',
+              color: '#ffffff',
+              hoverColor: 'rgba(9, 109, 236, 0.95)',
+            },
+            {
+              id: 'measure',
+              icon: measureIcon,
+              backgroundColor: 'rgba(0, 0, 0, 0.52)',
+              borderColor: 'rgba(9, 109, 236, 0.85)',
+              color: '#ffffff',
+              hoverColor: 'rgba(9, 109, 236, 0.95)',
+            },
+            {
+              id: 'view2d3d',
+              icon: '3D',
+              activeIcon: '2D',
+              backgroundColor: 'rgba(0, 0, 0, 0.52)',
+              borderColor: 'rgba(9, 109, 236, 0.85)',
+              color: 'rgba(9, 109, 236, 0.85)',
+              hoverColor: 'rgba(9, 109, 236, 0.95)',
+            },
+            {
+              id: 'layers',
+              icon: layersIcon,
+              backgroundColor: 'rgba(0, 0, 0, 0.52)',
+              borderColor: 'rgba(9, 109, 236, 0.85)',
+              color: '#ffffff',
+              hoverColor: 'rgba(9, 109, 236, 0.95)',
+            },
+            {
+              id: 'location',
+              icon: locationIcon,
+              backgroundColor: 'rgba(0, 0, 0, 0.52)',
+              borderColor: 'rgba(9, 109, 236, 0.85)',
+              color: '#ffffff',
+              hoverColor: 'rgba(9, 109, 236, 0.95)',
+            },
+            {
+              id: 'zoom-in',
+              icon: zoomInIcon,
+              backgroundColor: 'rgba(0, 0, 0, 0.52)',
+              borderColor: 'rgba(9, 109, 236, 0.85)',
+              color: '#ffffff',
+              hoverColor: 'rgba(9, 109, 236, 0.95)',
+            },
+            {
+              id: 'zoom-out',
+              icon: zoomOutIcon,
+              backgroundColor: 'rgba(0, 0, 0, 0.52)',
+              borderColor: 'rgba(9, 109, 236, 0.85)',
+              color: '#ffffff',
+              hoverColor: 'rgba(9, 109, 236, 0.95)',
+            },
+            {
+              id: 'fullscreen',
+              icon: fullscreenIcon,
+              backgroundColor: 'rgba(0, 0, 0, 0.52)',
+              borderColor: 'rgba(9, 109, 236, 0.85)',
+              color: '#ffffff',
+              hoverColor: 'rgba(9, 109, 236, 0.95)',
+            },
+          ],
+          callbacks: {
+            onSearch: async (query: string) => {
+              const presets = [
+                { name: '天安门', address: '北京', longitude: 116.3974, latitude: 39.9093, height: 1000 },
+                { name: '奥林匹克公园', address: '北京', longitude: 116.3906, latitude: 39.9923, height: 1000 },
+              ];
+              return presets.filter((item) => item.name.includes(query) || item.address.includes(query));
+            },
+            onSelect: (result: any) => {
+              viewer.camera.flyTo({
+                destination: Cesium.Cartesian3.fromDegrees(result.longitude, result.latitude, result.height || 1000),
+                duration: 1.2,
+              });
+            },
+            onMeasurementStart: () => {
+              console.log('开始测量');
+            },
+            onClear: () => {
+              console.log('清除测量数据');
+            },
+          },
+        },
+      },
     });
 
     const viewer = await mapPlugin.value.initialize();
-    console.log('地图初始化成功!', viewer);
-
-    // 2. 初始化工具栏服务
-    const toolbarContainer = cesiumContainer.value as HTMLElement;
-
-    const toolbarOptions = {
-      toolbarStyle: {
-        position: 'bottom-right',
-        buttonSize: 36,
-        buttonSpacing: 8,
-        backgroundColor: 'transparent',
-        borderColor: 'transparent',
-        zIndex: 1100,
-      },
-      buttonConfigs: [
-        { 
-          id: 'search',
-          icon: searchIcon,
-          backgroundColor: 'rgba(0, 0, 0, 0.52)',
-          borderColor: 'rgba(9, 109, 236, 0.85)',
-          color: '#ffffff',
-          hoverColor: 'rgba(9, 109, 236, 0.95)',
-        },
-        {
-          id: 'measure',
-          icon: measureIcon,
-          backgroundColor: 'rgba(0, 0, 0, 0.52)',
-          borderColor: 'rgba(9, 109, 236, 0.85)',
-          color: '#ffffff',
-          hoverColor: 'rgba(9, 109, 236, 0.95)',
-        },
-        {
-          id: 'view2d3d',
-          icon: '3D',
-          activeIcon: '2D',
-          backgroundColor: 'rgba(0, 0, 0, 0.52)',
-          borderColor: 'rgba(9, 109, 236, 0.85)',
-          color: 'rgba(9, 109, 236, 0.85)',
-          hoverColor: 'rgba(9, 109, 236, 0.95)',
-        },
-        {
-          id: 'layers',
-          icon: layersIcon,
-          backgroundColor: 'rgba(0, 0, 0, 0.52)',
-          borderColor: 'rgba(9, 109, 236, 0.85)',
-          color: '#ffffff',
-          hoverColor: 'rgba(9, 109, 236, 0.95)',
-        },
-        {
-          id: 'location',
-          icon: locationIcon,
-          backgroundColor: 'rgba(0, 0, 0, 0.52)',
-          borderColor: 'rgba(9, 109, 236, 0.85)',
-          color: '#ffffff',
-          hoverColor: 'rgba(9, 109, 236, 0.95)',
-        },
-        {
-          id: 'zoom-in',
-          icon: zoomInIcon,
-          backgroundColor: 'rgba(0, 0, 0, 0.52)',
-          borderColor: 'rgba(9, 109, 236, 0.85)',
-          color: '#ffffff',
-          hoverColor: 'rgba(9, 109, 236, 0.95)',
-        },
-        {
-          id: 'zoom-out',
-          icon: zoomOutIcon,
-          backgroundColor: 'rgba(0, 0, 0, 0.52)',
-          borderColor: 'rgba(9, 109, 236, 0.85)',
-          color: '#ffffff',
-          hoverColor: 'rgba(9, 109, 236, 0.95)',
-        },
-        {
-          id: 'fullscreen',
-          icon: fullscreenIcon,
-          backgroundColor: 'rgba(0, 0, 0, 0.52)',
-          borderColor: 'rgba(9, 109, 236, 0.85)',
-          color: '#ffffff',
-          hoverColor: 'rgba(9, 109, 236, 0.95)',
-        },
-      ],
-    };
-
-    toolbarService = createToolbarService({
-      viewer,
-      container: toolbarContainer,
-      layers: {
-        mapTypes: [
-          { id: 'vec', name: '天地图矢量' },
-          { id: 'img', name: '天地图影像' },
-          { id: 'ter', name: '天地图地形' },
-        ],
-        currentMapType: 'img',
-        token: tdTokenValue,
-        onMapTypeChange: (selected) => {
-          mapPlugin.value?.updateLayers({
-            type: 'tdt',
-            tdt: {
-              mapTypeId: selected,
-              token: tdTokenValue,
-              showLabel: true,
-            },
-          });
-        },
-      },
-      callbacks: {
-        onSearch: async (query: string) => {
-          const presets = [
-            { name: '天安门', address: '北京', longitude: 116.3974, latitude: 39.9093, height: 1000 },
-            { name: '奥林匹克公园', address: '北京', longitude: 116.3906, latitude: 39.9923, height: 1000 },
-          ];
-          return presets.filter(item => item.name.includes(query) || item.address.includes(query));
-        },
-        onSelect: (result: any) => {
-          if (!viewer) return;
-          viewer.camera.flyTo({
-            destination: Cesium.Cartesian3.fromDegrees(result.longitude, result.latitude, result.height || 1000),
-            duration: 1.2,
-          });
-        },
-        onMeasurementStart: () => {
-          console.log('开始测量');
-        },
-        onClear: () => {
-          console.log('清除测量数据');
-        },
-      },
-    }, toolbarOptions);
-
-    // MapController 实现，支持按钮行为：2D/3D、定位、缩放、全屏
-    const mapController = {
-      toggle2D3D: (buttonElement: HTMLElement) => {
-        if (!viewer) return;
-        const curMode = viewer.scene.mode;
-        if (curMode === Cesium.SceneMode.SCENE3D) {
-          viewer.scene.morphTo2D(1.0);
-          buttonElement.classList.add('active');
-        } else {
-          viewer.scene.morphTo3D(1.0);
-          buttonElement.classList.remove('active');
-        }
-      },
-      resetLocation: () => {
-        if (!viewer) return;
-        viewer.camera.setView({
-          destination: Cesium.Cartesian3.fromDegrees(116.3974, 39.9093, 1000),
-          orientation: {
-            heading: Cesium.Math.toRadians(0),
-            pitch: Cesium.Math.toRadians(-45),
-            roll: Cesium.Math.toRadians(0),
-          },
-        });
-      },
-      zoomIn: () => {
-        if (!viewer) return;
-        viewer.camera.zoomIn(500);
-      },
-      zoomOut: () => {
-        if (!viewer) return;
-        viewer.camera.zoomOut(500);
-      },
-      toggleFullscreen: () => {
-        const el = document.documentElement;
-        if (!document.fullscreenElement) {
-          el.requestFullscreen?.();
-        } else {
-          document.exitFullscreen?.();
-        }
-      },
-    };
-
-    toolbarService.setMapController(mapController);
-    toolbarService.initialize();
-
-    console.log('新框架地图加载完成!');
-
+    toolbarService.value = mapPlugin.value.getToolbarService();
   } catch (error) {
     console.error('地图初始化失败:', error);
   }
 };
 
-// 组件挂载时初始化
 onMounted(() => {
   initMap();
 });
 
-// 组件卸载时清理
 onBeforeUnmount(() => {
-  if (toolbarService) {
-    toolbarService.destroy();
-    toolbarService = null;
-  }
-
-  if (mapPlugin.value) {
-    // 清理地图插件
-    mapPlugin.value.destroy();
-  }
+  mapPlugin.value?.destroy();
+  toolbarService.value = null;
 });
-
 </script>
 
 <style scoped>

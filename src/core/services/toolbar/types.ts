@@ -152,12 +152,18 @@ export interface LayersServiceConfig {
   
   /** 当前地图类型 */
   currentMapType?: string;
+
+  /** 当前是否显示路网/注记 */
+  isPlaceNameChecked?: boolean;
   
   /** 天地图 token */
   token?: string;
   
   /** 地图类型改变回调 */
   onMapTypeChange?: (mapTypeId: string) => void;
+
+  /** 路网显隐切换回调 */
+  onPlaceNameToggle?: (isChecked: boolean) => void;
 }
 
 /**
@@ -219,20 +225,6 @@ export interface DefaultButtonConfig {
 }
 
 /**
- * 默认按钮列表
- */
-export const DEFAULT_BUTTONS: DefaultButtonConfig[] = [
-  { id: 'search', icon: '🔍', title: '搜索', titleKey: 'toolbar.search', sort: 0 },
-  { id: 'measure', icon: '📏', title: '测量', titleKey: 'toolbar.measure', sort: 1 },
-  { id: 'view2d3d', icon: '3D', title: '2D 或 3D', titleKey: 'toolbar.view2d3d', sort: 2 },
-  { id: 'layers', icon: '📚', title: '图层切换', titleKey: 'toolbar.layers', sort: 3 },
-  { id: 'location', icon: '🎯', title: '定位', titleKey: 'toolbar.location', sort: 4 },
-  { id: 'zoom-in', icon: '➖', title: '缩小', titleKey: 'toolbar.zoom_in', sort: 5 },
-  { id: 'zoom-out', icon: '➕', title: '放大', titleKey: 'toolbar.zoom_out', sort: 6 },
-  { id: 'fullscreen', icon: '⛶', title: '全屏', titleKey: 'toolbar.fullscreen', sort: 7 },
-];
-
-/**
  * 默认测量菜单项
  */
 export interface MeasureMenuItem {
@@ -241,9 +233,3 @@ export interface MeasureMenuItem {
   textKey?: string;
   icon: string;
 }
-
-export const DEFAULT_MEASURE_ITEMS: MeasureMenuItem[] = [
-  { id: 'measure-area', text: '测面积', textKey: 'measurement.menu.area', icon: '📐' },
-  { id: 'measure-distance', text: '测距', textKey: 'measurement.menu.distance', icon: '📏' },
-  { id: 'clear-measurement', text: '清除', textKey: 'measurement.menu.clear', icon: '🗑️' },
-];

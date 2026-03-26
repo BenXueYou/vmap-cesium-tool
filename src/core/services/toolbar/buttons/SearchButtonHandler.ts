@@ -6,27 +6,42 @@
 import { BaseButtonHandler } from './BaseButtonHandler';
 import type { ToolbarButton } from '../../../../components/ToolbarButton';
 
+interface SearchContainerStyleConfig {
+  inputStyle?: Partial<CSSStyleDeclaration>;
+  buttonStyle?: Partial<CSSStyleDeclaration>;
+  containerStyle?: Partial<CSSStyleDeclaration>;
+  resultStyle?: Partial<CSSStyleDeclaration>;
+  resultItemStyle?: Partial<CSSStyleDeclaration>;
+  resultItemHoverStyle?: Partial<CSSStyleDeclaration>;
+  resultItemActiveStyle?: Partial<CSSStyleDeclaration>;
+  resultItemIconStyle?: Partial<CSSStyleDeclaration>;
+}
+
 /**
  * 搜索按钮处理器配置
  */
 export interface SearchButtonHandlerOptions {
   /** 搜索服务实例 */
   searchService?: any;
-  
+
+  /** 搜索框样式 */
+  searchContainerStyle?: SearchContainerStyleConfig;
+
   /** 搜索回调 */
   onSearch?: (query: string) => Promise<any[]>;
-  
+
   /** 搜索选择回调 */
   onSelect?: (result: any) => void;
 }
-
 /**
  * 搜索按钮处理器类
  */
 export class SearchButtonHandler extends BaseButtonHandler {
   readonly id = 'search';
-  
+
   private options: SearchButtonHandlerOptions;
+  private styleConfig: SearchContainerStyleConfig = {};
+
   private searchContainer: HTMLElement | null = null;
 
   /**
@@ -44,6 +59,110 @@ export class SearchButtonHandler extends BaseButtonHandler {
   ) {
     super('search', viewer, i18n, useI18n);
     this.options = options;
+    this.styleConfig = (options.searchContainerStyle || {}) as SearchContainerStyleConfig;
+  }
+
+  updateOptions(options: Partial<SearchButtonHandlerOptions>): void {
+    this.options.searchService = options.searchService ?? this.options.searchService;
+    this.options.searchContainerStyle = options.searchContainerStyle ?? this.options.searchContainerStyle;
+    this.options.onSearch = options.onSearch ?? this.options.onSearch;
+    this.options.onSelect = options.onSelect ?? this.options.onSelect;
+
+    if (options.searchContainerStyle) {
+      const nextStyleConfig = options.searchContainerStyle as SearchContainerStyleConfig;
+      this.styleConfig.inputStyle = nextStyleConfig.inputStyle ?? this.styleConfig.inputStyle;
+      this.styleConfig.buttonStyle = nextStyleConfig.buttonStyle ?? this.styleConfig.buttonStyle;
+      this.styleConfig.containerStyle = nextStyleConfig.containerStyle ?? this.styleConfig.containerStyle;
+      this.styleConfig.resultStyle = nextStyleConfig.resultStyle ?? this.styleConfig.resultStyle;
+      this.styleConfig.resultItemStyle = nextStyleConfig.resultItemStyle ?? this.styleConfig.resultItemStyle;
+      this.styleConfig.resultItemHoverStyle = nextStyleConfig.resultItemHoverStyle ?? this.styleConfig.resultItemHoverStyle;
+      this.styleConfig.resultItemActiveStyle = nextStyleConfig.resultItemActiveStyle ?? this.styleConfig.resultItemActiveStyle;
+      this.styleConfig.resultItemIconStyle = nextStyleConfig.resultItemIconStyle ?? this.styleConfig.resultItemIconStyle;
+    }
+  }
+
+  /**
+   * 获取默认样式
+   */
+  private getDefaultStyles() {
+    const styleConfig: SearchContainerStyleConfig = this.styleConfig;
+    const {
+      inputStyle = {},
+      buttonStyle = {},
+      containerStyle = {},
+      resultStyle = {},
+      resultItemStyle = {},
+      resultItemHoverStyle = {},
+      resultItemActiveStyle = {},
+      resultItemIconStyle = {},
+    } = styleConfig;
+
+    void resultItemHoverStyle;
+    void resultItemActiveStyle;
+    void resultItemIconStyle;
+
+    return {
+      container: {
+        position: 'absolute',
+        right: '100%',
+        marginRight: '8px',
+        background: 'rgba(255, 255, 255, 0.95)',
+        border: '1px solid rgba(0, 0, 0, 0.1)',
+        borderRadius: '4px',
+        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+        padding: '8px',
+        zIndex: '1001',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        minWidth: '200px',
+        ...containerStyle,
+      } as Partial<CSSStyleDeclaration>,
+      input: {
+        flex: '1',
+        padding: '6px 10px',
+        border: '1px solid #ddd',
+        borderRadius: '4px',
+        fontSize: '13px',
+        outline: 'none',
+        ...inputStyle,
+      } as Partial<CSSStyleDeclaration>,
+      button: {
+        padding: '0',
+        border: 'none',
+        background: 'transparent',
+        color: '#999',
+        cursor: 'pointer',
+        fontSize: '14px',
+        width: '20px',
+        height: '20px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        ...buttonStyle,
+      } as Partial<CSSStyleDeclaration>,
+      result: {
+        position: 'absolute',
+        top: '100%',
+        left: '0',
+        right: '0',
+        background: 'white',
+        border: '1px solid #ddd',
+        borderRadius: '4px',
+        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+        maxHeight: '300px',
+        overflowY: 'auto',
+        zIndex: '1002',
+        ...resultStyle,
+      } as Partial<CSSStyleDeclaration>,
+      resultItem: {
+        padding: '8px 12px',
+        cursor: 'pointer',
+        borderBottom: '1px solid #eee',
+        transition: 'background-color 0.2s',
+        ...resultItemStyle,
+      } as Partial<CSSStyleDeclaration>,
+    };
   }
 
   /**
@@ -52,8 +171,7 @@ export class SearchButtonHandler extends BaseButtonHandler {
    */
   initialize(button: ToolbarButton): void {
     this.button = button;
-    
-    // 设置按钮标题
+
     if (this.useI18n && this.i18n) {
       this.i18n.bindElement(button.getElement(), 'toolbar.search', 'title');
     } else {
@@ -66,31 +184,22 @@ export class SearchButtonHandler extends BaseButtonHandler {
    */
   handleClick(): void {
     if (!this.toolbarElement || !this.button) return;
-
     const buttonElement = this.button.getElement();
     this.toggleSearch(buttonElement);
-  }
-
-  /**
-   * 处理鼠标进入事件
-   */
-  handleMouseEnter(): void {
-    // 可以在这里添加悬停提示
   }
 
   /**
    * 处理鼠标离开事件
    */
   handleMouseLeave(): void {
-    // 延迟关闭搜索框，给用户时间移动到搜索框上
     if (this.searchContainer) {
       setTimeout(() => {
-        if (this.searchContainer && !this.searchContainer.matches(':hover')) {
-          const input = this.searchContainer.querySelector('input') as HTMLInputElement;
-          const isInputFocused = input && document.activeElement === input;
-          if (!isInputFocused) {
-            this.closeSearch();
-          }
+        if (
+          this.searchContainer &&
+          !this.searchContainer.matches(':hover') &&
+          document.activeElement?.tagName !== 'INPUT'
+        ) {
+          this.closeSearch();
         }
       }, 100);
     }
@@ -123,65 +232,42 @@ export class SearchButtonHandler extends BaseButtonHandler {
   private showSearch(anchor: HTMLElement): void {
     if (!this.toolbarElement) return;
 
-    // 关闭其他菜单
     this.closeOtherMenus('search');
 
-    // 创建搜索容器
+    const defaultStyles = this.getDefaultStyles();
+    const userStyles: SearchContainerStyleConfig = this.styleConfig;
+
+    // 合并样式
+    const containerStyle = { ...defaultStyles.container, ...userStyles.containerStyle };
+    const inputStyle = { ...defaultStyles.input, ...userStyles.inputStyle };
+    const buttonStyle = { ...defaultStyles.button, ...userStyles.buttonStyle };
+
+    // 创建容器
     this.searchContainer = document.createElement('div');
     this.searchContainer.className = 'search-container';
-    this.searchContainer.style.cssText = `
-      position: absolute;
-      right: 100%;
-      margin-right: 8px;
-      background: rgba(255, 255, 255, 0.95);
-      border: 1px solid rgba(0, 0, 0, 0.1);
-      border-radius: 4px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-      padding: 8px;
-      z-index: 1001;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      min-width: 200px;
-    `;
+    Object.assign(this.searchContainer.style, containerStyle);
 
     // 定位
-    const offsetTop = anchor.offsetTop;
-    this.searchContainer.style.top = `${offsetTop}px`;
+    this.searchContainer.style.top = `${anchor.offsetTop}px`;
 
-    // 创建搜索输入框
+    // 输入框
     const input = document.createElement('input');
     input.type = 'text';
-    input.placeholder = this.useI18n ? this.t('toolbar.search_placeholder', '请输入搜索内容...') : '请输入搜索内容...';
-    input.style.cssText = `
-      flex: 1;
-      padding: 6px 10px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      font-size: 13px;
-      outline: none;
-    `;
+    input.placeholder = this.useI18n && this.i18n
+      ? (this.i18n as any).t('toolbar.search_placeholder')
+      : '请输入搜索内容...';
+    Object.assign(input.style, inputStyle);
 
-    // 搜索按钮
-    const searchBtn = document.createElement('button');
-    searchBtn.textContent = '🔍';
-    searchBtn.style.cssText = `
-      padding: 6px 10px;
-      border: none;
-      background: #007acc;
-      color: white;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 14px;
-    `;
-    searchBtn.addEventListener('click', () => {
-      const query = input.value.trim();
-      if (query) {
-        this.doSearch(query);
-      }
+    // 清除按钮（仅清空）
+    const clearBtn = document.createElement('button');
+    clearBtn.textContent = '✕';
+    Object.assign(clearBtn.style, buttonStyle);
+    clearBtn.addEventListener('click', () => {
+      input.value = '';
+      input.focus();
     });
 
-    // 输入框回车搜索
+    // 回车搜索
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         const query = input.value.trim();
@@ -191,26 +277,20 @@ export class SearchButtonHandler extends BaseButtonHandler {
       }
     });
 
-    // 输入框获得焦点时保持打开
-    input.addEventListener('focus', () => {
-      // 保持搜索框打开
-    });
-
-    // 输入框失去焦点时关闭
+    // 失焦关闭
     input.addEventListener('blur', () => {
       setTimeout(() => {
-        this.closeSearch();
-      }, 200);
+        if (!this.searchContainer?.matches(':hover')) {
+          this.closeSearch();
+        }
+      }, 150);
     });
 
     this.searchContainer.appendChild(input);
-    this.searchContainer.appendChild(searchBtn);
+    this.searchContainer.appendChild(clearBtn);
     this.toolbarElement.appendChild(this.searchContainer);
 
-    // 调整位置避免溢出
     this.adjustSearchPosition();
-
-    // 自动聚焦输入框
     setTimeout(() => input.focus(), 100);
   }
 
@@ -223,7 +303,7 @@ export class SearchButtonHandler extends BaseButtonHandler {
 
     try {
       let results: any[] = [];
-      
+
       if (searchService && typeof searchService.search === 'function') {
         results = await searchService.search(query);
       } else if (onSearch) {
@@ -231,7 +311,6 @@ export class SearchButtonHandler extends BaseButtonHandler {
       }
 
       if (results && results.length > 0) {
-        // 显示搜索结果
         this.showSearchResults(results);
       }
     } catch (error) {
@@ -246,51 +325,42 @@ export class SearchButtonHandler extends BaseButtonHandler {
   private showSearchResults(results: any[]): void {
     if (!this.searchContainer) return;
 
-    // 移除现有结果列表
     const existingResults = this.searchContainer.querySelector('.search-results');
     if (existingResults) {
       existingResults.remove();
     }
 
+    const defaultStyles = this.getDefaultStyles();
+    const userStyles = this.styleConfig || {};
+
+    const resultStyle = { ...defaultStyles.result, ...userStyles.resultStyle };
+    const resultItemStyle = { ...defaultStyles.resultItem, ...userStyles.resultItemStyle };
+    const hoverStyle = userStyles.resultItemHoverStyle || { backgroundColor: '#f0f0f0' };
+    const activeStyle = userStyles.resultItemActiveStyle || { backgroundColor: '#e0e0e0' };
+
     const resultsContainer = document.createElement('div');
     resultsContainer.className = 'search-results';
-    resultsContainer.style.cssText = `
-      position: absolute;
-      top: 100%;
-      left: 0;
-      right: 0;
-      background: white;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-      max-height: 300px;
-      overflow-y: auto;
-      z-index: 1002;
-    `;
+    Object.assign(resultsContainer.style, resultStyle);
 
-    results.forEach(result => {
+    results.forEach((result) => {
       const item = document.createElement('div');
-      item.style.cssText = `
-        padding: 8px 12px;
-        cursor: pointer;
-        border-bottom: 1px solid #eee;
-        transition: background-color 0.2s;
-      `;
+      Object.assign(item.style, resultItemStyle);
       item.textContent = result.name || result.address || JSON.stringify(result);
-      
+
       item.addEventListener('mouseenter', () => {
-        item.style.backgroundColor = '#f0f0f0';
+        Object.assign(item.style, hoverStyle);
       });
-      
+
       item.addEventListener('mouseleave', () => {
-        item.style.backgroundColor = 'white';
+        Object.assign(item.style, resultItemStyle); // 恢复默认
       });
-      
+
       item.addEventListener('click', () => {
+        Object.assign(item.style, activeStyle);
         this.options.onSelect?.(result);
         this.closeSearch();
       });
-      
+
       resultsContainer.appendChild(item);
     });
 
@@ -298,7 +368,7 @@ export class SearchButtonHandler extends BaseButtonHandler {
   }
 
   /**
-   * 调整搜索框位置
+   * 调整搜索框位置避免溢出视口
    */
   private adjustSearchPosition(): void {
     if (!this.searchContainer) return;
@@ -306,7 +376,6 @@ export class SearchButtonHandler extends BaseButtonHandler {
     const rect = this.searchContainer.getBoundingClientRect();
     const viewportWidth = window.innerWidth;
 
-    // 如果右侧空间不足，调整到左侧
     if (rect.right > viewportWidth) {
       this.searchContainer.style.right = '';
       this.searchContainer.style.left = '100%';
@@ -325,3 +394,5 @@ export class SearchButtonHandler extends BaseButtonHandler {
     }
   }
 }
+
+

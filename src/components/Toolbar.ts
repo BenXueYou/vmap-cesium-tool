@@ -1,7 +1,7 @@
 import { BaseComponent } from './BaseComponent';
 import { ToolbarButton, createToolbarButton } from './ToolbarButton';
 import type { ToolbarConfig, CustomButtonConfig, StyleConfig } from '../core/types';
-import { DEFAULT_TOOLBAR_STYLE } from '../core/constants';
+import { DEFAULT_TOOLBAR_STYLE } from '../core/services/toolbar/config';
 
 /**
  * 工具栏组件
@@ -19,21 +19,22 @@ export class Toolbar extends BaseComponent {
   constructor(config: Partial<ToolbarConfig> = {}, styleConfig: StyleConfig = {}) {
     const mergedConfig = { ...DEFAULT_TOOLBAR_STYLE, ...config };
     const position = mergedConfig.position;
+    const direction = mergedConfig.direction ?? 'column';
     
     super('div', {
       className: 'vmap-toolbar',
       style: {
         position: 'absolute',
         background: mergedConfig.backgroundColor,
-        border: `1px solid ${mergedConfig.borderColor}`,
+        border: `${mergedConfig.borderWidth ?? 1}px solid ${mergedConfig.borderColor}`,
         borderRadius: `${mergedConfig.borderRadius}px`,
         boxShadow: mergedConfig.boxShadow,
-        padding: '8px',
+        padding: mergedConfig.padding,
         zIndex: mergedConfig.zIndex.toString(),
         display: 'flex',
-        flexDirection: 'column',
+        flexDirection: direction,
         gap: `${mergedConfig.buttonSpacing}px`,
-        ...Toolbar.getPositionStyle(position),
+        ...Toolbar.getPositionStyle(mergedConfig),
         ...styleConfig.style,
       },
       ...styleConfig,
@@ -42,7 +43,7 @@ export class Toolbar extends BaseComponent {
     this.config = mergedConfig;
     this.buttonContainer = document.createElement('div');
     this.buttonContainer.style.display = 'flex';
-    this.buttonContainer.style.flexDirection = 'column';
+    this.buttonContainer.style.flexDirection = direction;
     this.buttonContainer.style.gap = `${this.config.buttonSpacing}px`;
     this.element.appendChild(this.buttonContainer);
 
@@ -53,29 +54,34 @@ export class Toolbar extends BaseComponent {
   /**
    * 获取位置样式（静态方法）
    */
-  private static getPositionStyle(position: ToolbarConfig['position']): Partial<CSSStyleDeclaration> {
+  private static getPositionStyle(config: ToolbarConfig): Partial<CSSStyleDeclaration> {
     const style: Partial<CSSStyleDeclaration> = {};
+    const position = config.position;
+    const offsetTop = `${config.offsetTop ?? 10}px`;
+    const offsetRight = `${config.offsetRight ?? 10}px`;
+    const offsetBottom = `${config.offsetBottom ?? 10}px`;
+    const offsetLeft = `${config.offsetLeft ?? 10}px`;
 
     switch (position) {
       case 'top-right':
-        style.top = '10px';
-        style.right = '10px';
+        style.top = offsetTop;
+        style.right = offsetRight;
         break;
       case 'top-left':
-        style.top = '10px';
-        style.left = '10px';
+        style.top = offsetTop;
+        style.left = offsetLeft;
         break;
       case 'bottom-right':
-        style.bottom = '10px';
-        style.right = '10px';
+        style.bottom = offsetBottom;
+        style.right = offsetRight;
         break;
       case 'bottom-left':
-        style.bottom = '10px';
-        style.left = '10px';
+        style.bottom = offsetBottom;
+        style.left = offsetLeft;
         break;
       default:
-        style.bottom = '10px';
-        style.right = '10px';
+        style.bottom = offsetBottom;
+        style.right = offsetRight;
     }
 
     return style;
@@ -84,30 +90,35 @@ export class Toolbar extends BaseComponent {
   /**
    * 获取位置样式（实例方法）
    */
-  private getPositionStyle(position: ToolbarConfig['position']): Partial<CSSStyleDeclaration> {
-    return Toolbar.getPositionStyle(position);
+  private getPositionStyle(config: ToolbarConfig): Partial<CSSStyleDeclaration> {
+    return Toolbar.getPositionStyle(config);
   }
 
   /**
    * 应用配置
    */
   private applyConfig(): void {
-    debugger
     // 更新工具栏样式
     Object.assign(this.element.style, {
       background: this.config.backgroundColor,
-      border: `1px solid ${this.config.borderColor}`,
+      border: `${this.config.borderWidth ?? 1}px solid ${this.config.borderColor}`,
       borderRadius: `${this.config.borderRadius}px`,
       boxShadow: this.config.boxShadow,
-      padding: '8px',
+      padding: this.config.padding ?? DEFAULT_TOOLBAR_STYLE.padding,
       zIndex: this.config.zIndex?.toString() || '1000',
+      flexDirection: this.config.direction ?? DEFAULT_TOOLBAR_STYLE.direction,
     });
 
     // 更新按钮容器间隙
     this.buttonContainer.style.gap = `${this.config.buttonSpacing}px`;
+    this.buttonContainer.style.flexDirection = this.config.direction ?? DEFAULT_TOOLBAR_STYLE.direction;
 
     // 更新位置
-    Object.assign(this.element.style, this.getPositionStyle(this.config.position));
+    this.element.style.top = '';
+    this.element.style.right = '';
+    this.element.style.bottom = '';
+    this.element.style.left = '';
+    Object.assign(this.element.style, this.getPositionStyle(this.config));
   }
 
   /**

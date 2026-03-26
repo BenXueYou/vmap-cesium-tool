@@ -14,6 +14,7 @@
 
 // 核心服务
 export { ToolbarService, createToolbarService } from './ToolbarService';
+export type { ToolbarServiceOptions } from './ToolbarService';
 
 // 类型定义
 export type {
@@ -49,4 +50,11 @@ export { MeasureMenu } from './menus/MeasureMenu';
 export type { MeasureMenuOptions } from './menus/MeasureMenu';
 
 // 常量
-export { DEFAULT_BUTTONS, DEFAULT_MEASURE_ITEMS } from './types';
+export {
+  DEFAULT_BUTTONS,
+  DEFAULT_BUTTON_CONFIGS,
+  DEFAULT_BUTTON_SORTS,
+  DEFAULT_MEASURE_ITEMS,
+  DEFAULT_TOOLBAR_STYLE,
+  DEFAULT_MAP_TYPES,
+} from './config';

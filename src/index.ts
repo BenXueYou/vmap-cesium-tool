@@ -5,6 +5,10 @@
  * 提供模块化的 API，同时通过适配器保持向后兼容。
  */
 
+import { createMapPlugin } from './core/MapPlugin';
+import type { ToolbarConfig } from './core/types';
+import { initStyleSystem } from './styles';
+
 // ==================== 核心模块 ====================
 export { MapPlugin, createMapPlugin } from './core/MapPlugin';
 
@@ -23,6 +27,8 @@ export type {
   MapToolsConfig,
   ComponentStyleConfig,
   StyleConfig,
+  LayersPanelStyleConfig,
+  ToolbarLayersMenuOptions,
   // 新增：分层配置类型
   MapPluginOptions,
   CameraConfig,
@@ -69,12 +75,14 @@ export type {
 } from './core/entities';
 
 // ==================== 服务模块 ====================
-export { OverlayService, DrawService } from './core/services';
+export { OverlayService, DrawService, ToolbarService, createToolbarService } from './core/services';
 export type {
   OverlayServiceOptions,
   DrawMode,
   DrawOptions,
   DrawResult,
+  ToolbarServiceOptions,
+  ToolbarCallbacks,
 } from './core/services';
 
 // ==================== 图层模块 ====================
@@ -123,84 +131,38 @@ export type {
 export { OverlayServiceAdapter as CesiumOverlayService } from './adapters/OverlayServiceAdapter';
 export type { LegacyCesiumOverlayServiceOptions } from './adapters/OverlayServiceAdapter';
 
-// 从 libs 重新导出旧版实现（过渡期，直到完全迁移）
-export { CesiumMapToolbar } from './libs/CesiumMapToolbar';
-export { initCesium } from './libs/CesiumMapLoader';
+export { ToolbarAdapter as CesiumMapToolbar } from './adapters/ToolbarAdapter';
+export type { LegacyCesiumMapToolbarCallbacks } from './adapters/ToolbarAdapter';
+
+export { initCesium } from './adapters/MapLoaderAdapter';
+export type { LegacyInitOptions, LegacyInitResult, LegacyMapCenter } from './adapters/MapLoaderAdapter';
+
+export {
+  DrawHelperAdapter as CompatDrawHelper,
+  OverlayServiceAdapter as CompatCesiumOverlayService,
+  ToolbarAdapter as CompatCesiumMapToolbar,
+} from './adapters';
 
 // ==================== 便捷工厂函数 ====================
 
 /**
  * 快速创建地图插件实例
  */
-export async function createVMap(
+export function createVMap(
   containerId: string,
-  config?: any,
-  toolbarConfig?: any,
-  styleConfig?: any
+  config?: Parameters<typeof createMapPlugin>[1],
+  toolbarConfig?: ToolbarConfig,
 ) {
-  const { createMapPlugin } = await import('./core/MapPlugin');
-  return createMapPlugin(containerId, config, toolbarConfig, styleConfig);
+  return createMapPlugin(containerId, config, toolbarConfig);
 }
 
 /**
  * 快速初始化样式系统
  */
-export async function initVMapStyles(config?: any) {
-  const { initStyleSystem } = await import('./styles');
+export function initVMapStyles(config?: Parameters<typeof initStyleSystem>[0]) {
   return initStyleSystem(config);
 }
 
 // ==================== 版本信息 ====================
 export const VERSION = '2.0.0';
 export const DESCRIPTION = 'VMap Cesium Tool - 基于 Cesium 和天地图的地图插件工具库 (新架构)';
-
-// ==================== 默认导出 ====================
-const VMap = {
-  // 核心
-  MapPlugin: (await import('./core/MapPlugin')).MapPlugin,
-  createMapPlugin: (await import('./core/MapPlugin')).createMapPlugin,
-  createVMap,
-  
-  // 实体
-  BaseOverlay: (await import('./core/entities')).BaseOverlay,
-  Marker: (await import('./core/entities')).Marker,
-  Label: (await import('./core/entities')).Label,
-  Icon: (await import('./core/entities')).Icon,
-  SVG: (await import('./core/entities')).SVG,
-  InfoWindow: (await import('./core/entities')).InfoWindow,
-  Polyline: (await import('./core/entities')).Polyline,
-  Polygon: (await import('./core/entities')).Polygon,
-  Rectangle: (await import('./core/entities')).Rectangle,
-  Circle: (await import('./core/entities')).Circle,
-  Ring: (await import('./core/entities')).Ring,
-  
-  // 服务
-  OverlayService: (await import('./core/services')).OverlayService,
-  DrawService: (await import('./core/services')).DrawService,
-  
-  // 图层
-  HeatmapLayer: (await import('./core/layers')).HeatmapLayer,
-  PointClusterLayer: (await import('./core/layers')).PointClusterLayer,
-  
-  // 组件
-  BaseComponent: (await import('./components')).BaseComponent,
-  Toolbar: (await import('./components')).Toolbar,
-  ToolbarButton: (await import('./components')).ToolbarButton,
-  SearchBox: (await import('./components')).SearchBox,
-  
-  // 样式
-  styleManager: (await import('./styles')).styleManager,
-  initVMapStyles,
-  
-  // 适配器（向后兼容）
-  DrawHelper: (await import('./adapters/DrawHelperAdapter')).DrawHelperAdapter,
-  CesiumOverlayService: (await import('./adapters/OverlayServiceAdapter')).OverlayServiceAdapter,
-  CesiumMapToolbar: (await import('./libs/CesiumMapToolbar')).CesiumMapToolbar,
-  initCesium: (await import('./libs/CesiumMapLoader')).initCesium,
-  
-  // 元数据
-  VERSION,
-  DESCRIPTION,
-};
-
-export default VMap;

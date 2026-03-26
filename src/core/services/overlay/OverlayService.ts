@@ -10,6 +10,42 @@ import { Polygon, type PolygonOptions } from '../../entities/Polygon';
 import { Rectangle, type RectangleOptions } from '../../entities/Rectangle';
 import { Circle, type CircleOptions } from '../../entities/Circle';
 import { Ring, type RingOptions } from '../../entities/Ring';
+import type { OverlayClickHighlightOptions, OverlayEntity } from '../../entities/BaseOverlay';
+
+type OverlayInstance = Marker | Label | Icon | SVG | InfoWindow | Polyline | Polygon | Rectangle | Circle | Ring;
+
+interface OverlayGraphicsSnapshot {
+  point?: {
+    color?: Cesium.Color;
+    outlineColor?: Cesium.Color;
+    pixelSize?: number;
+  };
+  label?: {
+    fillColor?: Cesium.Color;
+    outlineColor?: Cesium.Color;
+    scale?: number;
+  };
+  billboard?: {
+    color?: Cesium.Color;
+    scale?: number;
+  };
+  polyline?: {
+    width?: number;
+    material?: any;
+  };
+  polygon?: {
+    material?: any;
+    outlineColor?: Cesium.Color;
+  };
+  rectangle?: {
+    material?: any;
+    outlineColor?: Cesium.Color;
+  };
+  ellipse?: {
+    material?: any;
+    outlineColor?: Cesium.Color;
+  };
+}
 
 /**
  * 覆盖物服务选项
@@ -53,9 +89,18 @@ export interface OverlayServiceOptions {
  */
 export class OverlayService {
   private viewer: Viewer;
-  private overlays: Map<string, any> = new Map();
+  private overlays: Map<string, OverlayInstance> = new Map();
+  private entityOverlayMap: Map<Entity, OverlayInstance> = new Map();
   private options: Required<OverlayServiceOptions>;
   private nextId = 1;
+  private clickHandler: Cesium.ScreenSpaceEventHandler | null = null;
+  private hoverHandler: Cesium.ScreenSpaceEventHandler | null = null;
+  private clickHighlightTargets: Entity[] = [];
+  private hoverHighlightTargets: Entity[] = [];
+  private lastClickPickAt = 0;
+  private pendingHoverRaf: number | null = null;
+  private pendingHoverPosition: Cesium.Cartesian2 | null = null;
+  private readonly highlightCache = new WeakMap<Entity, OverlayGraphicsSnapshot>();
 
   // 各种覆盖物工厂实例
   private markerFactory: MarkerFactory;
@@ -105,21 +150,26 @@ export class OverlayService {
   /**
    * 注册覆盖物
    */
-  registerOverlay(id: string, overlay: any): void {
+  registerOverlay(id: string, overlay: OverlayInstance): void {
     this.overlays.set(id, overlay);
+    this.bindOverlayEntities(overlay);
   }
 
   /**
    * 注销覆盖物
    */
   unregisterOverlay(id: string): void {
+    const overlay = this.overlays.get(id);
+    if (overlay) {
+      this.unbindOverlayEntities(overlay);
+    }
     this.overlays.delete(id);
   }
 
   /**
    * 根据 ID 获取覆盖物
    */
-  getOverlay(id: string): any {
+  getOverlay(id: string): OverlayInstance | undefined {
     return this.overlays.get(id);
   }
 
@@ -206,7 +256,9 @@ export class OverlayService {
   removeOverlay(id: string): boolean {
     const overlay = this.overlays.get(id);
     if (!overlay) return false;
-    
+
+    this.clearOverlayHighlightState(overlay);
+    this.unbindOverlayEntities(overlay);
     overlay.remove();
     this.overlays.delete(id);
     return true;
@@ -226,12 +278,64 @@ export class OverlayService {
   setOverlayVisible(id: string, visible: boolean): boolean {
     const overlay = this.overlays.get(id);
     if (!overlay) return false;
-    
-    if (visible) {
-      overlay.show();
-    } else {
-      overlay.hide();
+
+    if ('setVisible' in overlay && typeof overlay.setVisible === 'function') {
+      overlay.setVisible(visible);
+    } else if (visible && 'show' in overlay && typeof (overlay as InfoWindow).show === 'function') {
+      (overlay as InfoWindow).show();
+    } else if (!visible && 'hide' in overlay && typeof (overlay as InfoWindow).hide === 'function') {
+      (overlay as InfoWindow).hide();
     }
+
+    if (!visible) {
+      this.clearOverlayHighlightState(overlay);
+    }
+
+    return true;
+  }
+
+  /**
+   * 显式切换覆盖物高亮状态。
+   */
+  toggleOverlayHighlight(entityOrId: OverlayEntity | Entity | string, reason: 'click' | 'hover' = 'click'): boolean {
+    const entity = this.resolveOverlayEntity(entityOrId);
+    if (!entity) {
+      return false;
+    }
+
+    return this.setOverlayHighlight(entity, !this.isHighlightActive(entity, reason), reason);
+  }
+
+  /**
+   * 显式设置覆盖物高亮状态。
+   */
+  setOverlayHighlight(
+    entityOrId: OverlayEntity | Entity | string,
+    enabled: boolean,
+    reason: 'click' | 'hover' = 'click',
+  ): boolean {
+    const entity = this.resolveOverlayEntity(entityOrId);
+    if (!entity) {
+      return false;
+    }
+
+    const targets = this.getHighlightTargets(entity, reason);
+    const currentTargets = reason === 'click' ? this.clickHighlightTargets : this.hoverHighlightTargets;
+
+    if (currentTargets.length > 0) {
+      this.setHighlightTargets(currentTargets, reason, false);
+    }
+
+    if (reason === 'click') {
+      this.clickHighlightTargets = enabled ? targets : [];
+    } else {
+      this.hoverHighlightTargets = enabled ? targets : [];
+    }
+
+    if (enabled) {
+      this.setHighlightTargets(targets, reason, true);
+    }
+
     return true;
   }
 
@@ -239,22 +343,459 @@ export class OverlayService {
    * 安装 Hover 处理器
    */
   private setupHoverHandler(): void {
-    // TODO: 实现 hover 高亮逻辑
-    // 这部分逻辑可以从原 CesiumOverlayService 迁移过来
+    this.hoverHandler = new Cesium.ScreenSpaceEventHandler(this.viewer.scene.canvas);
+
+    const clearHover = (): void => {
+      this.setHighlightTargets(this.hoverHighlightTargets, 'hover', false);
+      this.hoverHighlightTargets = [];
+    };
+
+    this.hoverHandler.setInputAction((movement: Cesium.ScreenSpaceEventHandler.MotionEvent) => {
+      if (!movement.endPosition) {
+        clearHover();
+        return;
+      }
+
+      this.pendingHoverPosition = movement.endPosition;
+      if (this.pendingHoverRaf !== null) {
+        return;
+      }
+
+      this.pendingHoverRaf = window.requestAnimationFrame(() => {
+        this.pendingHoverRaf = null;
+
+        const pickPosition = this.pendingHoverPosition;
+        this.pendingHoverPosition = null;
+        if (!pickPosition) {
+          clearHover();
+          return;
+        }
+
+        const overlayEntity = this.pickOverlayEntity(pickPosition, 'hover');
+        if (!overlayEntity) {
+          clearHover();
+          return;
+        }
+
+        const targets = this.getHighlightTargets(overlayEntity, 'hover');
+        const isSameTarget =
+          targets.length === this.hoverHighlightTargets.length &&
+          targets.every((target, index) => target === this.hoverHighlightTargets[index]);
+
+        if (isSameTarget) {
+          return;
+        }
+
+        clearHover();
+        this.hoverHighlightTargets = targets;
+        this.setHighlightTargets(targets, 'hover', true);
+      });
+    }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+
+    this.viewer.scene.canvas.addEventListener('mouseleave', clearHover);
   }
 
   /**
    * 安装点击处理器
    */
   private setupClickHandler(): void {
-    // TODO: 实现点击回调逻辑
-    // 这部分逻辑可以从原 CesiumOverlayService 迁移过来
+    this.clickHandler = new Cesium.ScreenSpaceEventHandler(this.viewer.scene.canvas);
+    this.clickHandler.setInputAction((click: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
+      const now = Date.now();
+      if (now - this.lastClickPickAt < this.options.clickPickMinIntervalMs) {
+        return;
+      }
+
+      this.lastClickPickAt = now;
+      const overlayEntity = this.pickOverlayEntity(click.position, 'click');
+      if (!overlayEntity) {
+        this.setHighlightTargets(this.clickHighlightTargets, 'click', false);
+        this.clickHighlightTargets = [];
+        return;
+      }
+
+      const targets = this.getHighlightTargets(overlayEntity, 'click');
+      const shouldEnable = !this.isHighlightActive(overlayEntity, 'click');
+
+      if (this.clickHighlightTargets.length > 0) {
+        this.setHighlightTargets(this.clickHighlightTargets, 'click', false);
+      }
+
+      this.clickHighlightTargets = shouldEnable ? targets : [];
+      if (targets.length > 0) {
+        this.setHighlightTargets(targets, 'click', shouldEnable);
+      }
+
+      overlayEntity._onClick?.(overlayEntity);
+    }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+  }
+
+  private bindOverlayEntities(overlay: OverlayInstance): void {
+    const rootEntity = overlay.getEntity() as OverlayEntity;
+    const entities = this.collectOverlayEntities(rootEntity);
+    entities.forEach((entity) => {
+      this.entityOverlayMap.set(entity, overlay);
+      (entity as OverlayEntity)._overlayId = rootEntity.id;
+    });
+
+    rootEntity._highlightEntities = entities;
+  }
+
+  private unbindOverlayEntities(overlay: OverlayInstance): void {
+    const rootEntity = overlay.getEntity() as OverlayEntity;
+    this.collectOverlayEntities(rootEntity).forEach((entity) => {
+      this.entityOverlayMap.delete(entity);
+    });
+  }
+
+  private collectOverlayEntities(rootEntity: OverlayEntity): Entity[] {
+    const entities: Entity[] = [rootEntity];
+    if (rootEntity._borderEntity) {
+      entities.push(rootEntity._borderEntity);
+    }
+    if (rootEntity._innerEntity) {
+      entities.push(rootEntity._innerEntity);
+    }
+    return entities;
+  }
+
+  private pickOverlayEntity(
+    windowPosition: Cesium.Cartesian2,
+    reason: 'click' | 'hover',
+  ): OverlayEntity | null {
+    const pickedObjects = this.safeDrillPick(windowPosition);
+    for (const pickedObject of pickedObjects) {
+      const entity = this.resolvePickedOverlayEntity(pickedObject);
+      if (!entity || entity.show === false) {
+        continue;
+      }
+
+      if (reason === 'hover' && !entity._hoverHighlight) {
+        continue;
+      }
+
+      if (reason === 'click' && !entity._clickHighlight && !entity._onClick) {
+        continue;
+      }
+
+      return entity;
+    }
+
+    return null;
+  }
+
+  private safeDrillPick(windowPosition: Cesium.Cartesian2): any[] {
+    try {
+      const picks = this.viewer.scene.drillPick(windowPosition);
+      return Array.isArray(picks) ? picks : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private resolvePickedOverlayEntity(pickedObject: any): OverlayEntity | null {
+    const candidate = pickedObject?.id instanceof Cesium.Entity
+      ? pickedObject.id
+      : pickedObject?.primitive instanceof Cesium.Entity
+        ? pickedObject.primitive
+        : null;
+
+    if (!candidate) {
+      return null;
+    }
+
+    const overlay = this.entityOverlayMap.get(candidate);
+    if (!overlay) {
+      return null;
+    }
+
+    return overlay.getEntity() as OverlayEntity;
+  }
+
+  private resolveOverlayEntity(entityOrId: OverlayEntity | Entity | string): OverlayEntity | null {
+    if (typeof entityOrId === 'string') {
+      return this.getOverlay(entityOrId)?.getEntity() as OverlayEntity | null;
+    }
+
+    return entityOrId as OverlayEntity;
+  }
+
+  private getHighlightTargets(entity: OverlayEntity, reason: 'click' | 'hover'): Entity[] {
+    const targets = entity._highlightEntities?.length ? entity._highlightEntities : [entity];
+    if (reason === 'hover') {
+      return targets.filter((target) => !!(target as OverlayEntity)._hoverHighlight || target === entity);
+    }
+
+    return targets;
+  }
+
+  private setHighlightTargets(targets: Entity[], reason: 'click' | 'hover', enabled: boolean): void {
+    targets.forEach((target) => {
+      this.setEntityHighlight(target as OverlayEntity, reason, enabled);
+    });
+  }
+
+  private setEntityHighlight(entity: OverlayEntity, reason: 'click' | 'hover', enabled: boolean): void {
+    const highlightConfig = (reason === 'click' ? entity._clickHighlight : entity._hoverHighlight) || true;
+    const state = entity._highlightState || {};
+    state[reason] = enabled;
+    entity._highlightState = state;
+
+    const shouldRemainHighlighted = !!state.click || !!state.hover;
+    if (!shouldRemainHighlighted) {
+      this.restoreEntityStyle(entity);
+      entity._isHighlighted = false;
+      return;
+    }
+
+    this.applyEntityHighlight(entity, this.normalizeHighlightOptions(highlightConfig, reason));
+    entity._isHighlighted = true;
+  }
+
+  private isHighlightActive(entity: OverlayEntity, reason: 'click' | 'hover'): boolean {
+    return !!entity._highlightState?.[reason];
+  }
+
+  private clearOverlayHighlightState(overlay: OverlayInstance): void {
+    this.collectOverlayEntities(overlay.getEntity() as OverlayEntity).forEach((entity) => {
+      this.restoreEntityStyle(entity as OverlayEntity);
+      (entity as OverlayEntity)._highlightState = {};
+      (entity as OverlayEntity)._isHighlighted = false;
+    });
+  }
+
+  private normalizeHighlightOptions(
+    options: boolean | OverlayClickHighlightOptions,
+    reason: 'click' | 'hover',
+  ): Required<OverlayClickHighlightOptions> {
+    const defaultColor = reason === 'click'
+      ? Cesium.Color.YELLOW
+      : Cesium.Color.CYAN;
+
+    if (options === true || options === false) {
+      return {
+        color: defaultColor,
+        fillAlpha: reason === 'click' ? 0.35 : 0.22,
+      };
+    }
+
+    return {
+      color: options.color || defaultColor,
+      fillAlpha: options.fillAlpha ?? (reason === 'click' ? 0.35 : 0.22),
+    };
+  }
+
+  private resolveHighlightColor(color: Cesium.Color | string): Cesium.Color {
+    if (color instanceof Cesium.Color) {
+      return color;
+    }
+
+    const parsed = Cesium.Color.fromCssColorString(color);
+    return parsed || Cesium.Color.YELLOW;
+  }
+
+  private applyEntityHighlight(entity: OverlayEntity, options: Required<OverlayClickHighlightOptions>): void {
+    const highlightColor = this.resolveHighlightColor(options.color);
+    const snapshot = this.captureEntityStyle(entity);
+
+    if (entity.point) {
+      entity.point.color = new Cesium.ConstantProperty(highlightColor.withAlpha(0.95));
+      entity.point.outlineColor = new Cesium.ConstantProperty(highlightColor.brighten(0.2, new Cesium.Color()));
+      const basePixelSize = snapshot.point?.pixelSize ?? 10;
+      entity.point.pixelSize = new Cesium.ConstantProperty(basePixelSize + 2);
+    }
+
+    if (entity.label) {
+      entity.label.fillColor = new Cesium.ConstantProperty(highlightColor);
+      entity.label.outlineColor = new Cesium.ConstantProperty(Cesium.Color.WHITE);
+      entity.label.scale = new Cesium.ConstantProperty((snapshot.label?.scale ?? 1) * 1.06);
+    }
+
+    if (entity.billboard) {
+      entity.billboard.color = new Cesium.ConstantProperty(highlightColor);
+      entity.billboard.scale = new Cesium.ConstantProperty((snapshot.billboard?.scale ?? 1) * 1.08);
+    }
+
+    if (entity.polyline) {
+      entity.polyline.material = new Cesium.ColorMaterialProperty(highlightColor.withAlpha(0.95));
+      entity.polyline.width = new Cesium.ConstantProperty((snapshot.polyline?.width ?? 2) + 1);
+    }
+
+    if (entity.polygon) {
+      entity.polygon.material = new Cesium.ColorMaterialProperty(highlightColor.withAlpha(options.fillAlpha));
+      entity.polygon.outlineColor = new Cesium.ConstantProperty(highlightColor);
+    }
+
+    if (entity.rectangle) {
+      entity.rectangle.material = new Cesium.ColorMaterialProperty(highlightColor.withAlpha(options.fillAlpha));
+      entity.rectangle.outlineColor = new Cesium.ConstantProperty(highlightColor);
+    }
+
+    if (entity.ellipse) {
+      entity.ellipse.material = new Cesium.ColorMaterialProperty(highlightColor.withAlpha(options.fillAlpha));
+      entity.ellipse.outlineColor = new Cesium.ConstantProperty(highlightColor);
+    }
+  }
+
+  private restoreEntityStyle(entity: OverlayEntity): void {
+    const snapshot = this.highlightCache.get(entity);
+    if (!snapshot) {
+      return;
+    }
+
+    if (entity.point) {
+      if (snapshot.point?.color) {
+        entity.point.color = new Cesium.ConstantProperty(snapshot.point.color);
+      }
+      if (snapshot.point?.outlineColor) {
+        entity.point.outlineColor = new Cesium.ConstantProperty(snapshot.point.outlineColor);
+      }
+      if (snapshot.point?.pixelSize !== undefined) {
+        entity.point.pixelSize = new Cesium.ConstantProperty(snapshot.point.pixelSize);
+      }
+    }
+
+    if (entity.label) {
+      if (snapshot.label?.fillColor) {
+        entity.label.fillColor = new Cesium.ConstantProperty(snapshot.label.fillColor);
+      }
+      if (snapshot.label?.outlineColor) {
+        entity.label.outlineColor = new Cesium.ConstantProperty(snapshot.label.outlineColor);
+      }
+      if (snapshot.label?.scale !== undefined) {
+        entity.label.scale = new Cesium.ConstantProperty(snapshot.label.scale);
+      }
+    }
+
+    if (entity.billboard) {
+      if (snapshot.billboard?.color) {
+        entity.billboard.color = new Cesium.ConstantProperty(snapshot.billboard.color);
+      }
+      if (snapshot.billboard?.scale !== undefined) {
+        entity.billboard.scale = new Cesium.ConstantProperty(snapshot.billboard.scale);
+      }
+    }
+
+    if (entity.polyline) {
+      if (snapshot.polyline?.material !== undefined) {
+        entity.polyline.material = snapshot.polyline.material;
+      }
+      if (snapshot.polyline?.width !== undefined) {
+        entity.polyline.width = new Cesium.ConstantProperty(snapshot.polyline.width);
+      }
+    }
+
+    if (entity.polygon) {
+      if (snapshot.polygon?.material !== undefined) {
+        entity.polygon.material = snapshot.polygon.material;
+      }
+      if (snapshot.polygon?.outlineColor) {
+        entity.polygon.outlineColor = new Cesium.ConstantProperty(snapshot.polygon.outlineColor);
+      }
+    }
+
+    if (entity.rectangle) {
+      if (snapshot.rectangle?.material !== undefined) {
+        entity.rectangle.material = snapshot.rectangle.material;
+      }
+      if (snapshot.rectangle?.outlineColor) {
+        entity.rectangle.outlineColor = new Cesium.ConstantProperty(snapshot.rectangle.outlineColor);
+      }
+    }
+
+    if (entity.ellipse) {
+      if (snapshot.ellipse?.material !== undefined) {
+        entity.ellipse.material = snapshot.ellipse.material;
+      }
+      if (snapshot.ellipse?.outlineColor) {
+        entity.ellipse.outlineColor = new Cesium.ConstantProperty(snapshot.ellipse.outlineColor);
+      }
+    }
+  }
+
+  private captureEntityStyle(entity: OverlayEntity): OverlayGraphicsSnapshot {
+    const existing = this.highlightCache.get(entity);
+    if (existing) {
+      return existing;
+    }
+
+    const now = Cesium.JulianDate.now();
+    const snapshot: OverlayGraphicsSnapshot = {};
+
+    if (entity.point) {
+      snapshot.point = {
+        color: entity.point.color?.getValue(now),
+        outlineColor: entity.point.outlineColor?.getValue(now),
+        pixelSize: entity.point.pixelSize?.getValue(now),
+      };
+    }
+
+    if (entity.label) {
+      snapshot.label = {
+        fillColor: entity.label.fillColor?.getValue(now),
+        outlineColor: entity.label.outlineColor?.getValue(now),
+        scale: entity.label.scale?.getValue(now),
+      };
+    }
+
+    if (entity.billboard) {
+      snapshot.billboard = {
+        color: entity.billboard.color?.getValue(now),
+        scale: entity.billboard.scale?.getValue(now),
+      };
+    }
+
+    if (entity.polyline) {
+      snapshot.polyline = {
+        width: entity.polyline.width?.getValue(now),
+        material: entity.polyline.material,
+      };
+    }
+
+    if (entity.polygon) {
+      snapshot.polygon = {
+        material: entity.polygon.material,
+        outlineColor: entity.polygon.outlineColor?.getValue(now),
+      };
+    }
+
+    if (entity.rectangle) {
+      snapshot.rectangle = {
+        material: entity.rectangle.material,
+        outlineColor: entity.rectangle.outlineColor?.getValue(now),
+      };
+    }
+
+    if (entity.ellipse) {
+      snapshot.ellipse = {
+        material: entity.ellipse.material,
+        outlineColor: entity.ellipse.outlineColor?.getValue(now),
+      };
+    }
+
+    this.highlightCache.set(entity, snapshot);
+    return snapshot;
   }
 
   /**
    * 销毁服务
    */
   destroy(): void {
+    this.setHighlightTargets(this.clickHighlightTargets, 'click', false);
+    this.setHighlightTargets(this.hoverHighlightTargets, 'hover', false);
+    this.clickHighlightTargets = [];
+    this.hoverHighlightTargets = [];
+
+    if (this.pendingHoverRaf !== null) {
+      window.cancelAnimationFrame(this.pendingHoverRaf);
+      this.pendingHoverRaf = null;
+    }
+
+    this.clickHandler?.destroy();
+    this.clickHandler = null;
+    this.hoverHandler?.destroy();
+    this.hoverHandler = null;
+    this.entityOverlayMap.clear();
     this.removeAllOverlays();
   }
 }

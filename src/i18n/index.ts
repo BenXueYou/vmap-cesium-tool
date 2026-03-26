@@ -99,7 +99,9 @@ class SimpleI18n implements I18nLike {
   }
 
   bindElement(element: HTMLElement, key: string, attribute: string): void {
-    // 存根实现 - 保持向后兼容
+    element.dataset.i18nKey = key;
+    element.dataset.i18nAttr = attribute;
+
     const text = this.t(key);
     if (attribute === 'textContent') {
       element.textContent = text;
@@ -111,8 +113,34 @@ class SimpleI18n implements I18nLike {
   }
 
   updateTree(element: HTMLElement): void {
-    // 存根实现 - 保持向后兼容
-    // 递归更新DOM树中的国际化文本
+    this.updateBoundElement(element);
+
+    const boundNodes = element.querySelectorAll<HTMLElement>('[data-i18n-key]');
+    boundNodes.forEach((node) => {
+      this.updateBoundElement(node);
+    });
+  }
+
+  private updateBoundElement(element: HTMLElement): void {
+    const key = element.dataset.i18nKey;
+    if (!key) {
+      return;
+    }
+
+    const attribute = element.dataset.i18nAttr || 'textContent';
+    const text = this.t(key);
+
+    if (attribute === 'textContent') {
+      element.textContent = text;
+      return;
+    }
+
+    if (attribute === 'innerHTML') {
+      element.innerHTML = text;
+      return;
+    }
+
+    element.setAttribute(attribute, text);
   }
 
   private getNestedValue(obj: any, path: string): any {

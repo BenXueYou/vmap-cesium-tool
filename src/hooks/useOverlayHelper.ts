@@ -1,8 +1,8 @@
 import { ref, shallowRef, markRaw, type Ref } from "vue";
 import * as Cesium from "cesium";
 import type { Entity } from "cesium";
-import type { OverlayEntity } from '../libs/overlay/types';
-import { CesiumOverlayService } from "../libs/overlay";
+import type { OverlayEntity } from '../core/entities';
+import { CesiumOverlayService } from "../libs/CesiumOverlayService";
 import { i18n } from "../i18n";
 
 type OverlayEditChangeHandler = (entity: Entity & OverlayEntity) => void;

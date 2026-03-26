@@ -6,8 +6,13 @@
  * @packageDocumentation
  */
 
-// 导出工具栏适配器（待实现）
-// export { CesiumMapToolbarAdapter } from './CesiumMapToolbarAdapter';
+// 导出工具栏适配器
+export { ToolbarAdapter, createToolbarAdapter } from './ToolbarAdapter';
+export type { LegacyCesiumMapToolbarCallbacks } from './ToolbarAdapter';
+
+// 导出地图加载适配器
+export { initCesium } from './MapLoaderAdapter';
+export type { LegacyInitOptions, LegacyInitResult, LegacyMapCenter } from './MapLoaderAdapter';
 
 // 导出绘制助手适配器
 export { DrawHelperAdapter, createDrawHelperAdapter } from './DrawHelperAdapter';
@@ -15,6 +20,7 @@ export type { LegacyDrawCallbacks, LegacyDrawOptions, LegacyDrawEntity } from '.
 
 // 导出覆盖物服务适配器
 export { OverlayServiceAdapter, createOverlayServiceAdapter } from './OverlayServiceAdapter';
+export type { LegacyCesiumOverlayServiceOptions } from './OverlayServiceAdapter';
 
 /**
  * 适配器模块版本信息

@@ -24,6 +24,8 @@ export interface BaseOverlayOptions {
   hoverHighlight?: boolean | OverlayHoverHighlightOptions;
   /** 自定义元数据 */
   metadata?: Record<string, any>;
+  /** 兼容旧版图层分组键 */
+  layerKey?: string;
 }
 
 /** 点击高亮配置 */
@@ -76,6 +78,10 @@ export interface OverlayEntity extends Entity {
   _labelEntities?: Entity[];
   /** 关联的覆盖物 ID */
   _overlayId?: string;
+  /** 旧版圆环/粗边框标记 */
+  _isRing?: boolean;
+  _ringThickness?: number;
+  _primitiveLayerKey?: string;
 }
 
 /**

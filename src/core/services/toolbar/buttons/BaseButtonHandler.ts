@@ -171,7 +171,6 @@ export abstract class BaseButtonHandler implements IButtonHandler {
       color: #fff;
       gap: 8px;
       transition: background-color 0.2s;
-      border-radius: 4px;
     `;
 
     // 图标

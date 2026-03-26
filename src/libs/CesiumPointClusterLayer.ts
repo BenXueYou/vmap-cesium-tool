@@ -1,6 +1,6 @@
 import * as Cesium from 'cesium';
 import type { Viewer, CustomDataSource, Entity, ScreenSpaceEventHandler } from 'cesium';
-import { PickGovernor } from './PickGovernor';
+import { PickGovernor } from '../utils/PickGovernor';
 
 export interface ClusterPoint {
   /** 业务 id（可选，建议传以便稳定更新） */

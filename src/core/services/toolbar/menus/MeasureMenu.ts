@@ -5,7 +5,7 @@
 
 import { BaseMenu } from './BaseMenu';
 import type { MeasureMenuItem } from '../types';
-import { DEFAULT_MEASURE_ITEMS } from '../types';
+import { DEFAULT_MEASURE_ITEMS } from '../config';
 
 /**
  * 测量菜单配置

@@ -36,6 +36,14 @@ export interface InfoWindowOptions extends BaseOverlayOptions {
   arrowSize?: number;
   /** 位置偏移方向（默认 'top'） */
   positionOffset?: 'top' | 'bottom' | 'left' | 'right';
+  /** 兼容旧版箭头锚点像素 */
+  anchorPixel?: number;
+  /** 兼容旧版箭头尾部间距 */
+  tailGap?: number;
+  /** 兼容旧版位置刷新间隔 */
+  updateInterval?: number;
+  /** 兼容旧版视野外自动隐藏配置 */
+  hideWhenOutOfView?: boolean;
 }
 
 interface InternalInfoWindowData {

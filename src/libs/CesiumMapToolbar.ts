@@ -35,7 +35,7 @@ export class CesiumMapToolbar {
   private fullscreenCallback?: (isFullscreen: boolean) => void; // 全屏状态回调函数
   private resetLocationCallback?: () => void; // 复位位置回调函数
   private initialCenter?: { longitude: number; latitude: number; height: number }; // 初始中心点
-  private currentMapType: string = 'imagery'; // 当前地图类型
+  private currentMapType: string = 'img'; // 当前地图类型
   public TD_Token: string = 'your_tianditu_token_here'; // 请替换为您的天地图密钥
 
   // 地图类型配置     
@@ -324,11 +324,14 @@ export class CesiumMapToolbar {
   /**
    * 获取所有按钮配置（包括默认按钮和自定义按钮），并添加 sort 值
    */
-  private resolveIcon(customIcon: CustomButtonConfig['icon'], fallbackIcon: string | HTMLElement): string | HTMLElement {
-    if (customIcon === false) return fallbackIcon;
+  private resolveIcon(
+    customIcon: CustomButtonConfig['icon'],
+    fallbackIcon: string | HTMLElement | false
+  ): string | HTMLElement {
+    if (customIcon === false) return fallbackIcon || '';
     if (customIcon instanceof HTMLElement) return customIcon;
     if (typeof customIcon === 'string') return customIcon;
-    return fallbackIcon;
+    return fallbackIcon || '';
   }
 
   /**
@@ -538,7 +541,7 @@ export class CesiumMapToolbar {
     `;
 
     // 设置图标内容
-    this.setButtonIcon(button, config.icon);
+    this.setButtonIcon(button, typeof config.icon === 'boolean' ? '' : config.icon);
 
     // 悬停效果
     button.addEventListener('mouseenter', () => {

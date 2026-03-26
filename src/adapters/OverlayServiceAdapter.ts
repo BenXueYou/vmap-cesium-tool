@@ -1,7 +1,7 @@
 import * as Cesium from 'cesium';
 import type { Viewer, Entity } from 'cesium';
 import { OverlayService, type OverlayServiceOptions } from '../core/services/overlay/OverlayService';
-import type { MarkerOptions, LabelOptions, IconOptions, SvgOptions, InfoWindowOptions, PolylineOptions, PolygonOptions, RectangleOptions, CircleOptions, RingOptions } from '../core/entities';
+import type { MarkerOptions, LabelOptions, IconOptions, SvgOptions, InfoWindowOptions, PolylineOptions, PolygonOptions, RectangleOptions, CircleOptions, RingOptions, OverlayEntity } from '../core/entities';
 
 /**
  * 旧版覆盖物服务选项（保持向后兼容）
@@ -155,6 +155,22 @@ export class OverlayServiceAdapter {
    */
   getAllOverlayIds(): string[] {
     return this.overlayService.getAllOverlayIds();
+  }
+
+  toggleOverlayHighlight(entityOrId: OverlayEntity | Entity | string, reason: 'click' | 'hover' = 'click'): boolean {
+    return this.overlayService.toggleOverlayHighlight(entityOrId, reason);
+  }
+
+  setOverlayHighlight(
+    entityOrId: OverlayEntity | Entity | string,
+    enabled: boolean,
+    reason: 'click' | 'hover' = 'click'
+  ): boolean {
+    return this.overlayService.setOverlayHighlight(entityOrId, enabled, reason);
+  }
+
+  getCoreService(): OverlayService {
+    return this.overlayService;
   }
 
   /**

@@ -107,7 +107,6 @@ export abstract class BaseMenu implements IMenu {
       position: absolute;
       background: rgba(0, 40, 80, 0.95);
       border: 1px solid rgba(255, 255, 255, 0.2);
-      border-radius: 4px;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
       padding: 4px 0;
       min-width: 120px;
@@ -264,7 +263,6 @@ export abstract class BaseMenu implements IMenu {
       color: #fff;
       gap: 8px;
       transition: background-color 0.2s;
-      border-radius: 4px;
       white-space: nowrap;
     `;
 

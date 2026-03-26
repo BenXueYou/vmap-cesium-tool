@@ -5,7 +5,7 @@
 
 import { Toolbar, createToolbar } from '../../../components/Toolbar';
 import { ToolbarButton, createToolbarButton } from '../../../components/ToolbarButton';
-import type { CustomButtonConfig, StyleConfig, ToolbarConfig as CoreToolbarConfig } from '../../../core/types';
+import type { CustomButtonConfig, LayersPanelStyleConfig, StyleConfig, ToolbarConfig as CoreToolbarConfig } from '../../../core/types';
 import type { I18nLike } from '../../../i18n';
 
 import type {
@@ -15,7 +15,7 @@ import type {
   DefaultButtonConfig,
 } from './types';
 
-import { DEFAULT_BUTTONS, DEFAULT_TOOLBAR_STYLE, DEFAULT_BUTTON_CONFIGS } from '../../constants';
+import { DEFAULT_TOOLBAR_STYLE, DEFAULT_BUTTON_CONFIGS } from './config';
 import { deepMerge } from '../../../utils/common';
 /**
  * 工具栏服务配置扩展
@@ -23,11 +23,13 @@ import { deepMerge } from '../../../utils/common';
  */
 export interface ToolbarServiceOptions {
   /** 工具栏样式配置 */
-  toolbarStyle?: Partial<typeof DEFAULT_TOOLBAR_STYLE>;
+  toolbarStyle?: Partial<CoreToolbarConfig>;
   /** 按钮配置列表（覆盖默认配置） */
-  buttonConfigs?: typeof DEFAULT_BUTTON_CONFIGS;
+  buttonConfigs?: CustomButtonConfig[];
   /** 是否使用默认按钮 */
   useDefaultButtons?: boolean;
+  /** 图层菜单样式 */
+  layersPanelStyle?: LayersPanelStyleConfig;
 }
 
 import { SearchButtonHandler } from './buttons/SearchButtonHandler';
@@ -72,6 +74,8 @@ export class ToolbarService {
   /** 工具栏服务选项 */
   private options: ToolbarServiceOptions;
 
+  private buttonConfigs?: Array<CustomButtonConfig>;
+
   /**
    * 构造函数
    * @param config 工具栏服务配置
@@ -86,6 +90,13 @@ export class ToolbarService {
       useDefaultButtons: true,
       ...options,
     };
+    this.buttonConfigs = this.options.buttonConfigs
+      ? this.options.buttonConfigs.map((config) => {
+          const defaultConfig = DEFAULT_BUTTON_CONFIGS.find((btn) => btn.id === config.id);
+          return deepMerge(defaultConfig || config, config) as CustomButtonConfig;
+        })
+      : DEFAULT_BUTTON_CONFIGS;
+    
   }
 
   /**
@@ -117,13 +128,20 @@ export class ToolbarService {
     // 使用 Toolbar 组件创建工具栏
     this.toolbar = createToolbar({
       position: toolbarStyle.position,
+      direction: toolbarStyle.direction,
       buttonSize: toolbarStyle.buttonSize,
       buttonSpacing: toolbarStyle.buttonSpacing,
+      padding: toolbarStyle.padding,
       backgroundColor: toolbarStyle.backgroundColor,
       borderColor: toolbarStyle.borderColor,
+      borderWidth: toolbarStyle.borderWidth,
       borderRadius: toolbarStyle.borderRadius,
       boxShadow: toolbarStyle.boxShadow,
       zIndex: toolbarStyle.zIndex,
+      offsetTop: toolbarStyle.offsetTop,
+      offsetRight: toolbarStyle.offsetRight,
+      offsetBottom: toolbarStyle.offsetBottom,
+      offsetLeft: toolbarStyle.offsetLeft,
     });
 
     // 挂载到容器
@@ -137,7 +155,7 @@ export class ToolbarService {
     const { viewer, callbacks } = this.config;
     
     // 获取按钮配置（使用用户自定义配置或默认配置）
-    const buttonConfigs = this.options.buttonConfigs || DEFAULT_BUTTON_CONFIGS;
+    this.buttonConfigs = this.options.buttonConfigs || DEFAULT_BUTTON_CONFIGS;
 
     // 搜索按钮
     const searchHandler = new SearchButtonHandler(
@@ -169,16 +187,35 @@ export class ToolbarService {
 
     // 图层按钮
     const layersHandler = new LayersButtonHandler(
-      viewer,
+      this.toolbar?.getElement() || this.config.container,
       {
         layersService: this.layersService,
         mapTypes: this.config.layers?.mapTypes as MapTypeConfig[] || [],
         currentMapType: this.config.layers?.currentMapType,
+        isPlaceNameChecked: this.config.layers?.isPlaceNameChecked,
         token: this.config.layers?.token,
         isNoFlyZoneChecked: this.config.noFlyZone?.isChecked,
         onMapTypeChange: this.config.layers?.onMapTypeChange,
-        onShowNoFlyZones: async () => {},
-        onNoFlyZoneToggle: () => {},
+        onPlaceNameToggle: this.config.layers?.onPlaceNameToggle,
+        panelStyle: this.options.layersPanelStyle,
+        onShowNoFlyZones: async () => {
+          if (this.layersService?.showNoFlyZones) {
+            await this.layersService.showNoFlyZones();
+          }
+        },
+        onNoFlyZoneToggle: (isChecked: boolean) => {
+          if (this.layersService?.toggleNoFlyZoneVisibility) {
+            this.layersService.toggleNoFlyZoneVisibility();
+            return;
+          }
+
+          if (isChecked) {
+            void this.layersService?.showNoFlyZones?.();
+            return;
+          }
+
+          this.layersService?.hideNoFlyZones?.();
+        },
       },
       this.i18n,
       this.useI18n
@@ -189,7 +226,7 @@ export class ToolbarService {
     const simpleButtonIds = ['view2d3d', 'location', 'zoom-in', 'zoom-out', 'fullscreen'];
     
     simpleButtonIds.forEach(id => {
-      const btnConfig = buttonConfigs.find(btn => btn.id === id);
+      const btnConfig = this.buttonConfigs?.find(btn => btn.id === id);
       if (btnConfig) {
         const handler = new SimpleButtonHandler(
           {
@@ -220,13 +257,8 @@ export class ToolbarService {
     if (this.options.useDefaultButtons === false) return;
 
     // 获取按钮配置（使用用户自定义配置或默认配置）
-    const buttonConfigs = this.options.buttonConfigs ? (this.options.buttonConfigs || []).map(config => {
-      const defaultConfig = DEFAULT_BUTTON_CONFIGS.find(btn => btn.id === config.id) || {};
-      return deepMerge(defaultConfig, config); // 深度合并
-    }) : DEFAULT_BUTTON_CONFIGS;
+    const buttonConfigs = this.buttonConfigs || DEFAULT_BUTTON_CONFIGS;
     
-    
-    console.log('buttonConfigs:', buttonConfigs);
     // 按排序号排序
     const sortedConfigs = [...buttonConfigs].sort((a, b) => (a.sort || 999) - (b.sort || 999));
 
@@ -254,7 +286,6 @@ export class ToolbarService {
         const button = this.toolbar.getButton(btnConfig.id);
         if (button) {
           handler.initialize(button);
-          debugger;
           // 设置工具栏元素引用（如果处理器支持）
           if ('setToolbarElement' in handler) {
             (handler as any).setToolbarElement(this.toolbar.getElement());
@@ -355,6 +386,17 @@ export class ToolbarService {
   }
 
   /**
+   * 更新工具栏样式，避免业务层重新初始化工具栏。
+   */
+  updateToolbarStyle(config: Partial<CoreToolbarConfig>): void {
+    this.options.toolbarStyle = {
+      ...(this.options.toolbarStyle || {}),
+      ...config,
+    };
+    this.toolbar?.updateConfig(config);
+  }
+
+  /**
    * 启用按钮
    * @param buttonId 按钮 ID
    */
@@ -392,12 +434,15 @@ export class ToolbarService {
    */
   setMeasurementService(service: any): void {
     this.measurementService = service;
-    
-    // 更新测量按钮处理器
+
     const handler = this.getButtonHandler('measure') as MeasureButtonHandler;
-    if (handler) {
-      // 需要重新配置 handler
-    }
+    handler?.updateOptions({
+      measurementService: service,
+      drawHelper: this.drawHelper,
+      onDistanceStart: this.config.callbacks?.onMeasurementStart,
+      onAreaStart: () => {},
+      onClear: this.config.callbacks?.onClear,
+    });
   }
 
   /**
@@ -406,6 +451,13 @@ export class ToolbarService {
    */
   setSearchService(service: any): void {
     this.searchService = service;
+
+    const handler = this.getButtonHandler('search') as SearchButtonHandler;
+    handler?.updateOptions({
+      searchService: service,
+      onSearch: this.config.callbacks?.onSearch,
+      onSelect: this.config.callbacks?.onSelect,
+    });
   }
 
   /**
@@ -414,6 +466,35 @@ export class ToolbarService {
    */
   setLayersService(service: any): void {
     this.layersService = service;
+
+    const handler = this.getButtonHandler('layers') as LayersButtonHandler;
+    handler?.updateOptions({
+      layersService: service,
+      mapTypes: this.config.layers?.mapTypes as MapTypeConfig[] || [],
+      currentMapType: this.config.layers?.currentMapType,
+      isPlaceNameChecked: this.config.layers?.isPlaceNameChecked,
+      token: this.config.layers?.token,
+      isNoFlyZoneChecked: this.config.noFlyZone?.isChecked,
+      onMapTypeChange: this.config.layers?.onMapTypeChange,
+      onPlaceNameToggle: this.config.layers?.onPlaceNameToggle,
+      panelStyle: this.options.layersPanelStyle,
+      onShowNoFlyZones: async () => {
+        await service?.showNoFlyZones?.();
+      },
+      onNoFlyZoneToggle: (isChecked: boolean) => {
+        if (service?.toggleNoFlyZoneVisibility) {
+          service.toggleNoFlyZoneVisibility();
+          return;
+        }
+
+        if (isChecked) {
+          void service?.showNoFlyZones?.();
+          return;
+        }
+
+        service?.hideNoFlyZones?.();
+      },
+    });
   }
 
   /**
