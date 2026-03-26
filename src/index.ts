@@ -28,6 +28,8 @@ export type {
   ComponentStyleConfig,
   StyleConfig,
   LayersPanelStyleConfig,
+  SearchPanelStyleConfig,
+  ToolbarSearchMenuOptions,
   ToolbarLayersMenuOptions,
   // 新增：分层配置类型
   MapPluginOptions,
@@ -81,6 +83,12 @@ export type {
   DrawMode,
   DrawOptions,
   DrawResult,
+  MeasurementFillStyle,
+  MeasurementLabelOffset,
+  MeasurementStrokeStyle,
+  MeasurementSummaryLabelStyle,
+  MeasurementTheme,
+  MeasurementVertexStyle,
   ToolbarServiceOptions,
   ToolbarCallbacks,
 } from './core/services';

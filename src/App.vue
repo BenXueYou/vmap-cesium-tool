@@ -8,7 +8,7 @@
 import { onMounted, ref, shallowRef, onBeforeUnmount } from "vue";
 import * as Cesium from 'cesium';
 import { getViteTdToken, getViteCesiumToken } from "./utils/common.ts";
-import { createMapPlugin, MapPlugin, ToolbarService } from "./index.ts";
+import { createMapPlugin, MapPlugin, ToolbarService, type DrawOptions } from "./index.ts";
 import searchIcon from "./assets/images/toolbar/search@3x.png";
 import measureIcon from "./assets/images/toolbar/measure@3x.png";
 import layersIcon from "./assets/images/toolbar/layers@3x.png";
@@ -16,6 +16,55 @@ import locationIcon from "./assets/images/toolbar/location@3x.png";
 import zoomInIcon from "./assets/images/toolbar/zoom-in@3x.png";
 import zoomOutIcon from "./assets/images/toolbar/zoom-out@3x.png";
 import fullscreenIcon from "./assets/images/toolbar/fullscreen@3x.png";
+
+const toolbarSearchMenu = {
+  idleActionIcon: searchIcon,
+  clearActionIcon: '✕',
+  panelStyle: {
+    containerStyle: {
+      padding: '0',
+      background: 'rgba(7, 35, 73, 0.92)',
+      border: '1px solid rgba(31, 122, 242, 0.9)',
+      boxShadow: '0 10px 18px rgba(0, 0, 0, 0.24)',
+    },
+    inputStyle: {
+      width: '210px',
+      height: '36px',
+      padding: '0 38px 0 12px',
+      color: '#f4f9ff',
+      background: 'rgba(7, 35, 73, 0.92)',
+      border: '1px solid rgba(31, 122, 242, 0.9)',
+      fontSize: '13px',
+    },
+    actionButtonStyle: {
+      right: '10px',
+      width: '18px',
+      height: '18px',
+      color: '#2d8dff',
+    },
+    actionIconStyle: {
+      width: '18px',
+      height: '18px',
+    },
+    resultStyle: {
+      marginTop: '0',
+      background: 'rgba(7, 35, 73, 0.96)',
+      border: '1px solid rgba(31, 122, 242, 0.9)',
+      boxShadow: '0 10px 18px rgba(0, 0, 0, 0.24)',
+    },
+    resultItemStyle: {
+      color: '#f4f9ff',
+      padding: '12px 14px',
+      borderBottom: '1px solid rgba(255, 77, 59, 0.46)',
+    },
+    resultItemHoverStyle: {
+      backgroundColor: 'rgba(12, 53, 107, 0.96)',
+    },
+    resultItemActiveStyle: {
+      backgroundColor: 'rgba(18, 74, 143, 0.98)',
+    },
+  },
+};
 
 const toolbarLayersMenu = {
   defaultPlaceNameChecked: true,
@@ -46,9 +95,78 @@ const toolbarLayersMenu = {
       color: '#eff7ff',
     },
     noFlyZoneItemStyle: {
-      background: 'rgba(11, 28, 62, 0.82)',
-      borderRadius: '14px',
-      border: '1px solid rgba(76, 160, 255, 0.22)',
+
+    },
+  },
+};
+
+const distanceDrawOptions: DrawOptions = {
+  measurementTheme: {
+    stroke: {
+      color: 'rgba(22, 92, 201, 0.96)',
+      width: 3,
+      clampToGround: true,
+    },
+    vertex: {
+      pixelSize: 11,
+      color: '#20b7ff',
+      outlineColor: '#ffffff',
+      outlineWidth: 1,
+    },
+    segmentDistanceLabel: {
+      backgroundColor: 'rgba(228, 235, 245, 0.96)',
+      textColor: '#10233f',
+      borderRadius: 10,
+      pixelOffset: { x: 0, y: -10 },
+    },
+    totalDistanceLabel: {
+      backgroundColor: 'rgba(22, 92, 201, 0.96)',
+      textColor: '#ffffff',
+      borderRadius: 12,
+      pixelOffset: { x: 0, y: -34 },
+    },
+    hintBubble: {
+      backgroundColor: 'rgba(72, 78, 92, 0.92)',
+      textColor: '#ffffff',
+      borderRadius: 10,
+      pixelOffset: { x: 96, y: -16 },
+    },
+  },
+};
+
+const areaDrawOptions: DrawOptions = {
+  measurementTheme: {
+    stroke: {
+      color: 'rgba(22, 92, 201, 0.96)',
+      width: 3,
+      clampToGround: true,
+    },
+    fill: {
+      color: 'rgba(0, 132, 110, 0.24)',
+    },
+    vertex: {
+      pixelSize: 11,
+      color: '#20b7ff',
+      outlineColor: '#ffffff',
+      outlineWidth: 1,
+    },
+    previewAreaLabel: {
+      backgroundColor: 'rgba(228, 235, 245, 0.96)',
+      textColor: '#12304f',
+      borderRadius: 10,
+      pixelOffset: { x: 0, y: -8 },
+    },
+    totalAreaLabel: {
+      backgroundColor: 'rgba(0, 132, 110, 0.96)',
+      textColor: '#ffffff',
+      borderRadius: 12,
+      pixelOffset: { x: 0, y: -10 },
+    },
+    hintBubble: {
+      backgroundColor: 'rgba(72, 78, 92, 0.92)',
+      textColor: '#ffffff',
+      borderRadius: 10,
+      pixelOffset: { x: 96, y: -16 },
     },
   },
 };
@@ -96,6 +214,7 @@ const initMap = async () => {
             borderColor: 'transparent',
             zIndex: 1100,
           },
+          searchMenu: toolbarSearchMenu,
           layersMenu: toolbarLayersMenu,
           buttonConfigs: [
             {
@@ -181,6 +300,8 @@ const initMap = async () => {
             onMeasurementStart: () => {
               console.log('开始测量');
             },
+            getDistanceDrawOptions: () => distanceDrawOptions,
+            getAreaDrawOptions: () => areaDrawOptions,
             onClear: () => {
               console.log('清除测量数据');
             },

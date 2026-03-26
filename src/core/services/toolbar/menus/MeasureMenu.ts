@@ -61,9 +61,6 @@ export class MeasureMenu extends BaseMenu {
 
     // 创建菜单容器
     this.menuElement = this.createMenuContainer('measurement-menu');
-    this.menuElement.style.position = 'absolute';
-    this.menuElement.style.right = '100%';
-    this.menuElement.style.marginRight = '8px';
 
     // 添加菜单项
     this.items.forEach(item => {
@@ -81,9 +78,8 @@ export class MeasureMenu extends BaseMenu {
     this.toolbarElement!.appendChild(this.menuElement);
     this.anchorElement = anchor;
 
-    // 定位菜单（根据按钮偏移）
-    const offsetTop = anchor.offsetTop;
-    this.menuElement.style.top = `${offsetTop}px`;
+  // 基于工具栏和按钮真实尺寸定位
+  this.positionMenu(anchor, { position: 'left' });
 
     // 调整位置避免溢出
     this.adjustPosition();

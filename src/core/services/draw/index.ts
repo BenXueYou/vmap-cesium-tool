@@ -6,4 +6,15 @@
 
 // 导出绘制服务
 export { DrawService } from './DrawService';
-export type { DrawMode, DrawOptions, DrawResult } from './DrawService';
+export type {
+	DrawArtifacts,
+	DrawMode,
+	DrawOptions,
+	DrawResult,
+	MeasurementFillStyle,
+	MeasurementLabelOffset,
+	MeasurementStrokeStyle,
+	MeasurementSummaryLabelStyle,
+	MeasurementTheme,
+	MeasurementVertexStyle,
+} from './types/drawTypes';

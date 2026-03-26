@@ -812,7 +812,7 @@ export class CesiumMapToolbar {
       `;
 
       const label = document.createElement('span');
-      if (this.useI18n) {
+      if (this.useI18n && item.textKey) {
         this.i18n.bindElement(label, item.textKey, 'text');
       } else {
         label.textContent = item.text;

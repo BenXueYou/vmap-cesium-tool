@@ -176,6 +176,23 @@ export interface LayersPanelStyleConfig {
   noFlyZoneDotStyle?: Partial<CSSStyleDeclaration>;
 }
 
+export interface SearchPanelStyleConfig {
+  containerStyle?: Partial<CSSStyleDeclaration>;
+  inputStyle?: Partial<CSSStyleDeclaration>;
+  actionButtonStyle?: Partial<CSSStyleDeclaration>;
+  actionIconStyle?: Partial<CSSStyleDeclaration>;
+  resultStyle?: Partial<CSSStyleDeclaration>;
+  resultItemStyle?: Partial<CSSStyleDeclaration>;
+  resultItemHoverStyle?: Partial<CSSStyleDeclaration>;
+  resultItemActiveStyle?: Partial<CSSStyleDeclaration>;
+}
+
+export interface ToolbarSearchMenuOptions {
+  panelStyle?: SearchPanelStyleConfig;
+  idleActionIcon?: string | HTMLElement;
+  clearActionIcon?: string | HTMLElement;
+}
+
 export interface ToolbarLayersMenuOptions {
   mapTypes?: MapType[];
   defaultPlaceNameChecked?: boolean;
@@ -320,6 +337,8 @@ export interface ToolbarPluginOptions {
   useDefaultButtons?: boolean;
   /** 自定义按钮配置 */
   buttonConfigs?: CustomButtonConfig[];
+  /** 搜索菜单配置 */
+  searchMenu?: ToolbarSearchMenuOptions;
   /** 图层菜单配置 */
   layersMenu?: ToolbarLayersMenuOptions;
   /** 工具栏回调 */

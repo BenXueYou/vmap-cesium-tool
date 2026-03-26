@@ -95,6 +95,8 @@ export interface ToolbarCallbacks {
   
   /** 测量回调 */
   onMeasurementStart?: () => void;
+  getDistanceDrawOptions?: () => any;
+  getAreaDrawOptions?: () => any;
   onDistanceComplete?: (positions: any[], distance: number) => void;
   onAreaComplete?: (positions: any[], area: number) => void;
   onClear?: () => void;
@@ -138,6 +140,8 @@ export interface SearchServiceConfig {
 export interface MeasurementServiceConfig {
   /** 测量回调 */
   onMeasurementStart?: () => void;
+  getDistanceDrawOptions?: () => any;
+  getAreaDrawOptions?: () => any;
   onDistanceComplete?: (positions: any[], distance: number) => void;
   onAreaComplete?: (positions: any[], area: number) => void;
   onClear?: () => void;

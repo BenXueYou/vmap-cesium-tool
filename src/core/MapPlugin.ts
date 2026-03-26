@@ -889,6 +889,9 @@ export class MapPlugin {
         ...options.config,
       },
       buttonConfigs: options.buttonConfigs,
+      searchPanelStyle: options.searchMenu?.panelStyle,
+      searchIdleActionIcon: options.searchMenu?.idleActionIcon,
+      searchClearActionIcon: options.searchMenu?.clearActionIcon,
       layersPanelStyle: options.layersMenu?.panelStyle,
       useDefaultButtons: options.useDefaultButtons,
     };

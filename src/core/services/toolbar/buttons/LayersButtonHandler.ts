@@ -84,7 +84,6 @@ export class LayersButtonHandler extends BaseMenu {
 
     const styles = this.getPanelStyles();
     this.menuElement = this.createMenuContainer('layers-menu', styles.container);
-    this.positionMenu(anchor, { position: 'left' });
 
     const mapTypesSection = this.createSection({
       title: '地图类型',
@@ -111,6 +110,7 @@ export class LayersButtonHandler extends BaseMenu {
 
     this.toolbarElement!.appendChild(this.menuElement);
     this.anchorElement = anchor;
+    this.positionMenu(anchor, { position: 'left' });
     this.adjustPosition();
     this.setupAutoClose();
   }

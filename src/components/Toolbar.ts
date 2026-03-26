@@ -30,7 +30,7 @@ export class Toolbar extends BaseComponent {
         borderRadius: `${mergedConfig.borderRadius}px`,
         boxShadow: mergedConfig.boxShadow,
         padding: mergedConfig.padding,
-        zIndex: mergedConfig.zIndex.toString(),
+        zIndex: String(mergedConfig.zIndex ?? DEFAULT_TOOLBAR_STYLE.zIndex ?? 1000),
         display: 'flex',
         flexDirection: direction,
         gap: `${mergedConfig.buttonSpacing}px`,
@@ -111,7 +111,7 @@ export class Toolbar extends BaseComponent {
 
     // 更新按钮容器间隙
     this.buttonContainer.style.gap = `${this.config.buttonSpacing}px`;
-    this.buttonContainer.style.flexDirection = this.config.direction ?? DEFAULT_TOOLBAR_STYLE.direction;
+    this.buttonContainer.style.flexDirection = (this.config.direction ?? DEFAULT_TOOLBAR_STYLE.direction ?? 'column') as 'row' | 'column';
 
     // 更新位置
     this.element.style.top = '';

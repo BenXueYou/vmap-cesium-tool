@@ -5,7 +5,7 @@
 
 import { Toolbar, createToolbar } from '../../../components/Toolbar';
 import { ToolbarButton, createToolbarButton } from '../../../components/ToolbarButton';
-import type { CustomButtonConfig, LayersPanelStyleConfig, StyleConfig, ToolbarConfig as CoreToolbarConfig } from '../../../core/types';
+import type { CustomButtonConfig, LayersPanelStyleConfig, SearchPanelStyleConfig, ToolbarConfig as CoreToolbarConfig } from '../../../core/types';
 import type { I18nLike } from '../../../i18n';
 
 import type {
@@ -28,6 +28,12 @@ export interface ToolbarServiceOptions {
   buttonConfigs?: CustomButtonConfig[];
   /** 是否使用默认按钮 */
   useDefaultButtons?: boolean;
+  /** 搜索面板样式 */
+  searchPanelStyle?: SearchPanelStyleConfig;
+  /** 搜索面板默认动作图标 */
+  searchIdleActionIcon?: string | HTMLElement;
+  /** 搜索面板清空动作图标 */
+  searchClearActionIcon?: string | HTMLElement;
   /** 图层菜单样式 */
   layersPanelStyle?: LayersPanelStyleConfig;
 }
@@ -162,6 +168,9 @@ export class ToolbarService {
       viewer,
       {
         searchService: this.searchService,
+        searchContainerStyle: this.options.searchPanelStyle,
+        idleActionIcon: this.options.searchIdleActionIcon,
+        clearActionIcon: this.options.searchClearActionIcon,
         onSearch: callbacks?.onSearch,
         onSelect: callbacks?.onSelect,
       },
@@ -177,7 +186,9 @@ export class ToolbarService {
         measurementService: this.measurementService,
         drawHelper: this.drawHelper,
         onDistanceStart: callbacks?.onMeasurementStart,
+        getDistanceDrawOptions: callbacks?.getDistanceDrawOptions,
         onAreaStart: () => {},
+        getAreaDrawOptions: callbacks?.getAreaDrawOptions,
         onClear: callbacks?.onClear,
       },
       this.i18n,
@@ -455,6 +466,9 @@ export class ToolbarService {
     const handler = this.getButtonHandler('search') as SearchButtonHandler;
     handler?.updateOptions({
       searchService: service,
+      searchContainerStyle: this.options.searchPanelStyle,
+      idleActionIcon: this.options.searchIdleActionIcon,
+      clearActionIcon: this.options.searchClearActionIcon,
       onSearch: this.config.callbacks?.onSearch,
       onSelect: this.config.callbacks?.onSelect,
     });

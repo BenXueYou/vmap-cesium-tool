@@ -171,23 +171,24 @@ export abstract class BaseMenu implements IMenu {
   protected adjustPosition(): void {
     if (!this.menuElement) return;
 
-    const menuRect = this.menuElement.getBoundingClientRect();
     const viewportHeight = window.innerHeight;
     const viewportWidth = window.innerWidth;
+    let menuRect = this.menuElement.getBoundingClientRect();
 
     // 底部溢出调整
     if (menuRect.bottom > viewportHeight) {
       const overflow = menuRect.bottom - viewportHeight;
       const currentTop = parseFloat(this.menuElement.style.top || '0');
       this.menuElement.style.top = `${Math.max(0, currentTop - overflow)}px`;
+      menuRect = this.menuElement.getBoundingClientRect();
     }
 
     // 顶部溢出调整
-    const updatedRect = this.menuElement.getBoundingClientRect();
-    if (updatedRect.top < 0) {
-      const delta = -updatedRect.top;
+    if (menuRect.top < 0) {
+      const delta = -menuRect.top;
       const currentTop = parseFloat(this.menuElement.style.top || '0');
       this.menuElement.style.top = `${currentTop + delta}px`;
+      menuRect = this.menuElement.getBoundingClientRect();
     }
 
     // 右侧溢出调整
@@ -202,6 +203,7 @@ export abstract class BaseMenu implements IMenu {
         this.menuElement.style.right = `${currentRight + overflow}px`;
         this.menuElement.style.left = '';
       }
+      menuRect = this.menuElement.getBoundingClientRect();
     }
 
     // 左侧溢出调整
@@ -267,9 +269,7 @@ export abstract class BaseMenu implements IMenu {
     `;
 
     // 图标
-    const iconEl = document.createElement('span');
-    iconEl.textContent = icon;
-    iconEl.style.fontSize = '14px';
+  const iconEl = this.createIconElement(icon, text);
     menuItem.appendChild(iconEl);
 
     // 文本
@@ -302,6 +302,29 @@ export abstract class BaseMenu implements IMenu {
     });
 
     return menuItem;
+  }
+
+  private createIconElement(icon: string, altText: string): HTMLElement {
+    if (this.isImagePath(icon)) {
+      const image = document.createElement('img');
+      image.src = icon;
+      image.alt = altText;
+      image.style.width = '14px';
+      image.style.height = '14px';
+      image.style.objectFit = 'contain';
+      image.style.flexShrink = '0';
+      return image;
+    }
+
+    const textIcon = document.createElement('span');
+    textIcon.textContent = icon;
+    textIcon.style.fontSize = '14px';
+    textIcon.style.flexShrink = '0';
+    return textIcon;
+  }
+
+  private isImagePath(icon: string): boolean {
+    return /\.(png|jpg|jpeg|gif|svg|webp)$/i.test(icon) || icon.startsWith('data:image');
   }
 
   /**

@@ -1,6 +1,13 @@
 import * as Cesium from 'cesium';
 import type { Viewer, Entity, Cartesian3 } from 'cesium';
-import { DrawService, type DrawMode, type DrawOptions as NewDrawOptions, type DrawResult } from '../core/services/draw/DrawService';
+import {
+  DrawService,
+  type DrawMode,
+  type DrawOptions as NewDrawOptions,
+  type DrawResult,
+  type MeasurementTheme,
+  type MeasurementSummaryLabelStyle,
+} from '../core/services/draw/DrawService';
 
 /**
  * 旧版绘制回调接口（保持向后兼容）
@@ -21,10 +28,16 @@ export interface LegacyDrawCallbacks {
  * 旧版绘制选项接口（保持向后兼容）
  */
 export interface LegacyDrawOptions {
+  measurementTheme?: MeasurementTheme;
   lineColor?: Cesium.Color | string;
   lineWidth?: number;
   fillColor?: Cesium.Color | string;
   clampToGround?: boolean;
+  segmentDistanceLabelStyle?: MeasurementSummaryLabelStyle;
+  totalDistanceLabelStyle?: MeasurementSummaryLabelStyle;
+  previewAreaLabelStyle?: MeasurementSummaryLabelStyle;
+  totalAreaLabelStyle?: MeasurementSummaryLabelStyle;
+  hintBubbleStyle?: MeasurementSummaryLabelStyle;
   onClick?: (entity: Entity, positions?: Cartesian3[]) => void;
 }
 
@@ -112,10 +125,16 @@ export class DrawHelperAdapter {
    */
   private convertOptions(options: LegacyDrawOptions = {}): NewDrawOptions {
     return {
+      measurementTheme: options.measurementTheme,
       lineColor: options.lineColor,
       lineWidth: options.lineWidth,
       fillColor: options.fillColor,
       clampToGround: options.clampToGround,
+      segmentDistanceLabelStyle: options.segmentDistanceLabelStyle,
+      totalDistanceLabelStyle: options.totalDistanceLabelStyle,
+      previewAreaLabelStyle: options.previewAreaLabelStyle,
+      totalAreaLabelStyle: options.totalAreaLabelStyle,
+      hintBubbleStyle: options.hintBubbleStyle,
       onClick: options.onClick,
     };
   }

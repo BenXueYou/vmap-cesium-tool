@@ -19,9 +19,15 @@ export interface MeasureButtonHandlerOptions {
   
   /** 测距开始回调 */
   onDistanceStart?: () => void;
+
+  /** 测距绘制选项 */
+  getDistanceDrawOptions?: () => any;
   
   /** 测面积开始回调 */
   onAreaStart?: () => void;
+
+  /** 测面积绘制选项 */
+  getAreaDrawOptions?: () => any;
   
   /** 清除测量回调 */
   onClear?: () => void;
@@ -156,12 +162,17 @@ export class MeasureButtonHandler extends BaseButtonHandler {
    * 开始测距
    */
   private startDistanceMeasurement(): void {
-    const { measurementService, drawHelper, onDistanceStart } = this.options;
+    const { measurementService, drawHelper, onDistanceStart, getDistanceDrawOptions } = this.options;
+    const drawOptions = getDistanceDrawOptions?.();
     
     if (measurementService) {
       measurementService.startDistanceMeasurement();
     } else if (drawHelper) {
-      drawHelper.startDrawing('line');
+      if (typeof drawHelper.startDrawingLine === 'function') {
+        drawHelper.startDrawingLine(drawOptions);
+      } else {
+        drawHelper.startDrawing?.('line', drawOptions);
+      }
     }
     
     onDistanceStart?.();
@@ -173,12 +184,17 @@ export class MeasureButtonHandler extends BaseButtonHandler {
    * 开始测面积
    */
   private startAreaMeasurement(): void {
-    const { measurementService, drawHelper, onAreaStart } = this.options;
+    const { measurementService, drawHelper, onAreaStart, getAreaDrawOptions } = this.options;
+    const drawOptions = getAreaDrawOptions?.();
     
     if (measurementService) {
       measurementService.startAreaMeasurement();
     } else if (drawHelper) {
-      drawHelper.startDrawing('polygon');
+      if (typeof drawHelper.startDrawingPolygon === 'function') {
+        drawHelper.startDrawingPolygon(drawOptions);
+      } else {
+        drawHelper.startDrawing?.('polygon', drawOptions);
+      }
     }
     
     onAreaStart?.();
@@ -195,7 +211,11 @@ export class MeasureButtonHandler extends BaseButtonHandler {
     if (measurementService) {
       measurementService.clearMeasurements();
     } else if (drawHelper) {
-      drawHelper.clear();
+      if (typeof drawHelper.clearAll === 'function') {
+        drawHelper.clearAll();
+      } else {
+        drawHelper.clear?.();
+      }
     }
     
     onClear?.();
