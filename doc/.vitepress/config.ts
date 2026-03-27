@@ -9,7 +9,7 @@ export default defineConfig({
   base,
   lang: 'zh-CN',
   title: 'vmap-cesium-tool',
-  description: 'Cesium 地图工具栏与覆盖物/绘制工具文档',
+  description: '重构后的 Cesium 地图插件与兼容迁移文档',
 
   themeConfig: {
     nav: [
@@ -25,6 +25,12 @@ export default defineConfig({
           text: 'API',
           items: [
             { text: 'API 目录', link: '/api/' },
+            { text: '架构说明', link: '/guide/Architecture' },
+            { text: '迁移指南', link: '/guide/Migration_Guide' },
+            { text: 'MapPlugin', link: '/api/MapPlugin_API' },
+            { text: 'ToolbarService', link: '/api/ToolbarService_API' },
+            { text: 'OverlayService', link: '/api/OverlayService_API' },
+            { text: 'DrawService', link: '/api/DrawService_API' },
             { text: 'CesiumMapLoader', link: '/api/CesiumMapLoader_API' },
             { text: 'CesiumMapToolbar', link: '/api/CesiumMapToolbar_API' },
             { text: 'DrawHelper/CesiumMapHelper', link: '/api/CesiumMapHelper_API' },
@@ -38,6 +44,8 @@ export default defineConfig({
           text: '使用说明',
           items: [
             { text: '使用说明目录', link: '/guide/' },
+            { text: '架构说明', link: '/guide/Architecture' },
+            { text: '迁移指南', link: '/guide/Migration_Guide' },
             { text: 'GeoJSON', link: '/guide/GeoJSON_Usage' },
             { text: '多语言（i18n）', link: '/guide/I18n_Usage' },
           ],

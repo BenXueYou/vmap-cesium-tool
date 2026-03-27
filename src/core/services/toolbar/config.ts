@@ -28,17 +28,6 @@ export const DEFAULT_BUTTON_SORTS: Record<string, number> = {
   fullscreen: 7,
 };
 
-export const DEFAULT_BUTTONS: DefaultButtonConfig[] = [
-  { id: 'search', icon: searchIcon, title: '搜索', titleKey: 'toolbar.search', sort: 0 },
-  { id: 'measure', icon: measureIcon, title: '测量', titleKey: 'toolbar.measure', sort: 1 },
-  { id: 'view2d3d', icon: view2DIcon, title: '2D 或 3D', titleKey: 'toolbar.view2d3d', sort: 2 },
-  { id: 'layers', icon: layersIcon, title: '图层切换', titleKey: 'toolbar.layers', sort: 3 },
-  { id: 'location', icon: locationIcon, title: '定位', titleKey: 'toolbar.location', sort: 4 },
-  { id: 'zoom-in', icon: zoomInIcon, title: '缩小', titleKey: 'toolbar.zoom_in', sort: 5 },
-  { id: 'zoom-out', icon: zoomOutIcon, title: '放大', titleKey: 'toolbar.zoom_out', sort: 6 },
-  { id: 'fullscreen', icon: fullscreenIcon, title: '全屏', titleKey: 'toolbar.fullscreen', sort: 7 },
-];
-
 export const DEFAULT_BUTTON_CONFIGS: CustomButtonConfig[] = [
   {
     size: 40,

@@ -48,11 +48,14 @@ export interface SearchButtonHandlerOptions {
 export class SearchButtonHandler extends BaseButtonHandler {
   readonly id = 'search';
   private static readonly SCROLLBAR_STYLE_ID = 'toolbar-search-scrollbar-style';
+  private static readonly INPUT_SEARCH_DEBOUNCE_MS = 300;
 
   private options: SearchButtonHandlerOptions;
   private styleConfig: SearchContainerStyleConfig = {};
 
   private searchContainer: HTMLElement | null = null;
+  private searchTimer: number | null = null;
+  private latestSearchToken = 0;
 
   private normalizeStyleConfig(styleConfig?: SearchContainerStyleConfig): SearchContainerStyleConfig {
     return styleConfig ?? {};
@@ -96,6 +99,21 @@ export class SearchButtonHandler extends BaseButtonHandler {
     return this.useI18n && this.i18n
       ? this.i18n.t('toolbar.search_empty')
       : '搜索结果为空';
+  }
+
+  private resetSearchTimer(): void {
+    if (this.searchTimer !== null) {
+      window.clearTimeout(this.searchTimer);
+      this.searchTimer = null;
+    }
+  }
+
+  private scheduleInputSearch(query: string): void {
+    this.resetSearchTimer();
+    this.searchTimer = window.setTimeout(() => {
+      this.searchTimer = null;
+      void this.doSearch(query);
+    }, SearchButtonHandler.INPUT_SEARCH_DEBOUNCE_MS);
   }
 
   /**
@@ -287,6 +305,7 @@ export class SearchButtonHandler extends BaseButtonHandler {
    * 销毁处理器
    */
   destroy(): void {
+    this.resetSearchTimer();
     this.closeSearch();
     this.button = null;
   }
@@ -340,8 +359,12 @@ export class SearchButtonHandler extends BaseButtonHandler {
     input.placeholder = placeholder;
     Object.assign(input.style, inputStyle);
     input.addEventListener('input', () => {
-      if (!input.value.trim()) {
+      const query = input.value.trim();
+      if (!query) {
+        this.resetSearchTimer();
         this.clearSearchResults();
+      } else {
+        this.scheduleInputSearch(query);
       }
       syncActionButton();
     });
@@ -373,6 +396,7 @@ export class SearchButtonHandler extends BaseButtonHandler {
       }
 
       input.value = '';
+      this.resetSearchTimer();
       this.clearSearchResults();
       syncActionButton();
       input.focus();
@@ -413,6 +437,7 @@ export class SearchButtonHandler extends BaseButtonHandler {
    */
   private async doSearch(query: string): Promise<void> {
     const { onSearch, searchService } = this.options;
+    const searchToken = ++this.latestSearchToken;
 
     try {
       let results: any[] = [];
@@ -422,8 +447,15 @@ export class SearchButtonHandler extends BaseButtonHandler {
         results = await onSearch(query);
       }
 
+      if (searchToken !== this.latestSearchToken || !this.searchContainer) {
+        return;
+      }
+
       this.showSearchResults(Array.isArray(results) ? results : []);
     } catch (error) {
+      if (searchToken !== this.latestSearchToken) {
+        return;
+      }
       console.error('搜索失败:', error);
     }
   }
@@ -578,6 +610,7 @@ export class SearchButtonHandler extends BaseButtonHandler {
    * 关闭搜索框
    */
   closeSearch(): void {
+    this.resetSearchTimer();
     if (this.searchContainer) {
       this.searchContainer.remove();
       this.searchContainer = null;

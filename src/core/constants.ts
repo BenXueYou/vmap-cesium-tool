@@ -1,7 +1,6 @@
 import type { TDTLayerConfig, GaodeLayerConfig, BaiduLayerConfig, OSMLayerConfig } from './types';
 export {
   DEFAULT_BUTTON_SORTS,
-  DEFAULT_BUTTONS,
   DEFAULT_BUTTON_CONFIGS,
   DEFAULT_MEASURE_ITEMS,
   DEFAULT_TOOLBAR_STYLE,

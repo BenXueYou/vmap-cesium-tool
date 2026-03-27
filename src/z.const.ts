@@ -1661,6 +1661,7 @@ export const toolbarButtonConfigs = [
             {
               id: 'zoom-in',
               icon: zoomInIcon,
+              title: 'Zoom In',
               backgroundColor: 'rgba(0, 0, 0, 0.52)',
               borderColor: 'rgba(9, 109, 236, 0.85)',
               color: '#ffffff',
@@ -1669,6 +1670,7 @@ export const toolbarButtonConfigs = [
             {
               id: 'zoom-out',
               icon: zoomOutIcon,
+              title: 'Zoom Out',
               backgroundColor: 'rgba(0, 0, 0, 0.52)',
               borderColor: 'rgba(9, 109, 236, 0.85)',
               color: '#ffffff',

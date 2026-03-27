@@ -79,7 +79,6 @@ export class SimpleButtonHandler extends BaseButtonHandler {
    */
   initialize(button: ToolbarButton): void {
     this.button = button;
-    
     // 设置标题
     if (this.config.titleKey && this.useI18n && this.i18n) {
       this.i18n.bindElement(button.getElement(), this.config.titleKey, 'title');
