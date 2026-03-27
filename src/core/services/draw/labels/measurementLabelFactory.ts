@@ -1,5 +1,6 @@
 import * as Cesium from 'cesium';
 import type { Cartesian3, Entity, Viewer } from 'cesium';
+import type { I18nLike } from '../../../../i18n';
 
 import { calculateDistance, formatArea, formatDistance } from '../geometry/drawGeometry';
 import { isValidCartesian3, toCartographic } from '../geometry/drawPosition';
@@ -9,8 +10,29 @@ import type {
   ResolvedMeasurementTheme,
 } from '../types/drawTypes';
 
+export interface MeasurementLabelFactoryOptions {
+  i18n?: I18nLike;
+  useI18n?: boolean;
+}
+
 export class MeasurementLabelFactory {
-  constructor(private readonly viewer: Viewer) {}
+  private readonly i18n?: I18nLike;
+
+  private readonly useI18n: boolean;
+
+  constructor(private readonly viewer: Viewer, options: MeasurementLabelFactoryOptions = {}) {
+    this.i18n = options.i18n;
+    this.useI18n = options.useI18n ?? true;
+  }
+
+  private t(key: string, params: Record<string, unknown>, fallback: string): string {
+    if (!this.useI18n || !this.i18n) {
+      return fallback;
+    }
+
+    const value = this.i18n.t(key, params);
+    return !value || value === key ? fallback : value;
+  }
 
   createVertexMarkerEntities(positions: Cartesian3[], theme: ResolvedMeasurementTheme): Entity[] {
     return positions
@@ -82,9 +104,10 @@ export class MeasurementLabelFactory {
 
     const targetPosition = positions[positions.length - 1];
     if (isValidCartesian3(targetPosition) && Number.isFinite(totalDistance) && totalDistance > 0) {
+      const formattedDistance = formatDistance(totalDistance);
       entities.push(this.createMeasurementBillboardEntity(
         targetPosition,
-        `总长：${formatDistance(totalDistance)}`,
+        this.t('draw.measurement.total_distance', { value: formattedDistance }, `总长：${formattedDistance}`),
         theme.totalDistanceLabel,
       ));
     }
@@ -107,10 +130,20 @@ export class MeasurementLabelFactory {
       return null;
     }
 
+    const formattedArea = formatArea(area);
+
     if (variant === 'preview') {
-      return this.createMeasurementBillboardEntity(center, `面积：${formatArea(area)}`, theme.previewAreaLabel);
+      return this.createMeasurementBillboardEntity(
+        center,
+        this.t('draw.measurement.preview_area', { value: formattedArea }, `面积：${formattedArea}`),
+        theme.previewAreaLabel,
+      );
     }
 
-    return this.createMeasurementBillboardEntity(center, `总面积：${formatArea(area)}`, theme.totalAreaLabel);
+    return this.createMeasurementBillboardEntity(
+      center,
+      this.t('draw.measurement.total_area', { value: formattedArea }, `总面积：${formattedArea}`),
+      theme.totalAreaLabel,
+    );
   }
 }

@@ -11,6 +11,7 @@ export type {
 	DrawMode,
 	DrawOptions,
 	DrawResult,
+	DrawServiceOptions,
 	MeasurementFillStyle,
 	MeasurementLabelOffset,
 	MeasurementStrokeStyle,

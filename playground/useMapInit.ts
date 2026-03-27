@@ -1,9 +1,16 @@
-import { shallowRef } from "vue";
+import { shallowRef } from 'vue';
 import * as Cesium from 'cesium';
-import { getViteTdToken, getViteCesiumToken } from "../utils/common.ts";
-import { createMapPlugin, MapPlugin, ToolbarService, type DrawOptions, type SearchResult } from "../index.ts";
-import { TD_Map_Search_URL, China_Map_Extent } from "./useMap";
-import { toolbarLayersMenu, toolbarSearchMenu, toolbarButtonConfigs } from "../z.const.ts";
+import { getViteTdToken, getViteCesiumToken } from '../src/utils/common';
+import {
+  createMapPlugin,
+  MapPlugin,
+  ToolbarService,
+  type DrawOptions,
+  type SearchResult,
+} from '../src/index';
+import { i18n } from '../src/i18n';
+import { toolbarLayersMenu, toolbarSearchMenu, toolbarButtonConfigs } from '../src/z.const';
+import { chinaMapExtent, getTdMapSearchUrl } from './useMap';
 
 const distanceDrawOptions: DrawOptions = {
   measurementTheme: {
@@ -128,11 +135,15 @@ export function useMapInit(containerId = 'cesiumContainer') {
         noFlyZone: {
           autoLoad: true,
           visible: true,
-          extrudedHeight: 10
+          extrudedHeight: 10,
         },
         services: {
           overlay: true,
-          draw: true,
+          draw: {
+            enabled: true,
+            i18n,
+            useI18n: true,
+          },
           toolbar: {
             enabled: true,
             config: {
@@ -142,6 +153,8 @@ export function useMapInit(containerId = 'cesiumContainer') {
               backgroundColor: 'transparent',
               borderColor: 'transparent',
               zIndex: 1100,
+              useI18n: true,
+              i18n,
             },
             searchMenu: toolbarSearchMenu,
             layersMenu: toolbarLayersMenu,
@@ -149,7 +162,7 @@ export function useMapInit(containerId = 'cesiumContainer') {
             callbacks: {
               onSearch: async (query: string): Promise<SearchResult[]> => {
                 try {
-                  const url = TD_Map_Search_URL(query, China_Map_Extent);
+                  const url = getTdMapSearchUrl(query, chinaMapExtent);
                   const response = await fetch(url, {
                     method: 'GET',
                     mode: 'cors',
@@ -182,7 +195,7 @@ export function useMapInit(containerId = 'cesiumContainer') {
               onMeasurementStart: () => {
                 console.log('开始测量');
               },
-              onMeasurementComplete: (result: MeasurementResult) => {
+              onMeasurementComplete: (result: unknown) => {
                 console.log('测量结果:', result);
               },
               getDistanceDrawOptions: () => distanceDrawOptions,

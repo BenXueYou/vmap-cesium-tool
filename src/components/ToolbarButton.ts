@@ -9,6 +9,17 @@ export class ToolbarButton extends BaseComponent {
   private onClickHandler?: (buttonId: string, buttonElement: HTMLElement) => void;
   private isActive = false;
 
+  private static readonly DEFAULT_TITLES: Record<string, string> = {
+    search: '搜索',
+    measure: '测量',
+    view2d3d: '2D / 3D',
+    layers: '图层切换',
+    location: '定位',
+    'zoom-in': '缩小',
+    'zoom-out': '放大',
+    fullscreen: '全屏',
+  };
+
   /**
    * 构造函数
    * @param config 按钮配置
@@ -50,7 +61,7 @@ export class ToolbarButton extends BaseComponent {
     this.setAttribute('data-button-id', this.config.id);
 
     // 设置标题
-    this.setAttribute('title', this.config.title);
+    this.setAttribute('title', this.getResolvedTitle());
 
     // 设置图标
     this.setIcon(this.config.icon);
@@ -74,7 +85,7 @@ export class ToolbarButton extends BaseComponent {
     if (icon === false) {
       // 无图标，只显示文字
       const text = document.createElement('span');
-      text.textContent = this.config.title;
+      text.textContent = this.getResolvedTitle();
       text.style.fontSize = '12px';
       this.element.appendChild(text);
       return;
@@ -85,7 +96,7 @@ export class ToolbarButton extends BaseComponent {
         // 图片图标
         const img = document.createElement('img');
         img.src = icon;
-        img.alt = this.config.title;
+        img.alt = this.getResolvedTitle();
         img.style.width = '70%';
         img.style.height = '70%';
         img.style.objectFit = 'contain';
@@ -105,6 +116,10 @@ export class ToolbarButton extends BaseComponent {
    */
   private isImagePath(icon: string): boolean {
     return /\.(png|jpg|jpeg|gif|svg|webp)$/i.test(icon) || icon.startsWith('data:image');
+  }
+
+  private getResolvedTitle(): string {
+    return this.config.title || ToolbarButton.DEFAULT_TITLES[this.config.id] || this.config.id;
   }
 
   /**
@@ -266,8 +281,8 @@ export class ToolbarButton extends BaseComponent {
     }
 
     // 更新标题
-    if (config.title) {
-      this.setAttribute('title', config.title);
+    if (config.title !== undefined || !this.getAttribute('title')) {
+      this.setAttribute('title', this.getResolvedTitle());
     }
 
     // 更新点击处理器

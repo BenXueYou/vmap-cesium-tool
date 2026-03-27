@@ -10,13 +10,15 @@ import { MeasurementLabelFactory } from './labels/measurementLabelFactory';
 import { DrawSessionStore } from './DrawSessionStore';
 import { resolveLabelStyle, resolveMeasurementTheme } from './measurementThemeResolver';
 import type { DrawCallbacks } from './types/drawState';
-import type { DrawMode, DrawOptions, DrawResult } from './types/drawTypes';
+import type { DrawMode, DrawOptions, DrawResult, DrawServiceOptions } from './types/drawTypes';
+import { i18n as defaultI18n } from '../../../i18n';
 
 export type {
   DrawArtifacts,
   DrawMode,
   DrawOptions,
   DrawResult,
+  DrawServiceOptions,
   MeasurementFillStyle,
   MeasurementLabelOffset,
   MeasurementStrokeStyle,
@@ -32,14 +34,31 @@ export class DrawService {
   private readonly hintController: DrawHintController;
   private readonly entityFactory: DrawEntityFactory;
   private readonly entityRegistry = new DrawEntityRegistry();
+  private readonly options: DrawServiceOptions;
+  private readonly i18n;
+  private readonly useI18n: boolean;
 
   private callbacks: DrawCallbacks = {};
 
-  constructor(private readonly viewer: Viewer) {
+  constructor(private readonly viewer: Viewer, options: DrawServiceOptions = {}) {
+    this.options = options;
+    this.i18n = options.i18n ?? defaultI18n;
+    this.useI18n = options.useI18n ?? true;
     this.interactionController = new DrawInteractionController(viewer);
-    this.labelFactory = new MeasurementLabelFactory(viewer);
+    this.labelFactory = new MeasurementLabelFactory(viewer, {
+      i18n: this.i18n,
+      useI18n: this.useI18n,
+    });
     this.hintController = new DrawHintController(viewer);
     this.entityFactory = new DrawEntityFactory(viewer, this.labelFactory);
+  }
+
+  private t(key: string): string {
+    if (!this.useI18n) {
+      return key;
+    }
+
+    return this.i18n.t(key);
   }
 
   startDrawing(mode: DrawMode, options: DrawOptions = {}): void {
@@ -57,7 +76,9 @@ export class DrawService {
         return;
       }
 
-      const text = buildHintText(mode, this.store.getTempPositions().length);
+      const text = buildHintText(mode, this.store.getTempPositions().length, {
+        t: (key) => this.t(key),
+      });
       const currentHintEntity = this.store.getHintEntity();
       if (!text) {
         this.store.setHintEntity(this.hintController.remove(currentHintEntity));

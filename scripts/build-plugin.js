@@ -7,32 +7,50 @@ import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const projectRoot = path.join(__dirname, '..');
+const distRoot = path.join(projectRoot, 'dist');
+
+function getDistTopLevelEntries() {
+  if (!fs.existsSync(distRoot)) {
+    return [];
+  }
+
+  return fs.readdirSync(distRoot, { withFileTypes: true })
+    .filter((entry) => entry.name !== 'package.json')
+    .map((entry) => entry.name)
+    .sort((left, right) => left.localeCompare(right));
+}
 
 console.log('🚀 开始构建 VMap Cesium Toolbar 插件...');
 
 try {
   // 清理 dist 目录
-  if (fs.existsSync('dist')) {
-    fs.rmSync('dist', { recursive: true });
+  if (fs.existsSync(distRoot)) {
+    fs.rmSync(distRoot, { recursive: true });
     console.log('✅ 清理 dist 目录');
   }
 
   // 构建库
   console.log('📦 构建库文件...');
-  execSync('npm run build', { stdio: 'inherit' });
+  execSync('pnpm run build', {
+    cwd: projectRoot,
+    stdio: 'inherit',
+  });
 
   // 保持 Vite lib 模式默认命名（index.es.js / index.umd.js），不再强行重命名
 
   // 复制样式文件
   console.log('🎨 复制样式文件...');
-  if (fs.existsSync('src/style.css')) {
-    fs.copyFileSync('src/style.css', 'dist/style.css');
+  const sourceStylePath = path.join(projectRoot, 'src/style.css');
+  const distStylePath = path.join(distRoot, 'style.css');
+  if (fs.existsSync(sourceStylePath)) {
+    fs.copyFileSync(sourceStylePath, distStylePath);
   }
 
   // 处理 GeoJSON 文件
   console.log('🗺️ 处理 GeoJSON 文件...');
-  const publicGeojsonDir = path.join(__dirname, '../public/geojson');
-  const distGeojsonDir = path.join(__dirname, '../dist/geojson');
+  const publicGeojsonDir = path.join(projectRoot, 'public/geojson');
+  const distGeojsonDir = path.join(distRoot, 'geojson');
   
   if (fs.existsSync(publicGeojsonDir)) {
     // 确保 dist/geojson 目录存在
@@ -62,13 +80,16 @@ try {
 
   // 复制 README
   console.log('📖 复制文档...');
-  if (fs.existsSync('PLUGIN_README.md')) {
-    fs.copyFileSync('PLUGIN_README.md', 'dist/README.md');
+  const sourceReadmePath = path.join(projectRoot, 'README.md');
+  const distReadmePath = path.join(distRoot, 'README.md');
+  if (fs.existsSync(sourceReadmePath)) {
+    fs.copyFileSync(sourceReadmePath, distReadmePath);
   }
 
   // 生成 package.json for dist
   console.log('📋 生成发布包配置...');
-  const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+  const packageJson = JSON.parse(fs.readFileSync(path.join(projectRoot, 'package.json'), 'utf8'));
+  const publishFiles = getDistTopLevelEntries();
   const distPackageJson = {
     name: packageJson.name,
     version: packageJson.version,
@@ -77,15 +98,18 @@ try {
     main: 'index.es.js',
     module: 'index.es.js',
     types: 'index.d.ts',
-    files: ['index.es.js', 'index.umd.js', 'index.d.ts', 'style.css', 'README.md', 'geojson'],
+    files: publishFiles,
     exports: {
       ".": {
+        "types": "./index.d.ts",
         "import": "./index.es.js",
         "default": "./index.es.js"
       },
-      "./style": "./style.css"
+      "./style": "./style.css",
+      "./package.json": "./package.json"
     },
     peerDependencies: packageJson.peerDependencies,
+    dependencies: packageJson.dependencies,
     keywords: packageJson.keywords,
     author: packageJson.author,
     license: packageJson.license,
@@ -94,18 +118,15 @@ try {
     homepage: packageJson.homepage
   };
 
-  fs.writeFileSync('dist/package.json', JSON.stringify(distPackageJson, null, 2));
+  fs.writeFileSync(path.join(distRoot, 'package.json'), JSON.stringify(distPackageJson, null, 2));
 
   console.log('✅ 插件构建完成！');
   console.log('📁 输出目录: dist/');
   console.log('📦 发布文件:');
-  console.log('   - index.es.js (ES模块)');
-  console.log('   - index.umd.js (UMD)');
-  console.log('   - index.d.ts (类型定义)');
-  console.log('   - style.css (样式文件)');
-  console.log('   - README.md (使用文档)');
+  publishFiles.forEach((file) => {
+    console.log(`   - ${file}`);
+  });
   console.log('   - package.json (发布配置)');
-  console.log('   - geojson/ (GeoJSON 数据目录)');
 
 } catch (error) {
   console.error('❌ 构建失败:', error.message);

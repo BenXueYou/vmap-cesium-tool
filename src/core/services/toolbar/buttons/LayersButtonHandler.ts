@@ -212,7 +212,11 @@ export class LayersButtonHandler extends BaseMenu {
     thumbnail.appendChild(checkmark);
 
     const label = document.createElement('div');
-    label.textContent = mapType.nameKey && this.useI18n ? this.t(mapType.nameKey) : mapType.name;
+    if (mapType.nameKey && this.useI18n && this.i18n) {
+      this.i18n.bindElement(label, mapType.nameKey, 'textContent');
+    } else {
+      label.textContent = mapType.name;
+    }
     Object.assign(label.style, styles.mapTypeLabel);
 
     item.appendChild(thumbnail);
@@ -242,6 +246,7 @@ export class LayersButtonHandler extends BaseMenu {
     const checked = forceChecked || (this.options.isPlaceNameChecked ?? true);
     const labelText = mapType.placeNameLabel
       || (mapType.placeNameLabelKey ? this.t(mapType.placeNameLabelKey) : this.t('layers.map_type.place_name'));
+    const labelKey = mapType.placeNameLabelKey || 'layers.map_type.place_name';
 
     const wrapper = document.createElement('label');
     Object.assign(wrapper.style, styles.placeNameBadge);
@@ -260,7 +265,11 @@ export class LayersButtonHandler extends BaseMenu {
     });
 
     const text = document.createElement('span');
-    text.textContent = labelText;
+    if (!mapType.placeNameLabel && this.useI18n && this.i18n) {
+      this.i18n.bindElement(text, labelKey, 'textContent');
+    } else {
+      text.textContent = labelText;
+    }
     Object.assign(text.style, styles.placeNameText);
 
     wrapper.appendChild(checkbox);
@@ -291,7 +300,11 @@ export class LayersButtonHandler extends BaseMenu {
     Object.assign(dot.style, styles.noFlyZoneDot);
 
     const label = document.createElement('span');
-    label.textContent = this.useI18n ? this.t('layers.no_fly_zone') : '机场禁飞区';
+    if (this.useI18n && this.i18n) {
+      this.i18n.bindElement(label, 'layers.no_fly_zone', 'textContent');
+    } else {
+      label.textContent = '机场禁飞区';
+    }
     Object.assign(label.style, styles.noFlyZoneLabel);
 
     left.appendChild(checkbox);

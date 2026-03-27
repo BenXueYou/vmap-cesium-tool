@@ -1,5 +1,6 @@
 import * as Cesium from 'cesium';
 import type { Cartesian3, Entity } from 'cesium';
+import type { I18nLike } from '../../../../i18n';
 
 export type DrawMode = 'point' | 'line' | 'polygon' | 'rectangle' | 'circle' | null;
 
@@ -57,6 +58,11 @@ export interface DrawOptions {
   totalAreaLabelStyle?: MeasurementSummaryLabelStyle;
   hintBubbleStyle?: MeasurementSummaryLabelStyle;
   onClick?: (entity: Entity, positions?: Cartesian3[]) => void;
+}
+
+export interface DrawServiceOptions {
+  i18n?: I18nLike;
+  useI18n?: boolean;
 }
 
 export interface DrawResult {

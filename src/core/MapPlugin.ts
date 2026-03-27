@@ -942,6 +942,8 @@ export class MapPlugin {
       {
         viewer,
         container: this.getToolbarContainer(options),
+        i18n: options.config?.i18n,
+        useI18n: options.config?.useI18n,
         drawHelper: this.getDrawService(),
         layers: {
           mapTypes: this.getToolbarMapTypes(),
@@ -1008,13 +1010,16 @@ export class MapPlugin {
   /**
    * 创建 DrawService
    */
-  createDrawService(_options: DrawPluginOptions = {}): DrawService {
+  createDrawService(options: DrawPluginOptions = {}): DrawService {
     if (this.drawService) {
       return this.drawService;
     }
 
     const viewer = this.ensureViewer();
-    this.drawService = new DrawService(viewer);
+    this.drawService = new DrawService(viewer, {
+      i18n: options.i18n,
+      useI18n: options.useI18n,
+    });
     return this.drawService;
   }
 

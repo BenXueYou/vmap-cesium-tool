@@ -18,9 +18,9 @@ npm run build:plugin
 
 - 清理dist目录
 - 构建库文件（ES模块格式）
-- 复制类型定义文件
+- 收集并保留声明依赖目录（如 core、adapters、i18n 等）
 - 复制样式文件
-- 复制文档
+- 复制 README 文档
 - 生成发布用的 package.json
 
 ### 3. 验证构建结果
@@ -29,8 +29,13 @@ npm run build:plugin
 
 ``` bash
 dist/
-├── index.js          # 主入口文件（ES模块）
+├── adapters/         # 适配层声明文件
+├── components/       # 组件声明文件
+├── core/             # 核心模块声明文件
+├── geojson/          # 插件运行所需 GeoJSON 数据
+├── i18n/             # 多语言声明文件
 ├── index.d.ts        # TypeScript 类型定义
+├── index.es.js       # 主入口文件（ES模块）
 ├── style.css         # 样式文件
 ├── README.md         # 使用文档
 └── package.json      # 发布配置

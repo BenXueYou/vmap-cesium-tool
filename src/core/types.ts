@@ -374,6 +374,10 @@ export interface OverlayPluginOptions {
 export interface DrawPluginOptions {
   /** 是否启用 DrawService，默认 true */
   enabled?: boolean;
+  /** 国际化实例，默认使用框架内置 i18n */
+  i18n?: I18nLike;
+  /** 是否启用 draw 内部国际化，默认 true */
+  useI18n?: boolean;
 }
 
 /**

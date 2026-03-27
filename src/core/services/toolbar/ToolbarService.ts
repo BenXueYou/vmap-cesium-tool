@@ -82,6 +82,8 @@ export class ToolbarService {
 
   private buttonConfigs?: Array<CustomButtonConfig>;
 
+  private unsubscribeI18n?: () => void;
+
   /**
    * 构造函数
    * @param config 工具栏服务配置
@@ -117,6 +119,27 @@ export class ToolbarService {
     
     // 初始化所有按钮
     this.initializeButtons();
+
+    this.setupLocaleSync();
+  }
+
+  private setupLocaleSync(): void {
+    if (!this.useI18n || !this.i18n) {
+      return;
+    }
+
+    this.unsubscribeI18n?.();
+    this.unsubscribeI18n = this.i18n.onLocaleChange(() => {
+      const toolbarElement = this.toolbar?.getElement();
+      if (toolbarElement) {
+        this.i18n?.updateTree(toolbarElement);
+      }
+    });
+
+    const toolbarElement = this.toolbar?.getElement();
+    if (toolbarElement) {
+      this.i18n.updateTree(toolbarElement);
+    }
   }
 
   /**
@@ -159,9 +182,6 @@ export class ToolbarService {
    */
   private registerDefaultButtonHandlers(): void {
     const { viewer, callbacks } = this.config;
-    
-    // 获取按钮配置（使用用户自定义配置或默认配置）
-    this.buttonConfigs = this.options.buttonConfigs || DEFAULT_BUTTON_CONFIGS;
 
     // 搜索按钮
     const searchHandler = new SearchButtonHandler(
@@ -565,6 +585,9 @@ export class ToolbarService {
    * 销毁工具栏服务
    */
   destroy(): void {
+    this.unsubscribeI18n?.();
+    this.unsubscribeI18n = undefined;
+
     // 销毁所有按钮处理器
     this.buttonHandlers.forEach(handler => handler.destroy());
     this.buttonHandlers.clear();

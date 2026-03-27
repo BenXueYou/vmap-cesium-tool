@@ -58,7 +58,20 @@ export class SearchButtonHandler extends BaseButtonHandler {
   private latestSearchToken = 0;
 
   private normalizeStyleConfig(styleConfig?: SearchContainerStyleConfig): SearchContainerStyleConfig {
-    return styleConfig ?? {};
+    const resolvedStyleConfig = (styleConfig || {}) as SearchContainerStyleConfig;
+
+    return {
+      containerStyle: resolvedStyleConfig.containerStyle,
+      inputStyle: resolvedStyleConfig.inputStyle,
+      actionButtonStyle: resolvedStyleConfig.actionButtonStyle,
+      actionIconStyle: resolvedStyleConfig.actionIconStyle,
+      resultStyle: resolvedStyleConfig.resultStyle,
+      resultItemStyle: resolvedStyleConfig.resultItemStyle,
+      resultItemHoverStyle: resolvedStyleConfig.resultItemHoverStyle,
+      resultItemActiveStyle: resolvedStyleConfig.resultItemActiveStyle,
+      buttonStyle: resolvedStyleConfig.buttonStyle,
+      resultItemIconStyle: resolvedStyleConfig.resultItemIconStyle,
+    };
   }
 
   private ensureScrollbarStyles(): void {
@@ -356,7 +369,13 @@ export class SearchButtonHandler extends BaseButtonHandler {
     // 输入框
     const input = document.createElement('input');
     input.type = 'text';
-    input.placeholder = placeholder;
+    if (this.useI18n && this.i18n) {
+      input.dataset.i18nKey = 'toolbar.search_placeholder';
+      input.dataset.i18nAttr = 'placeholder';
+      input.setAttribute('placeholder', this.i18n.t('toolbar.search_placeholder'));
+    } else {
+      input.placeholder = placeholder;
+    }
     Object.assign(input.style, inputStyle);
     input.addEventListener('input', () => {
       const query = input.value.trim();
