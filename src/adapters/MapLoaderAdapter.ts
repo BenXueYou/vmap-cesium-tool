@@ -17,6 +17,7 @@ export interface LegacyInitOptions {
   tdtMapTypeId?: string;
   token?: string;
   cesiumToken?: string;
+  loadNoFlyZonesOnInit?: boolean;
   mapCenter?: LegacyMapCenter;
   isFly?: boolean;
   flyDuration?: number;
@@ -95,6 +96,12 @@ function toMapPluginOptions(options: LegacyInitOptions, initialCenter: LegacyMap
       pitch: initialCenter.pitch ?? -45,
       heading: initialCenter.heading ?? 0,
     },
+    noFlyZone: typeof options.loadNoFlyZonesOnInit === 'boolean'
+      ? {
+        autoLoad: options.loadNoFlyZonesOnInit,
+        visible: options.loadNoFlyZonesOnInit,
+      }
+      : undefined,
     layers: mapType ? {
       type: 'tdt',
       tdt: {

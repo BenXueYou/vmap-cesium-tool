@@ -125,6 +125,11 @@ export function useMapInit(containerId = 'cesiumContainer') {
             showLabel: true,
           },
         },
+        noFlyZone: {
+          autoLoad: true,
+          visible: true,
+          extrudedHeight: 10
+        },
         services: {
           overlay: true,
           draw: true,

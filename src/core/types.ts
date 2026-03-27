@@ -200,6 +200,15 @@ export interface ToolbarLayersMenuOptions {
   panelStyle?: LayersPanelStyleConfig;
 }
 
+export interface NoFlyZonePluginOptions {
+  /** 初始化时是否自动加载并显示禁飞区 */
+  autoLoad?: boolean;
+  /** 禁飞区初始显示状态 */
+  visible?: boolean;
+  /** 禁飞区多边形拉伸高度，默认 1000 */
+  extrudedHeight?: number;
+}
+
 // ==================== 地图提供商类型 ====================
 
 /**
@@ -319,6 +328,8 @@ export interface MapPluginOptions {
   layers?: LayersConfig;
   /** Cesium Ion Token */
   cesiumToken?: string;
+  /** 禁飞区初始化配置 */
+  noFlyZone?: NoFlyZonePluginOptions;
   /** 服务装配配置 */
   services?: MapPluginServicesOptions;
 }

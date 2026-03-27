@@ -31,6 +31,7 @@ export type {
   SearchPanelStyleConfig,
   ToolbarSearchMenuOptions,
   ToolbarLayersMenuOptions,
+  NoFlyZonePluginOptions,
   // 新增：分层配置类型
   MapPluginOptions,
   CameraConfig,

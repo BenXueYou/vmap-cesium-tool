@@ -9,6 +9,7 @@ import type {
   MapType,
   MapPluginOptions,
   MapPluginServicesOptions,
+  NoFlyZonePluginOptions,
   OSMLayerConfig,
   OverlayPluginOptions,
   TDTLayerConfig,
@@ -141,6 +142,7 @@ export class MapPlugin {
   private toolbarConfig: ToolbarConfig;
   private toolbarLayersMenuConfig: ToolbarLayersMenuOptions;
   private servicesConfig: MapPluginServicesOptions;
+  private noFlyZoneConfig: NoFlyZonePluginOptions;
   private initialCenter: InitialCenter;
   private toolbarController: PluginMapController | null = null;
   private toolbarMapTypes: MapType[];
@@ -176,12 +178,13 @@ export class MapPlugin {
     this.cesiumToken = options.cesiumToken || '';
     this.servicesConfig = options.services || {};
     this.toolbarLayersMenuConfig = this.getToolbarLayersMenuConfig(options.services?.toolbar);
+    this.noFlyZoneConfig = this.resolveNoFlyZoneConfig(options.noFlyZone);
     this.initialCenter = this.toInitialCenter(this.cameraConfig);
     this.toolbarMapTypes = this.toolbarLayersMenuConfig.mapTypes || DEFAULT_MAP_TYPES;
     this.currentMapTypeId = this.resolveCurrentMapTypeId(this.layersConfig);
     this.placeNameVisible = this.toolbarLayersMenuConfig.defaultPlaceNameChecked
       ?? this.resolvePlaceNameVisible(this.layersConfig);
-    this.noFlyZoneVisible = this.toolbarLayersMenuConfig.defaultNoFlyZoneChecked ?? false;
+    this.noFlyZoneVisible = this.noFlyZoneConfig.visible ?? false;
     
     // 工具栏和样式配置（保持向后兼容）
     this.toolbarConfig = this.getToolbarConfig(options.services?.toolbar);
@@ -204,6 +207,26 @@ export class MapPlugin {
     }
 
     return {};
+  }
+
+  private resolveNoFlyZoneConfig(noFlyZoneOptions?: NoFlyZonePluginOptions): NoFlyZonePluginOptions {
+    let visible = noFlyZoneOptions?.visible ?? this.toolbarLayersMenuConfig.defaultNoFlyZoneChecked ?? false;
+    let autoLoad = noFlyZoneOptions?.autoLoad ?? visible;
+
+    if (visible) {
+      autoLoad = true;
+    }
+
+    if (autoLoad) {
+      visible = true;
+    }
+
+    return {
+      extrudedHeight: noFlyZoneOptions?.extrudedHeight ?? 1000,
+      ...noFlyZoneOptions,
+      visible,
+      autoLoad,
+    };
   }
 
   private toInitialCenter(cameraConfig: CameraConfig): InitialCenter {
@@ -397,7 +420,7 @@ export class MapPlugin {
             outline: true,
             outlineColor: Cesium.Color.RED.withAlpha(0.8),
             height: 0,
-            extrudedHeight: 1000,
+            extrudedHeight: this.noFlyZoneConfig.extrudedHeight ?? 1000,
           },
         });
       });
@@ -670,6 +693,10 @@ export class MapPlugin {
       // 创建服务层
       this.initializeServices();
 
+      if (this.noFlyZoneConfig.autoLoad) {
+        await this.showNoFlyZones();
+      }
+
       this.isInitialized = true;
       console.log('MapPlugin 初始化完成');
       return this.viewer;
@@ -854,6 +881,7 @@ export class MapPlugin {
       camera: { ...this.cameraConfig },
       layers: { ...this.layersConfig },
       cesiumToken: this.cesiumToken,
+      noFlyZone: { ...this.noFlyZoneConfig },
       services: { ...this.servicesConfig },
     };
   }
