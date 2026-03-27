@@ -134,6 +134,20 @@ export interface SearchServiceConfig {
   onSelect?: (result: SearchResult) => void;
 }
 
+export interface MeasurementCompleteEvent {
+  type: 'distance' | 'area';
+  positions: any[];
+  value: number;
+}
+
+export interface MeasurementServiceLike {
+  startDistanceMeasurement: (drawOptions?: any) => void;
+  startAreaMeasurement: (drawOptions?: any) => void;
+  clearMeasurements: () => void;
+  onMeasurementComplete?: (callback: (event: MeasurementCompleteEvent) => void) => void;
+  onClearComplete?: (callback: () => void) => void;
+}
+
 /**
  * 测量服务配置
  */
@@ -145,6 +159,7 @@ export interface MeasurementServiceConfig {
   onDistanceComplete?: (positions: any[], distance: number) => void;
   onAreaComplete?: (positions: any[], area: number) => void;
   onClear?: () => void;
+  service?: MeasurementServiceLike;
 }
 
 /**

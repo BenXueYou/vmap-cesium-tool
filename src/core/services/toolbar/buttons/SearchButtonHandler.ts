@@ -6,9 +6,19 @@
 import { BaseButtonHandler } from './BaseButtonHandler';
 import type { ToolbarButton } from '../../../../components/ToolbarButton';
 import searchIcon from '../assets/toolbar/search@3x.png';
-import type { SearchPanelStyleConfig } from '../../../../core/types';
 
-type SearchContainerStyleConfig = SearchPanelStyleConfig;
+interface SearchContainerStyleConfig {
+  containerStyle?: Partial<CSSStyleDeclaration>;
+  inputStyle?: Partial<CSSStyleDeclaration>;
+  actionButtonStyle?: Partial<CSSStyleDeclaration>;
+  actionIconStyle?: Partial<CSSStyleDeclaration>;
+  resultStyle?: Partial<CSSStyleDeclaration>;
+  resultItemStyle?: Partial<CSSStyleDeclaration>;
+  resultItemHoverStyle?: Partial<CSSStyleDeclaration>;
+  resultItemActiveStyle?: Partial<CSSStyleDeclaration>;
+  buttonStyle?: Partial<CSSStyleDeclaration>;
+  resultItemIconStyle?: Partial<CSSStyleDeclaration>;
+}
 
 /**
  * 搜索按钮处理器配置
@@ -37,11 +47,56 @@ export interface SearchButtonHandlerOptions {
  */
 export class SearchButtonHandler extends BaseButtonHandler {
   readonly id = 'search';
+  private static readonly SCROLLBAR_STYLE_ID = 'toolbar-search-scrollbar-style';
 
   private options: SearchButtonHandlerOptions;
   private styleConfig: SearchContainerStyleConfig = {};
 
   private searchContainer: HTMLElement | null = null;
+
+  private normalizeStyleConfig(styleConfig?: SearchContainerStyleConfig): SearchContainerStyleConfig {
+    return styleConfig ?? {};
+  }
+
+  private ensureScrollbarStyles(): void {
+    if (document.getElementById(SearchButtonHandler.SCROLLBAR_STYLE_ID)) {
+      return;
+    }
+
+    const style = document.createElement('style');
+    style.id = SearchButtonHandler.SCROLLBAR_STYLE_ID;
+    style.textContent = `
+      .search-results {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+
+      .search-results::-webkit-scrollbar {
+        width: 0;
+        height: 0;
+        display: none;
+      }
+    `;
+
+    document.head.appendChild(style);
+  }
+
+  private clearSearchResults(): void {
+    if (!this.searchContainer) {
+      return;
+    }
+
+    const existingResults = this.searchContainer.querySelector('.search-results');
+    if (existingResults) {
+      existingResults.remove();
+    }
+  }
+
+  private getEmptyResultText(): string {
+    return this.useI18n && this.i18n
+      ? this.i18n.t('toolbar.search_empty')
+      : '搜索结果为空';
+  }
 
   /**
    * 构造函数
@@ -58,7 +113,7 @@ export class SearchButtonHandler extends BaseButtonHandler {
   ) {
     super('search', viewer, i18n, useI18n);
     this.options = options;
-    this.styleConfig = (options.searchContainerStyle || {}) as SearchContainerStyleConfig;
+    this.styleConfig = this.normalizeStyleConfig(options.searchContainerStyle);
   }
 
   updateOptions(options: Partial<SearchButtonHandlerOptions>): void {
@@ -68,15 +123,14 @@ export class SearchButtonHandler extends BaseButtonHandler {
     this.options.onSelect = options.onSelect ?? this.options.onSelect;
 
     if (options.searchContainerStyle) {
-      const nextStyleConfig = options.searchContainerStyle as SearchContainerStyleConfig;
-      this.styleConfig.inputStyle = nextStyleConfig.inputStyle ?? this.styleConfig.inputStyle;
-      this.styleConfig.actionButtonStyle = nextStyleConfig.actionButtonStyle ?? this.styleConfig.actionButtonStyle;
-      this.styleConfig.actionIconStyle = nextStyleConfig.actionIconStyle ?? this.styleConfig.actionIconStyle;
-      this.styleConfig.containerStyle = nextStyleConfig.containerStyle ?? this.styleConfig.containerStyle;
-      this.styleConfig.resultStyle = nextStyleConfig.resultStyle ?? this.styleConfig.resultStyle;
-      this.styleConfig.resultItemStyle = nextStyleConfig.resultItemStyle ?? this.styleConfig.resultItemStyle;
-      this.styleConfig.resultItemHoverStyle = nextStyleConfig.resultItemHoverStyle ?? this.styleConfig.resultItemHoverStyle;
-      this.styleConfig.resultItemActiveStyle = nextStyleConfig.resultItemActiveStyle ?? this.styleConfig.resultItemActiveStyle;
+      const nextStyleConfig = this.normalizeStyleConfig(options.searchContainerStyle);
+      this.styleConfig = {
+        ...this.styleConfig,
+        ...nextStyleConfig,
+        actionButtonStyle: nextStyleConfig.actionButtonStyle
+          ?? nextStyleConfig.buttonStyle
+          ?? this.styleConfig.actionButtonStyle,
+      };
     }
 
     this.options.idleActionIcon = options.idleActionIcon ?? this.options.idleActionIcon;
@@ -87,17 +141,15 @@ export class SearchButtonHandler extends BaseButtonHandler {
    * 获取默认样式
    */
   private getDefaultStyles() {
-    const styleConfig: SearchContainerStyleConfig = this.styleConfig;
-    const {
-      inputStyle = {},
-      actionButtonStyle = {},
-      actionIconStyle = {},
-      containerStyle = {},
-      resultStyle = {},
-      resultItemStyle = {},
-      resultItemHoverStyle = {},
-      resultItemActiveStyle = {},
-    } = styleConfig;
+    const styleConfig = this.normalizeStyleConfig(this.styleConfig);
+    const inputStyle = styleConfig.inputStyle ?? {};
+    const actionButtonStyle = styleConfig.actionButtonStyle ?? styleConfig.buttonStyle ?? {};
+    const actionIconStyle = styleConfig.actionIconStyle ?? styleConfig.resultItemIconStyle ?? {};
+    const containerStyle = styleConfig.containerStyle ?? {};
+    const resultStyle = styleConfig.resultStyle ?? {};
+    const resultItemStyle = styleConfig.resultItemStyle ?? {};
+    const resultItemHoverStyle = styleConfig.resultItemHoverStyle ?? {};
+    const resultItemActiveStyle = styleConfig.resultItemActiveStyle ?? {};
 
     void resultItemHoverStyle;
     void resultItemActiveStyle;
@@ -172,6 +224,9 @@ export class SearchButtonHandler extends BaseButtonHandler {
         boxShadow: '0 8px 18px rgba(0, 0, 0, 0.28)',
         maxHeight: '300px',
         overflowY: 'auto',
+        overflowX: 'hidden',
+        msOverflowStyle: 'none',
+        scrollbarWidth: 'none',
         zIndex: '1002',
         ...resultStyle,
       } as Partial<CSSStyleDeclaration>,
@@ -216,10 +271,11 @@ export class SearchButtonHandler extends BaseButtonHandler {
   handleMouseLeave(): void {
     if (this.searchContainer) {
       setTimeout(() => {
+        const activeElement = document.activeElement;
         if (
           this.searchContainer &&
           !this.searchContainer.matches(':hover') &&
-          document.activeElement?.tagName !== 'INPUT'
+          (!(activeElement instanceof HTMLElement) || activeElement.tagName !== 'INPUT')
         ) {
           this.closeSearch();
         }
@@ -255,9 +311,14 @@ export class SearchButtonHandler extends BaseButtonHandler {
     if (!this.toolbarElement) return;
 
     this.closeOtherMenus('search');
+    this.ensureScrollbarStyles();
 
     const defaultStyles = this.getDefaultStyles();
-    const userStyles: SearchContainerStyleConfig = this.styleConfig;
+    const userStyles = this.normalizeStyleConfig(this.styleConfig);
+
+    const placeholder = this.useI18n && this.i18n
+      ? this.i18n.t('toolbar.search_placeholder')
+      : '请输入搜索内容...';
 
     // 合并样式
     const containerStyle = { ...defaultStyles.container, ...userStyles.containerStyle };
@@ -276,11 +337,12 @@ export class SearchButtonHandler extends BaseButtonHandler {
     // 输入框
     const input = document.createElement('input');
     input.type = 'text';
-    input.placeholder = this.useI18n && this.i18n
-      ? this.t('toolbar.search_placeholder')
-      : '请输入搜索内容...';
+    input.placeholder = placeholder;
     Object.assign(input.style, inputStyle);
     input.addEventListener('input', () => {
+      if (!input.value.trim()) {
+        this.clearSearchResults();
+      }
       syncActionButton();
     });
 
@@ -292,7 +354,6 @@ export class SearchButtonHandler extends BaseButtonHandler {
       if (!actionBtn) {
         return;
       }
-
       const hasValue = input.value.trim().length > 0;
       const icon = hasValue
         ? (this.options.clearActionIcon ?? '✕')
@@ -312,6 +373,7 @@ export class SearchButtonHandler extends BaseButtonHandler {
       }
 
       input.value = '';
+      this.clearSearchResults();
       syncActionButton();
       input.focus();
     });
@@ -350,20 +412,17 @@ export class SearchButtonHandler extends BaseButtonHandler {
    * @param query 搜索关键词
    */
   private async doSearch(query: string): Promise<void> {
-    const { onSearch, onSelect, searchService } = this.options;
+    const { onSearch, searchService } = this.options;
 
     try {
       let results: any[] = [];
-
       if (searchService && typeof searchService.search === 'function') {
         results = await searchService.search(query);
       } else if (onSearch) {
         results = await onSearch(query);
       }
 
-      if (results && results.length > 0) {
-        this.showSearchResults(results);
-      }
+      this.showSearchResults(Array.isArray(results) ? results : []);
     } catch (error) {
       console.error('搜索失败:', error);
     }
@@ -376,13 +435,10 @@ export class SearchButtonHandler extends BaseButtonHandler {
   private showSearchResults(results: any[]): void {
     if (!this.searchContainer) return;
 
-    const existingResults = this.searchContainer.querySelector('.search-results');
-    if (existingResults) {
-      existingResults.remove();
-    }
+    this.clearSearchResults();
 
     const defaultStyles = this.getDefaultStyles();
-    const userStyles = this.styleConfig || {};
+    const userStyles = this.normalizeStyleConfig(this.styleConfig);
 
     const resultStyle = { ...defaultStyles.result, ...userStyles.resultStyle };
     const resultItemStyle = { ...defaultStyles.resultItem, ...userStyles.resultItemStyle };
@@ -393,10 +449,63 @@ export class SearchButtonHandler extends BaseButtonHandler {
     resultsContainer.className = 'search-results';
     Object.assign(resultsContainer.style, resultStyle);
 
+    if (results.length === 0) {
+      const emptyState = document.createElement('div');
+      Object.assign(emptyState.style, resultItemStyle, {
+        cursor: 'default',
+        color: 'rgba(210, 225, 244, 0.72)',
+        fontSize: '13px',
+        lineHeight: '1.5',
+        textAlign: 'center',
+      } as Partial<CSSStyleDeclaration>);
+      emptyState.textContent = this.getEmptyResultText();
+      resultsContainer.appendChild(emptyState);
+      this.searchContainer.appendChild(resultsContainer);
+      return;
+    }
+
     results.forEach((result) => {
       const item = document.createElement('div');
       Object.assign(item.style, resultItemStyle);
-      item.textContent = result.name || result.address || JSON.stringify(result);
+      item.style.display = 'flex';
+      item.style.flexDirection = 'column';
+      item.style.alignItems = 'flex-start';
+      item.style.gap = '6px';
+
+      const nameElement = document.createElement('div');
+      const fallbackLabel = typeof result === 'string'
+        ? result
+        : (typeof result?.name === 'string' && result.name.trim())
+          ? result.name.trim()
+          : (typeof result?.address === 'string' && result.address.trim())
+            ? result.address.trim()
+            : '';
+      nameElement.textContent = fallbackLabel;
+      Object.assign(nameElement.style, {
+        width: '100%',
+        fontSize: '15px',
+        fontWeight: '600',
+        lineHeight: '1.2',
+        color: '#f4f9ff',
+        wordBreak: 'break-word',
+      } as Partial<CSSStyleDeclaration>);
+
+      const addressText = typeof result.address === 'string' ? result.address.trim() : '';
+      if (addressText) {
+        const addressElement = document.createElement('div');
+        addressElement.textContent = addressText;
+        Object.assign(addressElement.style, {
+          width: '100%',
+          fontSize: '12px',
+          fontWeight: '400',
+          lineHeight: '1.45',
+          color: 'rgba(210, 225, 244, 0.88)',
+          wordBreak: 'break-word',
+        } as Partial<CSSStyleDeclaration>);
+        item.appendChild(addressElement);
+      }
+
+      item.prepend(nameElement);
 
       item.addEventListener('mouseenter', () => {
         Object.assign(item.style, hoverStyle);

@@ -22,6 +22,8 @@ export type {
   IMenu,
   ToolbarServiceConfig,
   ToolbarCallbacks,
+  MeasurementCompleteEvent,
+  MeasurementServiceLike,
   SearchResult,
   SearchServiceConfig,
   MeasurementServiceConfig,

@@ -25,6 +25,7 @@ import { OverlayService } from './services/overlay/OverlayService';
 import { DrawService } from './services/draw/DrawService';
 import { ToolbarService } from './services/toolbar/ToolbarService';
 import type { ToolbarServiceOptions } from './services/toolbar/ToolbarService';
+import type { ToolbarCallbacks } from './services/toolbar/types';
 
 import { 
   createTDTImageryConfig,
@@ -37,13 +38,8 @@ import {
   createGaodeVectorConfig
 } from './layers/GaodeMapLayer';
 
-import {
-  createBaiduImageryConfig
-} from './layers/BaiduMapLayer';
-
-import {
-  createOSMConfig
-} from './layers/OSMMapLayer';
+import {  createOSMConfig } from './layers/OSMMapLayer';
+import { createBaiduImageryConfig } from './layers/BaiduMapLayer';
 import { loadAllAirportNoFlyZones, geojsonCoordinatesToCartesian3 } from '../utils/geojson';
 
 interface InitialCenter {
@@ -53,11 +49,22 @@ interface InitialCenter {
 }
 
 class PluginMapController {
+  private callbacks?: Pick<ToolbarCallbacks, 'onZoomIn' | 'onZoomOut' | 'onFullscreenChange' | 'onResetLocation'>;
+
   constructor(
     private readonly viewer: Cesium.Viewer,
     private readonly getInitialCenter: () => InitialCenter,
     private readonly setInitialCenter: (center: InitialCenter) => void,
-  ) {}
+    callbacks?: Pick<ToolbarCallbacks, 'onZoomIn' | 'onZoomOut' | 'onFullscreenChange' | 'onResetLocation'>,
+  ) {
+    this.callbacks = callbacks;
+  }
+
+  setCallbacks(
+    callbacks?: Pick<ToolbarCallbacks, 'onZoomIn' | 'onZoomOut' | 'onFullscreenChange' | 'onResetLocation'>,
+  ): void {
+    this.callbacks = callbacks;
+  }
 
   toggle2D3D(): void {
     if (this.viewer.scene.mode === Cesium.SceneMode.SCENE3D) {
@@ -79,26 +86,32 @@ class PluginMapController {
       },
       duration: 0,
     });
+    this.callbacks?.onResetLocation?.();
   }
 
   zoomIn(): void {
-    const height = this.viewer.camera.positionCartographic.height || 1000;
-    this.viewer.camera.zoomIn(Math.max(height * 0.5, 100));
+    const beforeHeight = this.viewer.camera.positionCartographic.height || 1000;
+    this.viewer.camera.zoomIn(Math.max(beforeHeight * 0.5, 100));
+    const afterHeight = this.viewer.camera.positionCartographic.height || 0;
+    this.callbacks?.onZoomIn?.(beforeHeight, afterHeight);
   }
 
   zoomOut(): void {
-    const height = this.viewer.camera.positionCartographic.height || 1000;
-    this.viewer.camera.zoomOut(Math.max(height * 0.5, 100));
+    const beforeHeight = this.viewer.camera.positionCartographic.height || 1000;
+    this.viewer.camera.zoomOut(Math.max(beforeHeight * 0.5, 100));
+    const afterHeight = this.viewer.camera.positionCartographic.height || 0;
+    this.callbacks?.onZoomOut?.(beforeHeight, afterHeight);
   }
 
   toggleFullscreen(): void {
     const container = this.viewer.container as HTMLElement;
-    if (!document.fullscreenElement) {
+    const willEnterFullscreen = !document.fullscreenElement;
+    if (willEnterFullscreen) {
       void container.requestFullscreen?.();
-      return;
+    } else {
+      void document.exitFullscreen?.();
     }
-
-    void document.exitFullscreen?.();
+    this.callbacks?.onFullscreenChange?.(willEnterFullscreen);
   }
 
   setInitialCenterValue(center: InitialCenter): void {
@@ -242,6 +255,7 @@ export class MapPlugin {
         (center) => {
           this.initialCenter = center;
         },
+        undefined,
       );
     }
 
@@ -921,6 +935,12 @@ export class MapPlugin {
       toolbarOptions,
     );
 
+    this.getToolbarController().setCallbacks({
+      onZoomIn: options.callbacks?.onZoomIn,
+      onZoomOut: options.callbacks?.onZoomOut,
+      onFullscreenChange: options.callbacks?.onFullscreenChange,
+      onResetLocation: options.callbacks?.onResetLocation,
+    });
     this.toolbarService.initialize();
     this.toolbarService.setMapController(this.getToolbarController());
     this.toolbarService.setLayersService(this.createLayersServiceBridge());

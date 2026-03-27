@@ -8,7 +8,9 @@
 import { onMounted, ref, shallowRef, onBeforeUnmount } from "vue";
 import * as Cesium from 'cesium';
 import { getViteTdToken, getViteCesiumToken } from "./utils/common.ts";
-import { createMapPlugin, MapPlugin, ToolbarService, type DrawOptions } from "./index.ts";
+import { createMapPlugin, MapPlugin, ToolbarService, type DrawOptions, type SearchResult } from "./index.ts";
+import { TD_Map_Search_URL, China_Map_Extent } from "./hooks/useMap";
+import { toolbarLayersMenu, toolbarSearchMenu, toolbarButtonConfigs } from "./z.const.ts";
 import searchIcon from "./assets/images/toolbar/search@3x.png";
 import measureIcon from "./assets/images/toolbar/measure@3x.png";
 import layersIcon from "./assets/images/toolbar/layers@3x.png";
@@ -16,89 +18,6 @@ import locationIcon from "./assets/images/toolbar/location@3x.png";
 import zoomInIcon from "./assets/images/toolbar/zoom-in@3x.png";
 import zoomOutIcon from "./assets/images/toolbar/zoom-out@3x.png";
 import fullscreenIcon from "./assets/images/toolbar/fullscreen@3x.png";
-
-const toolbarSearchMenu = {
-  idleActionIcon: searchIcon,
-  clearActionIcon: '✕',
-  panelStyle: {
-    containerStyle: {
-      padding: '0',
-      background: 'rgba(7, 35, 73, 0.92)',
-      border: '1px solid rgba(31, 122, 242, 0.9)',
-      boxShadow: '0 10px 18px rgba(0, 0, 0, 0.24)',
-    },
-    inputStyle: {
-      width: '210px',
-      height: '36px',
-      padding: '0 38px 0 12px',
-      color: '#f4f9ff',
-      background: 'rgba(7, 35, 73, 0.92)',
-      border: '1px solid rgba(31, 122, 242, 0.9)',
-      fontSize: '13px',
-    },
-    actionButtonStyle: {
-      right: '10px',
-      width: '18px',
-      height: '18px',
-      color: '#2d8dff',
-    },
-    actionIconStyle: {
-      width: '18px',
-      height: '18px',
-    },
-    resultStyle: {
-      marginTop: '0',
-      background: 'rgba(7, 35, 73, 0.96)',
-      border: '1px solid rgba(31, 122, 242, 0.9)',
-      boxShadow: '0 10px 18px rgba(0, 0, 0, 0.24)',
-    },
-    resultItemStyle: {
-      color: '#f4f9ff',
-      padding: '12px 14px',
-      borderBottom: '1px solid rgba(255, 77, 59, 0.46)',
-    },
-    resultItemHoverStyle: {
-      backgroundColor: 'rgba(12, 53, 107, 0.96)',
-    },
-    resultItemActiveStyle: {
-      backgroundColor: 'rgba(18, 74, 143, 0.98)',
-    },
-  },
-};
-
-const toolbarLayersMenu = {
-  defaultPlaceNameChecked: true,
-  defaultNoFlyZoneChecked: false,
-  panelStyle: {
-    containerStyle: {
-      background: 'linear-gradient(180deg, rgba(7, 33, 74, 0.96) 0%, rgba(3, 18, 45, 0.96) 100%)',
-      border: '1px solid rgba(76, 160, 255, 0.36)',
-      borderRadius: '2px',
-      boxShadow: '0 18px 42px rgba(3, 12, 30, 0.42)',
-    },
-    sectionTitleStyle: {
-      color: '#e8f3ff',
-      letterSpacing: '0.08em',
-    },
-    mapTypeCardStyle: {
-      borderRadius: '2px',
-      border: '1px solid rgba(78, 138, 229, 0.28)',
-      boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.08)',
-    },
-    mapTypeCardSelectedStyle: {
-      border: '1px solid rgba(83, 185, 255, 0.92)',
-      boxShadow: '0 0 0 1px rgba(83, 185, 255, 0.22), 0 12px 28px rgba(5, 15, 33, 0.42)',
-    },
-    placeNameBadgeStyle: {
-      background: 'rgba(8, 19, 38, 0.86)',
-      border: '1px solid rgba(93, 178, 255, 0.36)',
-      color: '#eff7ff',
-    },
-    noFlyZoneItemStyle: {
-
-    },
-  },
-};
 
 const distanceDrawOptions: DrawOptions = {
   measurementTheme: {
@@ -216,80 +135,38 @@ const initMap = async () => {
           },
           searchMenu: toolbarSearchMenu,
           layersMenu: toolbarLayersMenu,
-          buttonConfigs: [
-            {
-              id: 'search',
-              icon: searchIcon,
-              backgroundColor: 'rgba(0, 0, 0, 0.52)',
-              borderColor: 'rgba(9, 109, 236, 0.85)',
-              color: '#ffffff',
-              hoverColor: 'rgba(9, 109, 236, 0.95)',
-            },
-            {
-              id: 'measure',
-              icon: measureIcon,
-              backgroundColor: 'rgba(0, 0, 0, 0.52)',
-              borderColor: 'rgba(9, 109, 236, 0.85)',
-              color: '#ffffff',
-              hoverColor: 'rgba(9, 109, 236, 0.95)',
-            },
-            {
-              id: 'view2d3d',
-              icon: '3D',
-              activeIcon: '2D',
-              backgroundColor: 'rgba(0, 0, 0, 0.52)',
-              borderColor: 'rgba(9, 109, 236, 0.85)',
-              color: 'rgba(9, 109, 236, 0.85)',
-              hoverColor: 'rgba(9, 109, 236, 0.95)',
-            },
-            {
-              id: 'layers',
-              icon: layersIcon,
-              backgroundColor: 'rgba(0, 0, 0, 0.52)',
-              borderColor: 'rgba(9, 109, 236, 0.85)',
-              color: '#ffffff',
-              hoverColor: 'rgba(9, 109, 236, 0.95)',
-            },
-            {
-              id: 'location',
-              icon: locationIcon,
-              backgroundColor: 'rgba(0, 0, 0, 0.52)',
-              borderColor: 'rgba(9, 109, 236, 0.85)',
-              color: '#ffffff',
-              hoverColor: 'rgba(9, 109, 236, 0.95)',
-            },
-            {
-              id: 'zoom-in',
-              icon: zoomInIcon,
-              backgroundColor: 'rgba(0, 0, 0, 0.52)',
-              borderColor: 'rgba(9, 109, 236, 0.85)',
-              color: '#ffffff',
-              hoverColor: 'rgba(9, 109, 236, 0.95)',
-            },
-            {
-              id: 'zoom-out',
-              icon: zoomOutIcon,
-              backgroundColor: 'rgba(0, 0, 0, 0.52)',
-              borderColor: 'rgba(9, 109, 236, 0.85)',
-              color: '#ffffff',
-              hoverColor: 'rgba(9, 109, 236, 0.95)',
-            },
-            {
-              id: 'fullscreen',
-              icon: fullscreenIcon,
-              backgroundColor: 'rgba(0, 0, 0, 0.52)',
-              borderColor: 'rgba(9, 109, 236, 0.85)',
-              color: '#ffffff',
-              hoverColor: 'rgba(9, 109, 236, 0.95)',
-            },
-          ],
+          buttonConfigs: toolbarButtonConfigs,
           callbacks: {
-            onSearch: async (query: string) => {
-              const presets = [
-                { name: '天安门', address: '北京', longitude: 116.3974, latitude: 39.9093, height: 1000 },
-                { name: '奥林匹克公园', address: '北京', longitude: 116.3906, latitude: 39.9923, height: 1000 },
-              ];
-              return presets.filter((item) => item.name.includes(query) || item.address.includes(query));
+            onSearch: async (query: string): Promise<SearchResult[]> => {
+              try {
+                const url = TD_Map_Search_URL(query, China_Map_Extent);
+                const response = await fetch(url, {
+                  method: 'GET',
+                  mode: 'cors',
+                  credentials: 'omit',
+                  headers: {
+                    Accept: 'application/json',
+                  },
+                });
+
+                if (!response.ok) {
+                  throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                const pois = data?.data?.pois || data?.pois || [];
+                console.log('搜索结果:', pois);
+                return pois.map((location: any) => ({
+                  name: location?.name || query,
+                  address: location?.address || '',
+                  longitude: Number(location?.lonlat?.split(',')[0] || 0),
+                  latitude: Number(location?.lonlat?.split(',')[1] || 0),
+                  height: 100,
+                }));
+              } catch (error) {
+                console.error('搜索失败:', error);
+                return [];
+              }
             },
             onSelect: (result: any) => {
               viewer.camera.flyTo({

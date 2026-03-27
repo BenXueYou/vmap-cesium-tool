@@ -6,13 +6,26 @@
 import { BaseButtonHandler } from './BaseButtonHandler';
 import type { ToolbarButton } from '../../../../components/ToolbarButton';
 import { MeasureMenu } from '../menus/MeasureMenu';
+import { calculatePolygonArea, calculateTotalDistance } from '../../draw/geometry/drawGeometry';
+import type { MeasurementCompleteEvent, MeasurementServiceLike } from '../types';
+
+type MeasurementMode = 'distance' | 'area' | null;
+
+interface DrawCompletionResult {
+  positions?: any[];
+}
+
+interface LegacyMeasureCompleteResult {
+  type?: 'line' | 'polygon' | 'rectangle' | 'circle';
+  positions?: any[];
+}
 
 /**
  * 测量按钮处理器配置
  */
 export interface MeasureButtonHandlerOptions {
   /** 测量服务实例 */
-  measurementService?: any;
+  measurementService?: MeasurementServiceLike;
   
   /** 绘图助手实例 */
   drawHelper?: any;
@@ -28,6 +41,12 @@ export interface MeasureButtonHandlerOptions {
 
   /** 测面积绘制选项 */
   getAreaDrawOptions?: () => any;
+
+  /** 测距完成回调 */
+  onDistanceComplete?: (positions: any[], distance: number) => void;
+
+  /** 测面积完成回调 */
+  onAreaComplete?: (positions: any[], area: number) => void;
   
   /** 清除测量回调 */
   onClear?: () => void;
@@ -41,6 +60,9 @@ export class MeasureButtonHandler extends BaseButtonHandler {
   
   private menu: MeasureMenu | null = null;
   private options: MeasureButtonHandlerOptions;
+  private activeMeasurementMode: MeasurementMode = null;
+  private boundMeasurementService: MeasurementServiceLike | null = null;
+  private boundDrawHelper: any = null;
 
   /**
    * 构造函数
@@ -57,6 +79,8 @@ export class MeasureButtonHandler extends BaseButtonHandler {
   ) {
     super('measure', viewer, i18n, useI18n);
     this.options = options;
+    this.bindMeasurementServiceCallbacks();
+    this.bindDrawCallbacks();
   }
 
   updateOptions(options: Partial<MeasureButtonHandlerOptions>): void {
@@ -64,6 +88,8 @@ export class MeasureButtonHandler extends BaseButtonHandler {
       ...this.options,
       ...options,
     };
+    this.bindMeasurementServiceCallbacks();
+    this.bindDrawCallbacks();
   }
 
   /**
@@ -130,7 +156,102 @@ export class MeasureButtonHandler extends BaseButtonHandler {
       this.menu.destroy();
       this.menu = null;
     }
+    this.activeMeasurementMode = null;
+    this.boundMeasurementService = null;
+    this.boundDrawHelper = null;
     this.button = null;
+  }
+
+  private bindMeasurementServiceCallbacks(): void {
+    const { measurementService } = this.options;
+    if (!measurementService || this.boundMeasurementService === measurementService) {
+      return;
+    }
+
+    measurementService.onMeasurementComplete?.((event: MeasurementCompleteEvent) => {
+      this.handleMeasurementComplete(event);
+    });
+    measurementService.onClearComplete?.(() => {
+      this.handleClearComplete();
+    });
+    this.boundMeasurementService = measurementService;
+  }
+
+  private bindDrawCallbacks(): void {
+    const { drawHelper, measurementService } = this.options;
+    if (measurementService || !drawHelper || this.boundDrawHelper === drawHelper) {
+      return;
+    }
+
+    if (typeof drawHelper.onMeasureComplete === 'function') {
+      drawHelper.onMeasureComplete((result: LegacyMeasureCompleteResult | null) => {
+        this.handleLegacyMeasureComplete(result);
+      });
+      this.boundDrawHelper = drawHelper;
+      return;
+    }
+
+    if (typeof drawHelper.onDrawEnd !== 'function') {
+      return;
+    }
+
+    drawHelper.onDrawEnd((result: DrawCompletionResult | null) => {
+      this.handleDrawComplete(result);
+    });
+    this.boundDrawHelper = drawHelper;
+  }
+
+  private handleMeasurementComplete(event: MeasurementCompleteEvent): void {
+    this.activeMeasurementMode = null;
+
+    if (!Array.isArray(event.positions)) {
+      return;
+    }
+
+    if (event.type === 'distance') {
+      this.options.onDistanceComplete?.(event.positions, event.value);
+      return;
+    }
+
+    this.options.onAreaComplete?.(event.positions, event.value);
+  }
+
+  private handleClearComplete(): void {
+    this.activeMeasurementMode = null;
+    this.options.onClear?.();
+  }
+
+  private handleLegacyMeasureComplete(result: LegacyMeasureCompleteResult | null): void {
+    this.activeMeasurementMode = null;
+
+    if (!result || !Array.isArray(result.positions)) {
+      return;
+    }
+
+    if (result.type === 'line') {
+      this.options.onDistanceComplete?.(result.positions, calculateTotalDistance(result.positions));
+      return;
+    }
+
+    if (result.type === 'polygon' || result.type === 'rectangle' || result.type === 'circle') {
+      this.options.onAreaComplete?.(result.positions, calculatePolygonArea(result.positions));
+    }
+  }
+
+  private handleDrawComplete(result: DrawCompletionResult | null): void {
+    const mode = this.activeMeasurementMode;
+    this.activeMeasurementMode = null;
+
+    if (!result || !mode || !Array.isArray(result.positions)) {
+      return;
+    }
+
+    if (mode === 'distance') {
+      this.options.onDistanceComplete?.(result.positions, calculateTotalDistance(result.positions));
+      return;
+    }
+
+    this.options.onAreaComplete?.(result.positions, calculatePolygonArea(result.positions));
   }
 
   /**
@@ -164,9 +285,10 @@ export class MeasureButtonHandler extends BaseButtonHandler {
   private startDistanceMeasurement(): void {
     const { measurementService, drawHelper, onDistanceStart, getDistanceDrawOptions } = this.options;
     const drawOptions = getDistanceDrawOptions?.();
+    this.activeMeasurementMode = 'distance';
     
     if (measurementService) {
-      measurementService.startDistanceMeasurement();
+      measurementService.startDistanceMeasurement(drawOptions);
     } else if (drawHelper) {
       if (typeof drawHelper.startDrawingLine === 'function') {
         drawHelper.startDrawingLine(drawOptions);
@@ -186,9 +308,10 @@ export class MeasureButtonHandler extends BaseButtonHandler {
   private startAreaMeasurement(): void {
     const { measurementService, drawHelper, onAreaStart, getAreaDrawOptions } = this.options;
     const drawOptions = getAreaDrawOptions?.();
+    this.activeMeasurementMode = 'area';
     
     if (measurementService) {
-      measurementService.startAreaMeasurement();
+      measurementService.startAreaMeasurement(drawOptions);
     } else if (drawHelper) {
       if (typeof drawHelper.startDrawingPolygon === 'function') {
         drawHelper.startDrawingPolygon(drawOptions);
@@ -207,6 +330,7 @@ export class MeasureButtonHandler extends BaseButtonHandler {
    */
   private clearMeasurements(): void {
     const { measurementService, drawHelper, onClear } = this.options;
+    this.activeMeasurementMode = null;
     
     if (measurementService) {
       measurementService.clearMeasurements();
@@ -216,9 +340,9 @@ export class MeasureButtonHandler extends BaseButtonHandler {
       } else {
         drawHelper.clear?.();
       }
+      onClear?.();
     }
-    
-    onClear?.();
+
     this.menu?.hide();
   }
 

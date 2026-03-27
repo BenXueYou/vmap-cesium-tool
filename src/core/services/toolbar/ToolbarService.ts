@@ -11,7 +11,7 @@ import type { I18nLike } from '../../../i18n';
 import type {
   IButtonHandler,
   ToolbarServiceConfig,
-  ToolbarCallbacks,
+  MeasurementServiceLike,
   DefaultButtonConfig,
 } from './types';
 
@@ -187,8 +187,10 @@ export class ToolbarService {
         drawHelper: this.drawHelper,
         onDistanceStart: callbacks?.onMeasurementStart,
         getDistanceDrawOptions: callbacks?.getDistanceDrawOptions,
-        onAreaStart: () => {},
+        onAreaStart: callbacks?.onMeasurementStart,
         getAreaDrawOptions: callbacks?.getAreaDrawOptions,
+        onDistanceComplete: callbacks?.onDistanceComplete,
+        onAreaComplete: callbacks?.onAreaComplete,
         onClear: callbacks?.onClear,
       },
       this.i18n,
@@ -443,7 +445,7 @@ export class ToolbarService {
    * 设置测量服务
    * @param service 测量服务实例
    */
-  setMeasurementService(service: any): void {
+  setMeasurementService(service: MeasurementServiceLike): void {
     this.measurementService = service;
 
     const handler = this.getButtonHandler('measure') as MeasureButtonHandler;
@@ -451,7 +453,11 @@ export class ToolbarService {
       measurementService: service,
       drawHelper: this.drawHelper,
       onDistanceStart: this.config.callbacks?.onMeasurementStart,
-      onAreaStart: () => {},
+      getDistanceDrawOptions: this.config.callbacks?.getDistanceDrawOptions,
+      onAreaStart: this.config.callbacks?.onMeasurementStart,
+      getAreaDrawOptions: this.config.callbacks?.getAreaDrawOptions,
+      onDistanceComplete: this.config.callbacks?.onDistanceComplete,
+      onAreaComplete: this.config.callbacks?.onAreaComplete,
       onClear: this.config.callbacks?.onClear,
     });
   }

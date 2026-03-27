@@ -1,3 +1,11 @@
+import searchIcon from "./assets/images/toolbar/search@3x.png";
+import measureIcon from "./assets/images/toolbar/measure@3x.png";
+import layersIcon from "./assets/images/toolbar/layers@3x.png";
+import locationIcon from "./assets/images/toolbar/location@3x.png";
+import zoomInIcon from "./assets/images/toolbar/zoom-in@3x.png";
+import zoomOutIcon from "./assets/images/toolbar/zoom-out@3x.png";
+import fullscreenIcon from "./assets/images/toolbar/fullscreen@3x.png";
+
 export const defaultHeatmapData = [
     [
         {
@@ -1525,3 +1533,154 @@ export const defaultHeatmapOpacity = {
     0.0: 0.0,
     0.5: 0.5, // 1.0: 1.0,    
 }
+
+export const toolbarSearchMenu = {
+  idleActionIcon: searchIcon,
+  clearActionIcon: '✕',
+  panelStyle: {
+    containerStyle: {
+      padding: '0',
+      background: 'rgba(7, 35, 73, 0.92)',
+      border: '1px solid rgba(31, 122, 242, 0.9)',
+      boxShadow: '0 10px 18px rgba(0, 0, 0, 0.24)',
+    },
+    inputStyle: {
+      width: '210px',
+      height: '36px',
+      padding: '0 38px 0 12px',
+      color: '#f4f9ff',
+      background: 'rgba(7, 35, 73, 0.92)',
+      border: '1px solid rgba(31, 122, 242, 0.9)',
+      fontSize: '13px',
+    },
+    actionButtonStyle: {
+      right: '10px',
+      width: '18px',
+      height: '18px',
+      color: '#2d8dff',
+    },
+    actionIconStyle: {
+      width: '18px',
+      height: '18px',
+    },
+    resultStyle: {
+      marginTop: '0',
+      background: 'rgba(7, 35, 73, 0.96)',
+      border: '1px solid rgba(31, 122, 242, 0.9)',
+      boxShadow: '0 10px 18px rgba(0, 0, 0, 0.24)',
+    },
+    resultItemStyle: {
+      color: '#f4f9ff',
+      padding: '12px 14px',
+    },
+    resultItemHoverStyle: {
+      backgroundColor: 'rgba(12, 53, 107, 0.96)',
+    },
+    resultItemActiveStyle: {
+      backgroundColor: 'rgba(18, 74, 143, 0.98)',
+    },
+  },
+};
+
+export const toolbarLayersMenu = {
+  defaultPlaceNameChecked: true,
+  defaultNoFlyZoneChecked: false,
+  panelStyle: {
+    containerStyle: {
+      background: 'linear-gradient(180deg, rgba(7, 33, 74, 0.96) 0%, rgba(3, 18, 45, 0.96) 100%)',
+      border: '1px solid rgba(76, 160, 255, 0.36)',
+      borderRadius: '2px',
+      boxShadow: '0 18px 42px rgba(3, 12, 30, 0.42)',
+    },
+    sectionTitleStyle: {
+      color: '#e8f3ff',
+      letterSpacing: '0.08em',
+    },
+    mapTypeCardStyle: {
+      borderRadius: '2px',
+      border: '1px solid rgba(78, 138, 229, 0.28)',
+      boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.08)',
+    },
+    mapTypeCardSelectedStyle: {
+      border: '1px solid rgba(83, 185, 255, 0.92)',
+      boxShadow: '0 0 0 1px rgba(83, 185, 255, 0.22), 0 12px 28px rgba(5, 15, 33, 0.42)',
+    },
+    placeNameBadgeStyle: {
+      background: 'rgba(8, 19, 38, 0.86)',
+      border: '1px solid rgba(93, 178, 255, 0.36)',
+      color: '#eff7ff',
+    },
+    noFlyZoneItemStyle: {
+
+    },
+  },
+};
+
+export const toolbarButtonConfigs = [
+            {
+              id: 'search',
+              icon: searchIcon,
+              backgroundColor: 'rgba(0, 0, 0, 0.52)',
+              borderColor: 'rgba(9, 109, 236, 0.85)',
+              color: '#ffffff',
+              hoverColor: 'rgba(9, 109, 236, 0.95)',
+            },
+            {
+              id: 'measure',
+              icon: measureIcon,
+              backgroundColor: 'rgba(0, 0, 0, 0.52)',
+              borderColor: 'rgba(9, 109, 236, 0.85)',
+              color: '#ffffff',
+              hoverColor: 'rgba(9, 109, 236, 0.95)',
+            },
+            {
+              id: 'view2d3d',
+              icon: '3D',
+              activeIcon: '2D',
+              backgroundColor: 'rgba(0, 0, 0, 0.52)',
+              borderColor: 'rgba(9, 109, 236, 0.85)',
+              color: 'rgba(9, 109, 236, 0.85)',
+              hoverColor: 'rgba(9, 109, 236, 0.95)',
+            },
+            {
+              id: 'layers',
+              icon: layersIcon,
+              backgroundColor: 'rgba(0, 0, 0, 0.52)',
+              borderColor: 'rgba(9, 109, 236, 0.85)',
+              color: '#ffffff',
+              hoverColor: 'rgba(9, 109, 236, 0.95)',
+            },
+            {
+              id: 'location',
+              icon: locationIcon,
+              backgroundColor: 'rgba(0, 0, 0, 0.52)',
+              borderColor: 'rgba(9, 109, 236, 0.85)',
+              color: '#ffffff',
+              hoverColor: 'rgba(9, 109, 236, 0.95)',
+            },
+            {
+              id: 'zoom-in',
+              icon: zoomInIcon,
+              backgroundColor: 'rgba(0, 0, 0, 0.52)',
+              borderColor: 'rgba(9, 109, 236, 0.85)',
+              color: '#ffffff',
+              hoverColor: 'rgba(9, 109, 236, 0.95)',
+            },
+            {
+              id: 'zoom-out',
+              icon: zoomOutIcon,
+              backgroundColor: 'rgba(0, 0, 0, 0.52)',
+              borderColor: 'rgba(9, 109, 236, 0.85)',
+              color: '#ffffff',
+              hoverColor: 'rgba(9, 109, 236, 0.95)',
+            },
+            {
+              id: 'fullscreen',
+              icon: fullscreenIcon,
+              backgroundColor: 'rgba(0, 0, 0, 0.52)',
+              borderColor: 'rgba(9, 109, 236, 0.85)',
+              color: '#ffffff',
+              hoverColor: 'rgba(9, 109, 236, 0.95)',
+            },
+          ];
+
