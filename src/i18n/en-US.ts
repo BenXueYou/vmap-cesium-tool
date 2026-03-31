@@ -1,7 +1,19 @@
 const enUS = {
   locale: "en-US",
+  toolbar: {
+    search: "Search",
+    measure: "Measure",
+    view2d3d: "2D / 3D",
+    layers: "Layers",
+    location: "Locate",
+    zoom_in: "Zoom Out",
+    zoom_out: "Zoom In",
+    fullscreen: "Fullscreen",
+    search_placeholder: "Search...",
+    search_empty: "No results",
+  },
   app: {
-    lang: { zh: "中文", en: "English" },
+    lang: { zh: "中文", en: "English", switch: "Language", current: "Current" },
     located: "Located: {name}",
     init_success: "Map initialized",
     heatmap_empty: "Heatmap data is empty",
@@ -67,7 +79,44 @@ const enUS = {
       stop: "Exit current edit",
     },
   },
+  layers: {
+    base_maps: "Base Maps",
+    assistance: "Assist Layers",
+    no_fly_zone: "Airport No-Fly Zone",
+    map_type: {
+      place_name: "road network",
+    },
+  },
+  map: {
+    types: {
+      vec: "Vector Map",
+      img: "Imagery Map",
+      ter: "Terrain Map",
+    },
+  },
+  measurement: {
+    menu: {
+      area: "Area",
+      distance: "Distance",
+      clear: "Clear",
+    },
+  },
   draw: {
+    hint: {
+      first_point: "Click on the map to place the first point",
+      area_start: "Left click to start drawing the area",
+      line_next_point: "Click on the map to place the next point and measure distance in real time",
+      line_continue: "Left click to continue, right click to remove a point, double click to finish distance measurement",
+      polygon_second_point: "Click on the map to place the second point",
+      polygon_third_point: "Click on the map to place the third point and start area calculation",
+      polygon_continue: "Left click to continue, right click to remove a point, double click to finish area measurement",
+      area_continue: "Left click to draw the area, right click to remove a point, double click to finish",
+    },
+    measurement: {
+      total_distance: "Total: {value}",
+      preview_area: "Area: {value}",
+      total_area: "Total Area: {value}",
+    },
     start: {
       line: "Start drawing line: left click to add points, double click to finish, right click to remove last point",
       rectangle: "Start drawing rectangle: left click to set start, left click again to set end, double click to finish",

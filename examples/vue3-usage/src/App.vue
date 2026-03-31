@@ -16,16 +16,37 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
-import { CesiumMapToolbar, initCesium, i18n } from "vmap-cesium-toolbar";
+import { computed, onMounted, onUnmounted, ref, markRaw } from "vue";
+import { createMapPlugin, i18n, type MapPlugin, type SearchResult } from "vmap-cesium-toolbar";
 import * as Cesium from "cesium";
 import { getViteTdToken } from "./common";
 
+type Locale = "zh-CN" | "en-US";
+
 const message = ref("");
-const locale = ref(i18n.getLocale());
+const locale = ref<Locale>(i18n.getLocale() as Locale);
 let viewer: any;
-let toolbar: CesiumMapToolbar | null = null;
+let mapPlugin: MapPlugin | null = null;
 let unsubscribeI18n: (() => void) | null = null;
+
+const showMessage = (nextMessage: string, duration = 3000) => {
+  message.value = nextMessage;
+  window.setTimeout(() => {
+    if (message.value === nextMessage) {
+      message.value = "";
+    }
+  }, duration);
+};
+
+const buildMockSearchResults = (query: string): SearchResult[] => [
+  {
+    name: query || "西湖",
+    address: "杭州市西湖区",
+    longitude: 120.13,
+    latitude: 30.24,
+    height: 50,
+  },
+];
 
 const labels = computed(() => ({
   title: i18n.t("demo.title", undefined, locale.value),
@@ -35,7 +56,7 @@ const labels = computed(() => ({
 }));
 
 const onLocaleSelect = (event: Event) => {
-  const next = (event.target as HTMLSelectElement).value as "zh-CN" | "en-US";
+  const next = (event.target as HTMLSelectElement).value as Locale;
   i18n.setLocale(next, { persist: false });
 };
 
@@ -56,119 +77,128 @@ onMounted(async () => {
 
   const cesiumToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIxNDNmMGRiZC1mZTAyLTQ5ZTItOWI2Ni1mOTJlZjBhODJlZDAiLCJpZCI6MzYyMzk0LCJpYXQiOjE3NjM2OTA5ODB9.9FbL7xdcG6TnSefrH08xSL_gIBfIoiziZoBacJ3tq60";
   Cesium.Ion.defaultAccessToken = cesiumToken;
-  Cesium.IonResource.fromAssetId = () => {
-    throw new Error('Cesium ion is disabled');
-  };
-  const { viewer: cesiumViewer } = await initCesium(
-    "cesiumContainer",
-    {
-      token: getViteTdToken(),
-      mapType: 'tiandi',
-      isFly: true,
-      baseLayerPicker: false,
-      showRenderLoopErrors: true,
-      terrainProvider: new Cesium.EllipsoidTerrainProvider(),
-      contextOptions: {
-        webgl: {
-          antialias: true,    // 启用抗锯齿
-          alpha: false,       // 关闭 alpha 通道以提升性能
-        }
+  try {
+    mapPlugin = createMapPlugin("cesiumContainer", {
+      cesiumToken,
+      viewerOptions: {
+        baseLayerPicker: false,
+        showRenderLoopErrors: true,
+        terrainProvider: new Cesium.EllipsoidTerrainProvider(),
+        contextOptions: {
+          webgl: {
+            antialias: true,
+            alpha: false,
+          },
+        },
+        orderIndependentTranslucency: true,
+        scene3DOnly: false,
+        msaaSamples: 4,
       },
-      // 其他相关配置
-      orderIndependentTranslucency: true,
-      fxaa: true, // 启用FXAA后处理抗锯齿
-      scene3DOnly: false,
-      msaaSamples: 4, // MSAA采样数（推荐4或8）
-      success: () => {
-        console.log(i18n.t('app.init_success'));
+      camera: {
+        center: [120.13, 30.24, 12000],
+        pitch: -45,
+        heading: 0,
+        roll: 0,
       },
-    },
-    cesiumToken
-  );
-  viewer = cesiumViewer;
+      layers: {
+        type: "tdt",
+        tdt: {
+          token: getViteTdToken(),
+          mapTypeId: "img",
+          showLabel: true,
+        },
+      },
+      services: {
+        overlay: true,
+        draw: {
+          enabled: true,
+          useI18n: true,
+          i18n,
+        },
+        toolbar: {
+          enabled: true,
+          config: {
+            position: "bottom-right",
+            buttonSize: 45,
+            buttonSpacing: 10,
+            backgroundColor: "rgba(255,255,255,0.95)",
+            borderColor: "#4285f4",
+            borderRadius: 8,
+            zIndex: 1000,
+            useI18n: true,
+            i18n,
+          },
+          callbacks: {
+            onSearch: async (query: string) => buildMockSearchResults(query),
+            onSelect: (result: SearchResult) => {
+              viewer?.camera.flyTo({
+                destination: Cesium.Cartesian3.fromDegrees(
+                  result.longitude,
+                  result.latitude,
+                  result.height ?? 1000
+                ),
+                duration: 1.2,
+              });
+              showMessage(
+                i18n.t("demo.located", { name: result.name }, locale.value)
+              );
+            },
+            onDistanceComplete: (_positions: any[], distance: number) => {
+              showMessage(
+                i18n.t(
+                  "demo.distance_done",
+                  { distance: distance.toFixed(2) },
+                  locale.value
+                )
+              );
+            },
+            onAreaComplete: (_positions: any[], area: number) => {
+              showMessage(
+                i18n.t(
+                  "demo.area_done",
+                  { area: area.toFixed(2) },
+                  locale.value
+                )
+              );
+            },
+            onClear: () => {
+              showMessage(i18n.t("demo.cleared", undefined, locale.value), 2000);
+            },
+            onZoomIn: (beforeHeight: number, afterHeight: number) => {
+              showMessage(
+                i18n.t(
+                  "demo.zoom_in",
+                  {
+                    before: beforeHeight.toFixed(0),
+                    after: afterHeight.toFixed(0),
+                  },
+                  locale.value
+                ),
+                2000
+              );
+            },
+            onZoomOut: (beforeHeight: number, afterHeight: number) => {
+              showMessage(
+                i18n.t(
+                  "demo.zoom_out",
+                  {
+                    before: beforeHeight.toFixed(0),
+                    after: afterHeight.toFixed(0),
+                  },
+                  locale.value
+                ),
+                2000
+              );
+            },
+          },
+        },
+      },
+    });
 
-  const cesiumContainer = document.getElementById("cesiumContainer");
-  if (cesiumContainer) {
-    toolbar = new CesiumMapToolbar(
-      viewer,
-      cesiumContainer,
-      {
-        position: "bottom-right",
-        buttonSize: 45,
-        buttonSpacing: 10,
-        backgroundColor: "rgba(255,255,255,0.95)",
-        borderColor: "#4285f4",
-        borderRadius: 8,
-        zIndex: 1000,
-        useI18n: true,
-        i18n,
-      },
-      {
-        search: {
-          onSearch: async (query: string) => {
-            // 模拟搜索
-            return [
-              {
-                name: "西湖",
-                address: "杭州市西湖区",
-                longitude: 120.13,
-                latitude: 30.24,
-                height: 50,
-              },
-            ];
-          },
-          onSelect: (result: any) => {
-            message.value = i18n.t(
-              "demo.located",
-              { name: result.name },
-              locale.value
-            );
-            setTimeout(() => (message.value = ""), 3000);
-          },
-        },
-        measurement: {
-          onDistanceComplete: (positions: any, distance: number) => {
-            message.value = i18n.t(
-              "demo.distance_done",
-              { distance: distance.toFixed(2) },
-              locale.value
-            );
-            setTimeout(() => (message.value = ""), 3000);
-          },
-          onAreaComplete: (positions: any, area: number) => {
-            message.value = i18n.t(
-              "demo.area_done",
-              { area: area.toFixed(2) },
-              locale.value
-            );
-            setTimeout(() => (message.value = ""), 3000);
-          },
-          onClear: () => {
-            message.value = i18n.t("demo.cleared", undefined, locale.value);
-            setTimeout(() => (message.value = ""), 2000);
-          },
-        },
-        zoom: {
-          onZoomIn: (beforeLevel: number, afterLevel: number) => {
-            message.value = i18n.t(
-              "demo.zoom_in",
-              { before: beforeLevel, after: afterLevel },
-              locale.value
-            );
-            setTimeout(() => (message.value = ""), 2000);
-          },
-          onZoomOut: (beforeLevel: number, afterLevel: number) => {
-            message.value = i18n.t(
-              "demo.zoom_out",
-              { before: beforeLevel, after: afterLevel },
-              locale.value
-            );
-            setTimeout(() => (message.value = ""), 2000);
-          },
-        },
-      }
-    );
-    toolbar.setTDToken(getViteTdToken());
+    viewer = markRaw(await mapPlugin.initialize());
+  } catch (error) {
+    console.error("地图初始化失败:", error);
+    showMessage("地图初始化失败，请检查 Token 或网络配置。", 4000);
   }
 });
 
@@ -176,6 +206,10 @@ onUnmounted(() => {
   if (unsubscribeI18n) {
     unsubscribeI18n();
   }
+
+  mapPlugin?.destroy();
+  mapPlugin = null;
+  viewer = null;
 });
 </script>
 

@@ -1,4 +1,4 @@
-import { ref, onBeforeUnmount, type Ref } from "vue";
+import { ref, shallowRef, markRaw, onBeforeUnmount, type Ref } from "vue";
 import * as Cesium from "cesium";
 import CesiumHeatmapLayer, {
   type HeatPoint,
@@ -11,13 +11,13 @@ import CesiumHeatmapLayer, {
  * 热力图相关的辅助逻辑
  */
 export function useHeatmapHelper(viewer: Ref<Cesium.Viewer | undefined>) {
-  const heatmapLayer = ref<CesiumHeatmapLayer | null>(null);
+  const heatmapLayer = shallowRef<CesiumHeatmapLayer | null>(null);
   const visible = ref(true);
 
   const initHeatmap = (options?: HeatmapOptions) => {
     if (!viewer.value) return;
     if (!heatmapLayer.value) {
-      heatmapLayer.value = new CesiumHeatmapLayer(viewer.value, options ?? {});
+      heatmapLayer.value = markRaw(new CesiumHeatmapLayer(viewer.value, options ?? {}));
       heatmapLayer.value.setVisible(visible.value);
     }
   };

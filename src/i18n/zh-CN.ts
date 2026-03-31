@@ -1,7 +1,19 @@
 const zhCN = {
   locale: "zh-CN",
+  toolbar: {
+    search: "搜索",
+    measure: "测量",
+    view2d3d: "2D / 3D",
+    layers: "图层切换",
+    location: "定位",
+    zoom_in: "缩小",
+    zoom_out: "放大",
+    fullscreen: "全屏",
+    search_placeholder: "请输入搜索内容...",
+    search_empty: "暂无搜索结果",
+  },
   app: {
-    lang: { zh: "中文", en: "English" },
+    lang: { zh: "中文", en: "English", switch: "语言切换", current: "当前语言" },
     located: "已定位到: {name}",
     init_success: "初始化地图成功",
     heatmap_empty: "热力图数据为空",
@@ -67,7 +79,44 @@ const zhCN = {
       stop: "退出当前编辑",
     },
   },
+  layers: {
+    base_maps: "底图",
+    assistance: "辅助图层",
+    no_fly_zone: "机场禁飞区",
+    map_type: {
+      place_name: "路网",
+    },
+  },
+  map: {
+    types: {
+      vec: "矢量地图",
+      img: "影像地图",
+      ter: "地形地图",
+    },
+  },
+  measurement: {
+    menu: {
+      area: "测面积",
+      distance: "测距",
+      clear: "清除",
+    },
+  },
   draw: {
+    hint: {
+      first_point: "地图上点击，绘制第一个点",
+      area_start: "左击绘制区域",
+      line_next_point: "地图上点击，绘制下一点，实时计算距离",
+      line_continue: "左击继续绘制，右键删除点位，双击结束测距",
+      polygon_second_point: "地图上点击，绘制第二个点",
+      polygon_third_point: "地图上点击，绘制第三个点，开始计算面积",
+      polygon_continue: "左击继续绘制，右键删除点位，双击结束测面积",
+      area_continue: "左击绘制区域，右键删除点位，双击结束绘制",
+    },
+    measurement: {
+      total_distance: "总长：{value}",
+      preview_area: "面积：{value}",
+      total_area: "总面积：{value}",
+    },
     start: {
       line: "开始绘制线条：左键添加点，双击完成，右键删除最后一点",
       rectangle: "开始绘制矩形区域：左键确定起点，再次左键确定终点，双击完成",

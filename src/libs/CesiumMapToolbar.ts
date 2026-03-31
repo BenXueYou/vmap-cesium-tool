@@ -8,16 +8,14 @@ import { MapLayersService } from './toolBar/MapLayersService';
 import { NotFlyZonesService } from './toolBar/NotFlyZonesService';
 import type {
   ButtonConfig, MapType, ToolbarConfig,
-  SearchCallback, MeasurementCallback, ZoomCallback, CustomButtonConfig
-} from './CesiumMapModel';
+  SearchCallback, MeasurementCallback, ZoomCallback, CustomButtonConfig, ResolvedButtonConfig
+} from '../core/types';
 
 import { TDTMapTypes } from './config/CesiumMapConfig'
 import { formatDistance, calculatePolygonArea } from '../utils/calc';
 
 import { defaultButtons, defaultMeasureItems, defaultToolBarStyle } from './toolBar/MapToolBarConfig'
-import { i18n, type I18nLike } from '../libs/i18n';
-
-type ResolvedButtonConfig = Omit<ButtonConfig, 'icon'> & { icon: string | HTMLElement } & { titleKey?: string };
+import { i18n, type I18nLike } from '../i18n';
 
 /**
  * Cesium地图工具栏类
@@ -37,7 +35,7 @@ export class CesiumMapToolbar {
   private fullscreenCallback?: (isFullscreen: boolean) => void; // 全屏状态回调函数
   private resetLocationCallback?: () => void; // 复位位置回调函数
   private initialCenter?: { longitude: number; latitude: number; height: number }; // 初始中心点
-  private currentMapType: string = 'imagery'; // 当前地图类型
+  private currentMapType: string = 'img'; // 当前地图类型
   public TD_Token: string = 'your_tianditu_token_here'; // 请替换为您的天地图密钥
 
   // 地图类型配置     
@@ -46,7 +44,7 @@ export class CesiumMapToolbar {
   // 禁飞区相关状态（用于图层服务配置）
   private isNoFlyZoneChecked: boolean = true;
 
-  // 三维地名服务实例
+  // 三维路网服务实例
   private currentGeoWTFS: any = null;
 
   // 当前测量模式：none（未测量）、distance（测距）、area（测面）
@@ -326,11 +324,14 @@ export class CesiumMapToolbar {
   /**
    * 获取所有按钮配置（包括默认按钮和自定义按钮），并添加 sort 值
    */
-  private resolveIcon(customIcon: CustomButtonConfig['icon'], fallbackIcon: string): string | HTMLElement {
-    if (customIcon === false) return fallbackIcon;
+  private resolveIcon(
+    customIcon: CustomButtonConfig['icon'],
+    fallbackIcon: string | HTMLElement | false
+  ): string | HTMLElement {
+    if (customIcon === false) return fallbackIcon || '';
     if (customIcon instanceof HTMLElement) return customIcon;
     if (typeof customIcon === 'string') return customIcon;
-    return fallbackIcon;
+    return fallbackIcon || '';
   }
 
   /**
@@ -368,7 +369,13 @@ export class CesiumMapToolbar {
         color: customButton?.color ?? (btn as ButtonConfig).color ?? defaultButton?.color,
         sort: customButton?.sort ?? (btn as ButtonConfig).sort ?? defaultButton?.sort,
         callback: customButton?.callback ?? (btn as ButtonConfig).callback ?? defaultButton?.callback,
-        activeIcon: (customButton && customButton.activeIcon !== false ? customButton.activeIcon : (btn as ButtonConfig).activeIcon) ?? defaultButton?.activeIcon,
+        activeIcon: customButton?.activeIcon !== false ? customButton?.activeIcon : ((btn as ButtonConfig).activeIcon ?? defaultButton?.activeIcon),
+        enabled: customButton?.enabled ?? true,
+        visible: customButton?.visible ?? true,
+        padding: customButton?.padding,
+        onClick: customButton?.onClick,
+        resolvedIcon: resolvedIcon,
+        resolvedTitle: (customButton?.title ?? (btn as ButtonConfig).title ?? defaultButton?.title ?? '') as string,
       };
     });
 
@@ -534,7 +541,7 @@ export class CesiumMapToolbar {
     `;
 
     // 设置图标内容
-    this.setButtonIcon(button, config.icon);
+    this.setButtonIcon(button, typeof config.icon === 'boolean' ? '' : config.icon);
 
     // 悬停效果
     button.addEventListener('mouseenter', () => {
@@ -805,19 +812,43 @@ export class CesiumMapToolbar {
       `;
 
       const label = document.createElement('span');
-      if (this.useI18n) {
-        this.i18n.bindElement(label, item.textKey, 'text');
+      const textKey = item.textKey;
+      if (this.useI18n && typeof textKey === 'string') {
+        this.i18n.bindElement(label, textKey, 'text');
       } else {
         label.textContent = item.text;
       }
-      menuItem.append(item.icon, ' ', label);
+      
+      // 处理图标
+      if (item.icon && typeof item.icon === 'string') {
+        // 检查是否为SVG文件路径
+        console.log('测量菜单图标:', item.icon, typeof item.icon);
+        if (item.icon.startsWith('data:image/svg')) {
+          // 创建图片元素
+          const img = document.createElement('img');
+          img.src = item.icon;
+          img.style.width = '16px';
+          img.style.height = '16px';
+          img.style.color = 'currentColor';
+          menuItem.appendChild(img);
+          menuItem.appendChild(document.createTextNode(' '));
+          menuItem.appendChild(label);
+        } else {
+          // 处理普通文本图标
+          menuItem.append(item.icon, ' ', label);
+        }
+      } else {
+        menuItem.append(item.icon, ' ', label);
+      }
       menuItem.addEventListener('mouseenter', () => {
-        menuItem.style.backgroundColor = '#023C61';
+        menuItem.style.backgroundColor = '#055AB0';
+        menuItem.style.color = '#007BFF';
         menuItem.style.transform = 'scale(1.02)';
       });
 
       menuItem.addEventListener('mouseleave', () => {
         menuItem.style.backgroundColor = 'transparent';
+        menuItem.style.color = '#fff';
         menuItem.style.transform = 'scale(1.00)';
       });
 
@@ -949,7 +980,7 @@ export class CesiumMapToolbar {
     // 清理禁飞区服务
     this.notFlyZonesService.destroy();
 
-    // 清理三维地名服务实例
+    // 清理三维路网服务实例
     if (this.currentGeoWTFS) {
       try {
         if (typeof this.currentGeoWTFS.destroy === 'function') {
@@ -958,7 +989,7 @@ export class CesiumMapToolbar {
           this.currentGeoWTFS.remove();
         }
       } catch (error) {
-        console.warn('销毁三维地名服务失败:', error);
+        console.warn('销毁三维路网服务失败:', error);
       }
       this.currentGeoWTFS = null;
     }

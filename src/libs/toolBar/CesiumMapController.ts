@@ -1,351 +1,144 @@
-/**
- * CesiumMapController.ts
- * 负责地图相机控制、缩放层级和 2D/3D 切换、全屏等逻辑的控制器
- * 与 UI（工具栏）解耦，避免 Cesium 细节散落在各处。
- */
 import * as Cesium from 'cesium';
 import type { Viewer } from 'cesium';
-import type { MapType, ZoomCallback } from '../CesiumMapModel';
-import { heightToZoomLevel, zoomLevelToHeight } from '../../utils/common';
 
-interface MapInitialCenter {
-  longitude: number;
-  latitude: number;
-  height: number;
-}
-
-interface CesiumMapControllerOptions {
-  initialCenter?: MapInitialCenter;
-  /** 当前可用的地图类型列表（由外部维护），用于读取 maximumLevel 等配置 */
-  getMapTypes?: () => MapType[];
-  /** 获取当前底图类型 id（由外部维护） */
+interface MapControllerConfig {
+  initialCenter?: { longitude: number; latitude: number; height: number };
+  getMapTypes?: () => unknown[];
   getCurrentMapTypeId?: () => string;
-  /** 获取当前天地图 token（用于从 provider 读取 maximumLevel 时保持行为一致） */
   getToken?: () => string;
-  /** 缩放回调（来自 Toolbar 的 ZoomCallback） */
-  zoomCallback?: ZoomCallback;
-  /** 场景模式切换后回调（例如通知 DrawHelper 重新计算偏移） */
+  zoomCallback?: {
+    onZoomIn?: (beforeHeight: number, afterHeight: number, currentLevel: number) => void;
+    onZoomOut?: (beforeHeight: number, afterHeight: number, currentLevel: number) => void;
+  };
   onSceneModeChanged?: () => void;
-  /** 全屏切换回调 */
   fullscreenCallback?: (isFullscreen: boolean) => void;
-  /** 复位位置回调 */
   resetLocationCallback?: () => void;
 }
 
 /**
- * 负责地图相机控制、缩放层级和 2D/3D 切换等逻辑的控制器
- * 与 UI（工具栏）解耦，避免 Cesium 细节散落在各处。
+ * 地图控制器 - 存根实现
+ * 为了保持向后兼容性
  */
 export class CesiumMapController {
   private viewer: Viewer;
-  private initialCenter?: MapInitialCenter;
-  private getMapTypes?: () => MapType[];
-  private getCurrentMapTypeId?: () => string;
-  private getToken?: () => string;
-  private zoomCallback?: ZoomCallback;
-  private onSceneModeChanged?: () => void;
-  private fullscreenCallback?: (isFullscreen: boolean) => void;
-  private resetLocationCallback?: () => void;
+  private config?: MapControllerConfig;
+  private initialCenter: { longitude: number; latitude: number; height: number } | null;
 
-  constructor(viewer: Viewer, options: CesiumMapControllerOptions = {}) {
+  constructor(viewer: Viewer, config?: MapControllerConfig) {
     this.viewer = viewer;
-    this.initialCenter = options.initialCenter;
-    this.getMapTypes = options.getMapTypes;
-    this.getCurrentMapTypeId = options.getCurrentMapTypeId;
-    this.getToken = options.getToken;
-    this.zoomCallback = options.zoomCallback;
-    this.onSceneModeChanged = options.onSceneModeChanged;
-    this.fullscreenCallback = options.fullscreenCallback;
-    this.resetLocationCallback = options.resetLocationCallback;
+    this.config = config;
+    this.initialCenter = config?.initialCenter ?? null;
   }
 
   /**
-   * 监听相机缩放，限制层级范围到 [1, 18]，并参考当前底图的 maximumLevel
+   * 缩放到指定位置
    */
-  public setupCameraZoomLimitListener(): void {
-    const camera = this.viewer.camera;
-    camera.changed.addEventListener(() => {
-      const currentLevel = this.getCurrentZoomLevel();
-
-      let clampedLevel = Math.max(1, Math.min(18, currentLevel));
-
-      let maximumLevel = 18;
-      const mapTypes = this.getMapTypes ? this.getMapTypes() : undefined;
-      const currentMapTypeId = this.getCurrentMapTypeId ? this.getCurrentMapTypeId() : undefined;
-      if (mapTypes && currentMapTypeId) {
-        const curMapType = mapTypes.find(mt => mt.id === currentMapTypeId);
-        if (curMapType) {
-          const token = this.getToken ? this.getToken() : '';
-          const providers = curMapType.provider(token);
-          // 这里的 token 由 provider 自行处理或由外层包装，控制器只读取 maximumLevel
-          maximumLevel = (providers[0] as any)?.maximumLevel || 18;
-          if (clampedLevel > maximumLevel) {
-            clampedLevel = maximumLevel;
-          }
-        }
-      }
-
-      if (clampedLevel === 1 || currentLevel >= maximumLevel) {
-        this.setZoomLevel(clampedLevel);
-      }
+  zoomTo(longitude: number, latitude: number, height: number): void {
+    this.viewer.camera.setView({
+      destination: Cesium.Cartesian3.fromDegrees(longitude, latitude, height)
     });
   }
 
   /**
-   * 获取当前地图层级（1-18）
+   * 获取当前相机位置
    */
-  public getCurrentZoomLevel(): number {
-    const height = this.viewer.camera.positionCartographic.height;
-    return heightToZoomLevel(height);
+  getCurrentPosition(): { longitude: number; latitude: number; height: number } | null {
+    const position = this.viewer.camera.positionCartographic;
+    if (!position) return null;
+    return {
+      longitude: Cesium.Math.toDegrees(position.longitude),
+      latitude: Cesium.Math.toDegrees(position.latitude),
+      height: position.height
+    };
   }
 
-  /**
-   * 设置地图层级
-   * @param zoomLevel 目标层级（1-18）
-   */
-  public setZoomLevel(zoomLevel: number): void {
-    try {
-      const clampedLevel = Math.max(1, Math.min(18, zoomLevel));
-      const targetHeight = zoomLevelToHeight(clampedLevel);
-
-      if (!isFinite(targetHeight) || isNaN(targetHeight) || targetHeight <= 0) {
-        console.warn(`无效的目标高度: ${targetHeight}，使用默认层级 ${clampedLevel}`);
-        return;
-      }
-
-      let currentPosition: Cesium.Cartographic;
-      try {
-        currentPosition = this.viewer.camera.positionCartographic.clone();
-        if (!isFinite(currentPosition.longitude) || !isFinite(currentPosition.latitude)) {
-          currentPosition = Cesium.Cartographic.fromDegrees(120.2052342, 30.2489634);
-        }
-      } catch (error) {
-        console.warn('获取当前相机位置失败，使用默认位置', error);
-        currentPosition = Cesium.Cartographic.fromDegrees(120.2052342, 30.2489634);
-      }
-
-      this.viewer.camera.setView({
-        destination: Cesium.Cartesian3.fromRadians(
-          currentPosition.longitude,
-          currentPosition.latitude,
-          targetHeight
-        ),
-        orientation: {
-          heading: this.viewer.camera.heading,
-          pitch: this.viewer.camera.pitch,
-          roll: this.viewer.camera.roll
-        }
-      });
-    } catch (error) {
-      console.error('设置地图层级失败:', error);
-      try {
-        const safeHeight = zoomLevelToHeight(10);
-        const safePosition = Cesium.Cartographic.fromDegrees(120.2052342, 30.2489634);
-        this.viewer.camera.setView({
-          destination: Cesium.Cartesian3.fromRadians(
-            safePosition.longitude,
-            safePosition.latitude,
-            safeHeight
-          )
-        });
-      } catch (recoveryError) {
-        console.error('恢复地图层级失败:', recoveryError);
-      }
-    }
-  }
-
-  /** 放大 */
-  public zoomIn(): void {
-    const currentLevel = this.getCurrentZoomLevel();
-    const beforeHeight = this.viewer.camera.positionCartographic.height;
-
-    let maximumLevel = 18;
-    const mapTypes = this.getMapTypes ? this.getMapTypes() : undefined;
-    const currentMapTypeId = this.getCurrentMapTypeId ? this.getCurrentMapTypeId() : undefined;
-    if (mapTypes && currentMapTypeId) {
-      const curMapType = mapTypes.find(im => im.id === currentMapTypeId);
-      if (curMapType) {
-        const token = this.getToken ? this.getToken() : '';
-        const providerList = curMapType.provider(token);
-        maximumLevel = (providerList[0] as any)?.maximumLevel || 18;
-        if (currentLevel >= maximumLevel) return;
-      }
-    }
-
-    const targetLevel = currentLevel + 1;
-    this.setZoomLevel(targetLevel);
-    const afterHeight = this.viewer.camera.positionCartographic.height;
-
-    if (this.zoomCallback?.onZoomIn) {
-      this.zoomCallback.onZoomIn(beforeHeight, afterHeight, currentLevel);
-    }
-  }
-
-  /** 缩小 */
-  public zoomOut(): void {
-    const currentLevel = this.getCurrentZoomLevel();
-    const beforeHeight = this.viewer.camera.positionCartographic.height;
-    if (currentLevel <= 1) {
-      return;
-    }
-
-    const targetLevel = currentLevel - 1;
-    this.setZoomLevel(targetLevel);
-    const afterHeight = this.viewer.camera.positionCartographic.height;
-
-    if (this.zoomCallback?.onZoomOut) {
-      this.zoomCallback.onZoomOut(beforeHeight, afterHeight, currentLevel);
-    }
-  }
-
-  /**
-   * 2D/3D 切换
-   */
-  public toggle2D3D(buttonElement: HTMLElement): void {
+  toggle2D3D(buttonElement?: HTMLElement): void {
     const scene = this.viewer.scene;
-    const camera = scene.camera;
-    const currentMode = scene.mode;
-    const targetMode = currentMode === Cesium.SceneMode.SCENE3D
-      ? Cesium.SceneMode.SCENE2D
-      : Cesium.SceneMode.SCENE3D;
-    buttonElement.innerHTML = targetMode === Cesium.SceneMode.SCENE3D ? '3D' : '2D';
-
-    const canvas = scene.canvas;
-    const centerWindowPos = new Cesium.Cartesian2(
-      canvas.clientWidth / 2,
-      canvas.clientHeight / 2
-    );
-
-    let centerCartographic: Cesium.Cartographic | null = null;
-    const pickRay = camera.getPickRay(centerWindowPos);
-    if (pickRay) {
-      const pickPos = scene.globe.pick(pickRay, scene);
-      if (Cesium.defined(pickPos)) {
-        centerCartographic = Cesium.Cartographic.fromCartesian(pickPos as Cesium.Cartesian3);
+    const is3D = scene.mode === Cesium.SceneMode.SCENE3D;
+    const completeMorph = () => {
+      this.config?.onSceneModeChanged?.();
+      if (buttonElement) {
+        buttonElement.setAttribute('data-scene-mode', is3D ? '2d' : '3d');
       }
+    };
+
+    if (is3D) {
+      scene.morphTo2D(0.5);
+    } else {
+      scene.morphTo3D(0.5);
     }
 
-    const currentHeight = camera.positionCartographic.height;
-    const savedHeading = camera.heading;
-    const savedPitch = camera.pitch;
-    const savedRoll = camera.roll;
-
-    scene.mode = targetMode;
-
-    if (this.onSceneModeChanged) {
-      this.onSceneModeChanged();
-    }
-
-    if (centerCartographic) {
-      const lon = centerCartographic.longitude;
-      const lat = centerCartographic.latitude;
-
-      if (targetMode === Cesium.SceneMode.SCENE2D) {
-        camera.setView({
-          destination: Cesium.Cartesian3.fromRadians(lon, lat, currentHeight),
-          orientation: {
-            heading: 0.0,
-            pitch: -Math.PI / 2,
-            roll: 0.0,
-          },
-        });
-      } else {
-        camera.setView({
-          destination: Cesium.Cartesian3.fromRadians(lon, lat, currentHeight),
-          orientation: {
-            heading: savedHeading,
-            pitch: savedPitch,
-            roll: savedRoll,
-          },
-        });
-      }
-    }
+    setTimeout(completeMorph, 550);
   }
 
-  /**
-   * 复位到初始位置
-   */
-  public resetLocation(): void {
-    if (!this.initialCenter) {
-      console.warn('未设置初始中心点，无法执行复位操作');
+  zoomIn(): void {
+    const beforeHeight = this.viewer.camera.positionCartographic.height;
+    this.viewer.camera.zoomIn(Math.max(beforeHeight * 0.35, 100));
+    const afterHeight = this.viewer.camera.positionCartographic.height;
+    this.config?.zoomCallback?.onZoomIn?.(beforeHeight, afterHeight, this.getZoomLevel());
+  }
+
+  zoomOut(): void {
+    const beforeHeight = this.viewer.camera.positionCartographic.height;
+    this.viewer.camera.zoomOut(Math.max(beforeHeight * 0.35, 100));
+    const afterHeight = this.viewer.camera.positionCartographic.height;
+    this.config?.zoomCallback?.onZoomOut?.(beforeHeight, afterHeight, this.getZoomLevel());
+  }
+
+  toggleFullscreen(): void {
+    const container = this.viewer.container;
+    if (!container) return;
+
+    const fullscreenElement = document.fullscreenElement;
+    if (fullscreenElement) {
+      void document.exitFullscreen?.();
+      this.config?.fullscreenCallback?.(false);
       return;
     }
 
-    this.viewer.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(
-        this.initialCenter.longitude,
-        this.initialCenter.latitude,
-        this.initialCenter.height
-      ),
-      duration: 1.0,
-    });
-    const callback = this.resetLocationCallback;
-    if (callback) {
-      setTimeout(() => {
-        callback();
-      }, 1000);
+    if (container.requestFullscreen) {
+      void container.requestFullscreen();
+      this.config?.fullscreenCallback?.(true);
     }
-    
   }
 
-  public setInitialCenter(center: MapInitialCenter): void {
+  setInitialCenter(center: { longitude: number; latitude: number; height: number }): void {
     this.initialCenter = center;
   }
 
-  public getInitialCenter(): MapInitialCenter | undefined {
-    return this.initialCenter;
+  getInitialCenter(): { longitude: number; latitude: number; height: number } | undefined {
+    return this.initialCenter ?? undefined;
   }
 
-  /**
-   * 切换全屏
-   */
-  public toggleFullscreen(): void {
-    if (this.isFullscreen()) {
-      this.exitFullscreen();
-    } else {
-      this.enterFullscreen();
+  resetLocation(): void {
+    if (this.initialCenter) {
+      this.zoomTo(this.initialCenter.longitude, this.initialCenter.latitude, this.initialCenter.height);
     }
-    if (this.fullscreenCallback) {
-      this.fullscreenCallback(this.isFullscreen());
-    }
+    this.config?.resetLocationCallback?.();
   }
 
-  /**
-   * 检查是否处于全屏状态
-   */
-  public isFullscreen(): boolean {
-    return !!(
-      document.fullscreenElement ||
-      (document as any).webkitFullscreenElement ||
-      (document as any).msFullscreenElement
-    );
+  setupCameraZoomLimitListener(): void {
+    const camera = this.viewer.camera;
+    const minHeight = 100;
+    const maxHeight = 30000000;
+
+    camera.changed.addEventListener(() => {
+      const position = camera.positionCartographic;
+      if (!position) return;
+
+      if (position.height < minHeight) {
+        camera.zoomOut(minHeight - position.height);
+      } else if (position.height > maxHeight) {
+        camera.zoomIn(position.height - maxHeight);
+      }
+    });
   }
 
-  /**
-   * 进入全屏
-   */
-  public enterFullscreen(): void {
-    const container = this.viewer.container;
-
-    if (container.requestFullscreen) {
-      container.requestFullscreen();
-    } else if ((container as any).webkitRequestFullscreen) {
-      (container as any).webkitRequestFullscreen();
-    } else if ((container as any).msRequestFullscreen) {
-      (container as any).msRequestFullscreen();
+  private getZoomLevel(): number {
+    const height = this.viewer.camera.positionCartographic.height;
+    if (!Number.isFinite(height) || height <= 0) {
+      return 0;
     }
-  }
-
-  /**
-   * 退出全屏
-   */
-  public exitFullscreen(): void {
-    if (document.exitFullscreen) {
-      document.exitFullscreen();
-    } else if ((document as any).webkitExitFullscreen) {
-      (document as any).webkitExitFullscreen();
-    } else if ((document as any).msExitFullscreen) {
-      (document as any).msExitFullscreen();
-    }
+    return Math.max(0, Math.round(20 - Math.log2(height / 1000)));
   }
 }

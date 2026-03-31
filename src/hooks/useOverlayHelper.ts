@@ -1,8 +1,8 @@
-import { ref, type Ref } from "vue";
+import { ref, shallowRef, markRaw, type Ref } from "vue";
 import * as Cesium from "cesium";
 import type { Entity } from "cesium";
-import type { OverlayEntity } from '../libs/overlay/types';
-import { CesiumOverlayService } from "../libs/overlay";
+import type { OverlayEntity } from '../core/entities';
+import { CesiumOverlayService } from "../libs/CesiumOverlayService";
 import { i18n } from "../i18n";
 
 type OverlayEditChangeHandler = (entity: Entity & OverlayEntity) => void;
@@ -24,18 +24,18 @@ export function useOverlayHelper(
   viewer: Ref<Cesium.Viewer | undefined>,
   message: Ref<string>
 ) {
-  const overlayService = ref<CesiumOverlayService | null>(null);
-  const markerHandler = ref<Cesium.ScreenSpaceEventHandler | null>(null);
+  const overlayService = shallowRef<CesiumOverlayService | null>(null);
+  const markerHandler = shallowRef<Cesium.ScreenSpaceEventHandler | null>(null);
   const markerEntities: Entity[] = [];
-  const lastRectangleB = ref<Entity | null>(null);
-  const lastRectangleE = ref<Entity | null>(null);
+  const lastRectangleB = shallowRef<Entity | null>(null);
+  const lastRectangleE = shallowRef<Entity | null>(null);
 
   /**
    * 初始化覆盖物服务
    */
   const initOverlayService = (options: OverlayHelperOptions = {}) => {
     if (!viewer.value) return;
-    overlayService.value = new CesiumOverlayService(viewer.value, {
+    overlayService.value = markRaw(new CesiumOverlayService(viewer.value, {
       onOverlayEditChange: (entity) => {
         const hasCustom = typeof options.onOverlayEditChange === 'function';
         if (!hasCustom) {
@@ -51,7 +51,7 @@ export function useOverlayHelper(
           // ignore
         }
       },
-    });
+    }));
   };
 
   /**
@@ -80,7 +80,7 @@ export function useOverlayHelper(
     message.value = i18n.t("overlay.marker_mode");
 
     // 创建点击事件处理器
-    markerHandler.value = new Cesium.ScreenSpaceEventHandler(viewer.value.scene.canvas);
+    markerHandler.value = markRaw(new Cesium.ScreenSpaceEventHandler(viewer.value.scene.canvas));
 
     // 左键点击添加标记点
     markerHandler.value.setInputAction((click: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
@@ -1014,16 +1014,13 @@ export function useOverlayHelper(
     // Test A: primitive ✅（粗边框 + 贴地 + 纯色材质）
     const polyA = overlayService.value.addPolygon({
       positions: [
-        [lon - 0.01, lat - 0.008],
-        [lon + 0.01, lat - 0.008],
-        [lon + 0.012, lat + 0.006],
-        [lon - 0.004, lat + 0.01],
+        [120.21751417622207,30.184703422552086],[120.22314943122323,30.178983194555553],[120.22552491001976,30.18638485910404]
       ],
       // 预期：填充为半透明橙色，边框为不透明橙色（hover/click 高亮可叠加，click 优先）
       material: Cesium.Color.ORANGE.withAlpha(0.5),
       outline: true,
       outlineColor: Cesium.Color.ORANGE,
-      outlineWidth: 10,
+      outlineWidth: 2,
       hoverHighlight: true,
       clickHighlight: true,
       renderMode: 'primitive',
@@ -1039,15 +1036,12 @@ export function useOverlayHelper(
     // 预期：边框永远压在所有填充之上，重叠区域也能看清边界。
     const polyDDetect = overlayService.value.addPolygon({
       positions: [
-        [lon - 0.004, lat - 0.002],
-        [lon + 0.014, lat - 0.002],
-        [lon + 0.016, lat + 0.01],
-        [lon - 0.002, lat + 0.012],
+        [120.22101034907904,30.186384587348854],[120.22712033372981,30.18435026721259],[120.21805792406063,30.179867317901735]
       ],
       material: Cesium.Color.BLUE.withAlpha(0.25),
       outline: true,
       outlineColor: Cesium.Color.BLUE,
-      outlineWidth: 10,
+      outlineWidth: 2,
       renderMode: 'primitive',
       layerKey: 'detect',
       hoverHighlight: true,

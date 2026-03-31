@@ -896,6 +896,7 @@ snapshots:
 
   '@xingm/vmap-cesium-toolbar@file:../../dist(vue@3.5.21)':
     dependencies:
+      cesium: 1.134.1
       vue: 3.5.21
 
   '@zip.js/zip.js@2.8.15': {}

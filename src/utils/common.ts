@@ -62,3 +62,25 @@ export function zoomLevelToHeight(zoomLevel: number): number {
 
   return height;
 }
+
+ /**
+   * 深度合并对象
+   */
+  export function deepMerge<T>(target: T, source: Partial<T>): T {
+    const result = { ...target };
+    
+    for (const key in source) {
+      if (source[key] !== undefined) {
+        if (typeof source[key] === 'object' && source[key] !== null && 
+            typeof result[key] === 'object' && result[key] !== null) {
+          // @ts-ignore
+          result[key] = deepMerge(result[key], source[key]);
+        } else {
+          // @ts-ignore
+          result[key] = source[key];
+        }
+      }
+    }
+    
+    return result;
+  }

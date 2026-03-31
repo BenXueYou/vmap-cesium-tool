@@ -1,4 +1,4 @@
-import { ref, type Ref } from "vue";
+import { ref, shallowRef, markRaw, type Ref } from "vue";
 import * as Cesium from "cesium";
 import DrawHelper from "../libs/CesiumMapDraw";
 import type { DrawResult } from "../libs/drawHelper";
@@ -12,13 +12,13 @@ export function useDrawHelper(
   viewer: Ref<Cesium.Viewer | undefined>,
   message: Ref<string>
 ) {
-  const drawHelper = ref<DrawHelper | null>(null);
+  const drawHelper = shallowRef<DrawHelper | null>(null);
   const isDrawing = ref(false);
   const currentDrawMode = ref<string | null>(null);
 
   const initDrawHelper = () => {
     if (!viewer.value) return;
-    drawHelper.value = new DrawHelper(viewer.value);
+    drawHelper.value = markRaw(new DrawHelper(viewer.value));
   };
 
   const endDrawing = () => {

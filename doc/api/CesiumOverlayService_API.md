@@ -77,6 +77,11 @@ export interface CesiumOverlayServiceOptions {
    * 参数为“已回写后的覆盖物 entity”。
    */
   onOverlayEditChange?: (entity: OverlayEntity) => void;
+
+  /**
+   * 覆盖物编辑模式下：句柄的配置项
+   */
+  overlayEditOptions?: OverlayEditOptions;
 }
 ```
 
@@ -114,6 +119,19 @@ setOverlayHighlight(entityOrId: OverlayEntity | string, enabled: boolean, reason
 
 显式开启/关闭某覆盖物高亮。
 
+### toggleOverlayHoverHighlight
+
+```ts
+toggleOverlayHoverHighlight(enabled: boolean): void
+```
+
+启用或禁用覆盖物 hover 高亮处理器。
+
+- `true`：开启 hover 处理（MOUSE_MOVE 下会 pick/drillPick 并触发 hover 高亮）
+- `false`：关闭 hover 处理（不再触发 hover 高亮）
+
+> 说明：该方法只影响 hover 高亮，不影响 click 高亮；关闭时会在 hover handler 内主动清除当前 hover 高亮。
+
 ### clickHighlight / hoverHighlight 选项
 
 多数覆盖物 options 都支持：
@@ -147,11 +165,11 @@ hoverHighlight?: boolean | { color?: Cesium.Color | string; fillAlpha?: number }
 #### setOverlayEditMode
 
 ```ts
-setOverlayEditMode(enabled: boolean): void
+setOverlayEditMode(enabled: boolean, overlayEditOptions?: OverlayEditOptions): void
 ```
 
-- `true`：开启编辑模式。此时点击覆盖物会进入编辑并显示控制点。
-- `false`：关闭编辑模式。会退出当前编辑、移除控制点，并销毁编辑事件处理器。
+- `enabled`：`true` 开启编辑模式，此时点击覆盖物会进入编辑并显示控制点；`false` 关闭编辑模式，会退出当前编辑、移除控制点，并销毁编辑事件处理器。
+- `overlayEditOptions`：编辑功能配置项，可选。不传时使用构造函数传入的配置或默认配置。传入的配置会更新编辑器的当前选项，影响后续编辑操作。
 
 #### getOverlayEditModeEnabled
 
@@ -164,11 +182,13 @@ getOverlayEditModeEnabled(): boolean
 #### startOverlayEdit
 
 ```ts
-startOverlayEdit(entityOrId: OverlayEntity | string): boolean
+startOverlayEdit(entityOrId: OverlayEntity | string, options?: OverlayEditOptions): boolean
 ```
 
-主动开始编辑某个覆盖物（也可依赖“开启编辑模式后点击覆盖物自动进入编辑”）。
+主动开始编辑某个覆盖物（也可依赖"开启编辑模式后点击覆盖物自动进入编辑"）。
 
+- `entityOrId`：要编辑的覆盖物实体或其 id
+- `options`：编辑功能配置项，可选。不传时使用构造函数传入的配置或当前编辑器的配置
 - 返回 `true`：进入编辑成功并创建控制点
 - 返回 `false`：该覆盖物当前不支持编辑或无法解析其几何
 
@@ -243,6 +263,50 @@ overlay.setOverlayEditMode(true);
 #### Marker/Icon/SVG 控制点说明
 
 - 绿色点：中心移动点（拖拽整体移动）
+
+### 编辑控制句柄配置：OverlayEditOptions
+
+`OverlayEditOptions` 用于控制编辑模式下各类控制点启用与样式，主要字段：
+
+- `vertex`: 顶点控制点（蓝点）配置，支持 `boolean` 或对象。
+- `mid`: 边中点控制点（粉点）配置，支持 `boolean` 或对象。
+- `move`: 整体移动控制点（绿点）配置，支持 `boolean` 或对象。
+- `rotate`: 旋转控制点（棕点，折线有效）配置，支持 `boolean` 或对象。
+- `scale`: 缩放控制点（紫点，折线有效）配置，支持 `boolean` 或对象。
+
+对象格式示例：
+
+```ts
+const overlay = new CesiumOverlayService(viewer, {
+  overlayEditOptions: {
+    vertex: { enable: true, color: Cesium.Color.CYAN, pixelSize: 8 },
+    mid: false,
+    move: { enable: true, color: Cesium.Color.GREEN },
+    rotate: { enable: true, color: Cesium.Color.ORANGE, pixelSize: 10 },
+    scale: false,
+  },
+});
+
+
+
+```
+
+示例：
+
+```ts
+overlay.startOverlayEdit(true, {
+  vertex: { enable: true, color: Cesium.Color.CYAN, pixelSize: 8 },
+  mid: false,
+  move: { enable: true, color: Cesium.Color.GREEN },
+  rotate: { enable: true, color: Cesium.Color.ORANGE, pixelSize: 10 },
+  scale: false,
+});
+```
+
+> 说明：
+> - `false` 完全关闭该类别控制点。
+> - `true` 或空对象使用默认颜色/大小。
+> - `rotate` / `scale` 仅在折线编辑中生效。
 
 #### Polygon 右键删除顶点
 

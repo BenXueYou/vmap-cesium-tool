@@ -128,10 +128,10 @@
         }
     });
 
-    // 叠加三维地名服务
+    // 叠加三维路网服务
     var wtfs = new Cesium.GeoWTFS({
         viewer,
-        //三维地名服务，使用wtfs服务
+        //三维路网服务，使用wtfs服务
         subdomains:subdomains,
         metadata:{
             boundBox: {
@@ -181,7 +181,7 @@
         }
     });
 
-    //三维地名服务，使用wtfs服务
+    //三维路网服务，使用wtfs服务
     wtfs.getTileUrl = function(){
         return tdtUrl + 'mapservice/GetTiles?lxys={z},{x},{y}&VERSION=1.0.0&tk='+ token; 
     }

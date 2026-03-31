@@ -1,11 +1,170 @@
-import { i18n as coreI18n, type I18nLike } from "../libs/i18n";
 import zhCN from "./zh-CN";
 import enUS from "./en-US";
 
-if (typeof coreI18n.addMessages === "function") {
-  coreI18n.addMessages("zh-CN", zhCN, { merge: true });
-  coreI18n.addMessages("en-US", enUS, { merge: true });
+interface I18nConfig {
+  persist?: boolean;
+  useStoredLocale?: boolean;
 }
 
-export const i18n = coreI18n;
+interface I18nMessages {
+  [key: string]: any;
+}
+
+interface I18nLike {
+  t(key: string, params?: Record<string, any>, locale?: string): string;
+  getLocale(): string;
+  setLocale(locale: string, options?: { persist?: boolean }): void;
+  onLocaleChange(callback: (locale: string) => void): () => void;
+  addMessages(locale: string, messages: I18nMessages, options?: { merge?: boolean }): void;
+  configure(config: I18nConfig): void;
+  bindElement(element: HTMLElement, key: string, attribute: string): void;
+  updateTree(element: HTMLElement): void;
+}
+
+class SimpleI18n implements I18nLike {
+  private currentLocale: string = 'zh-CN';
+  private messages: Record<string, I18nMessages> = {};
+  private localeChangeCallbacks: ((locale: string) => void)[] = [];
+  private config: I18nConfig = {};
+
+  constructor() {
+    // Load default messages
+    this.addMessages('zh-CN', zhCN);
+    this.addMessages('en-US', enUS);
+    
+    // Try to load from localStorage
+    if (typeof localStorage !== 'undefined') {
+      const stored = localStorage.getItem('vmap-locale');
+      if (stored && (stored === 'zh-CN' || stored === 'en-US')) {
+        this.currentLocale = stored;
+      }
+    }
+  }
+
+  configure(config: I18nConfig): void {
+    this.config = { ...this.config, ...config };
+    if (config.useStoredLocale && typeof localStorage !== 'undefined') {
+      const stored = localStorage.getItem('vmap-locale');
+      if (stored && (stored === 'zh-CN' || stored === 'en-US')) {
+        this.currentLocale = stored;
+      }
+    }
+  }
+
+  addMessages(locale: string, messages: I18nMessages, options?: { merge?: boolean }): void {
+    if (options?.merge && this.messages[locale]) {
+      this.messages[locale] = this.deepMerge(this.messages[locale], messages);
+    } else {
+      this.messages[locale] = { ...messages };
+    }
+  }
+
+  t(key: string, params?: Record<string, any>, locale?: string): string {
+    const targetLocale = locale || this.currentLocale;
+    const messages = this.messages[targetLocale] || this.messages['zh-CN'] || {};
+    
+    const value = this.getNestedValue(messages, key);
+    if (typeof value === 'string') {
+      return this.interpolate(value, params || {});
+    }
+    return key;
+  }
+
+  getLocale(): string {
+    return this.currentLocale;
+  }
+
+  setLocale(locale: string, options?: { persist?: boolean }): void {
+    if (locale !== this.currentLocale) {
+      this.currentLocale = locale;
+      
+      if ((options?.persist !== false && this.config.persist) || options?.persist) {
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem('vmap-locale', locale);
+        }
+      }
+      
+      this.localeChangeCallbacks.forEach(callback => callback(locale));
+    }
+  }
+
+  onLocaleChange(callback: (locale: string) => void): () => void {
+    this.localeChangeCallbacks.push(callback);
+    return () => {
+      const index = this.localeChangeCallbacks.indexOf(callback);
+      if (index > -1) {
+        this.localeChangeCallbacks.splice(index, 1);
+      }
+    };
+  }
+
+  bindElement(element: HTMLElement, key: string, attribute: string): void {
+    element.dataset.i18nKey = key;
+    element.dataset.i18nAttr = attribute;
+
+    const text = this.t(key);
+    if (attribute === 'textContent') {
+      element.textContent = text;
+    } else if (attribute === 'title') {
+      element.setAttribute('title', text);
+    } else {
+      element.setAttribute(attribute, text);
+    }
+  }
+
+  updateTree(element: HTMLElement): void {
+    this.updateBoundElement(element);
+
+    const boundNodes = element.querySelectorAll<HTMLElement>('[data-i18n-key]');
+    boundNodes.forEach((node) => {
+      this.updateBoundElement(node);
+    });
+  }
+
+  private updateBoundElement(element: HTMLElement): void {
+    const key = element.dataset.i18nKey;
+    if (!key) {
+      return;
+    }
+
+    const attribute = element.dataset.i18nAttr || 'textContent';
+    const text = this.t(key);
+
+    if (attribute === 'textContent') {
+      element.textContent = text;
+      return;
+    }
+
+    if (attribute === 'innerHTML') {
+      element.innerHTML = text;
+      return;
+    }
+
+    element.setAttribute(attribute, text);
+  }
+
+  private getNestedValue(obj: any, path: string): any {
+    return path.split('.').reduce((current, key) => current?.[key], obj);
+  }
+
+  private interpolate(template: string, params: Record<string, any>): string {
+    return template.replace(/\{(\w+)\}/g, (match, key) => {
+      return params[key] !== undefined ? String(params[key]) : match;
+    });
+  }
+
+  private deepMerge(target: any, source: any): any {
+    const result = { ...target };
+    for (const key in source) {
+      if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
+        result[key] = this.deepMerge(result[key] || {}, source[key]);
+      } else {
+        result[key] = source[key];
+      }
+    }
+    return result;
+  }
+}
+
+export const i18n = new SimpleI18n();
 export type { I18nLike };

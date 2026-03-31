@@ -112,6 +112,9 @@ export interface PointClusterLayerOptions {
   clusterPixelSize?: number;
   clusterStyleSteps?: ClusterStyleStep[];
 
+  renderCluster?: (args: { cluster: Entity; clusteredEntities: Entity[]; count: number }) => void;
+  renderSinglePoint?: (args: { entity: Entity; point: ClusterPoint }) => void;
+
   onClusterClick?: (
     points: ClusterPoint[],
     ctx: { screenPosition: Cesium.Cartesian2; worldPosition?: Cesium.Cartesian3 }
@@ -142,6 +145,8 @@ export interface PointClusterLayerOptions {
 
 - `clusterPixelSize`：聚合点默认大小，默认 `18`
 - `clusterStyleSteps`：按聚合数量 count 决定颜色/大小（见下方）
+- `renderCluster`：自定义聚合点渲染（直接修改 cluster entity）
+- `renderSinglePoint`：自定义单点渲染（直接修改 point entity）
 
 ### ClusterStyleStep
 
@@ -154,6 +159,53 @@ export interface ClusterStyleStep {
 ```
 
 匹配规则：按 `minCount` 从大到小匹配，命中第一个 `count >= minCount` 的样式。
+
+## 自定义聚合点样式
+
+当你需要更复杂的样式（例如使用 `billboard`、自定义 `label` 字体或特殊效果）时，可传入 `renderCluster`。该回调每次聚类更新都会触发，你可以直接修改 `cluster` 的 point/label/billboard。
+
+```ts
+import * as Cesium from 'cesium';
+import { PointClusterLayer } from '@xingm/vmap-cesium-toolbar';
+
+const layer = new PointClusterLayer(viewer, {
+  renderCluster: ({ cluster, count }) => {
+    // 关闭默认 point，改用 billboard + label
+    if ((cluster as any).point) (cluster as any).point.show = false;
+
+    if ((cluster as any).billboard) {
+      (cluster as any).billboard.show = true;
+      (cluster as any).billboard.image = '/img/cluster-pin.png';
+      (cluster as any).billboard.scale = count > 100 ? 1.4 : 1.1;
+      (cluster as any).billboard.verticalOrigin = Cesium.VerticalOrigin.BOTTOM;
+      (cluster as any).billboard.disableDepthTestDistance = Number.POSITIVE_INFINITY;
+    }
+
+    if ((cluster as any).label) {
+      (cluster as any).label.show = true;
+      (cluster as any).label.text = String(count);
+      (cluster as any).label.font = 'bold 14px sans-serif';
+      (cluster as any).label.fillColor = Cesium.Color.WHITE;
+      (cluster as any).label.outlineColor = Cesium.Color.BLACK.withAlpha(0.6);
+      (cluster as any).label.outlineWidth = 3;
+      (cluster as any).label.pixelOffset = new Cesium.Cartesian2(0, -14);
+      (cluster as any).label.disableDepthTestDistance = Number.POSITIVE_INFINITY;
+    }
+  },
+});
+```
+
+如果需要自定义单点样式，可用 `renderSinglePoint`：
+
+```ts
+const layer = new PointClusterLayer(viewer, {
+  renderSinglePoint: ({ entity }) => {
+    if (!entity.point) return;
+    entity.point.color = Cesium.Color.DEEPSKYBLUE.withAlpha(0.85);
+    entity.point.outlineWidth = 2;
+  },
+});
+```
 
 ## 方法
 
