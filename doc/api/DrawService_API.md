@@ -16,9 +16,11 @@
 ```ts
 import {
   DrawService,
+  i18n,
   type DrawMode,
   type DrawOptions,
   type DrawResult,
+  type I18nLike,
   type MeasurementTheme,
 } from '@xingm/vmap-cesium-toolbar';
 ```
@@ -48,9 +50,12 @@ const drawService = mapPlugin.getDrawService();
 适合不走 `MapPlugin` 统一装配、但仍想单独复用绘制服务的场景。
 
 ```ts
-import { DrawService } from '@xingm/vmap-cesium-toolbar';
+import { DrawService, i18n } from '@xingm/vmap-cesium-toolbar';
 
-const drawService = new DrawService(viewer);
+const drawService = new DrawService(viewer, {
+  useI18n: true,
+  i18n,
+});
 ```
 
 ## 类定义
@@ -62,14 +67,28 @@ class DrawService
 ## 构造函数
 
 ```ts
-constructor(viewer: Viewer)
+constructor(viewer: Viewer, options?: DrawServiceOptions)
 ```
 
 说明：
 
-- `DrawService` 自身构造函数不接收额外配置对象
-- 地图级装配配置通过 `MapPlugin.services.draw` 控制
+- `DrawService` 构造函数支持传入 i18n 相关配置对象
+- 地图级装配配置也可以通过 `MapPlugin.services.draw` 控制
 - 单次绘制的样式与行为通过 `DrawOptions` 控制
+
+### DrawServiceOptions
+
+```ts
+interface DrawServiceOptions {
+  i18n?: I18nLike;
+  useI18n?: boolean;
+}
+```
+
+字段说明：
+
+- `i18n`: 注入绘制服务使用的多语言实例
+- `useI18n`: 是否启用绘制内部多语言，默认 `true`
 
 ## MapPlugin 装配配置
 
@@ -78,17 +97,52 @@ constructor(viewer: Viewer)
 ```ts
 interface DrawPluginOptions {
   enabled?: boolean;
+  i18n?: I18nLike;
+  useI18n?: boolean;
 }
 ```
 
 字段说明：
 
 - `enabled`: 是否启用 `DrawService`，默认 `true`
+- `i18n`: 注入给 `DrawService` 的多语言实例
+- `useI18n`: 是否启用绘制内部多语言，默认 `true`
 
 说明：
 
-- 当前 `MapPlugin` 对 `draw` 服务的装配配置比较轻，仅提供启用开关
+- `MapPlugin` 会把 `services.draw.i18n` 和 `services.draw.useI18n` 透传给 `DrawService`
 - 线宽、填充、标注样式、提示气泡等都不在 `DrawPluginOptions` 中，而是在每次 `startDrawing(...)` 时通过 `DrawOptions` 传入
+
+## 多语言行为
+
+`DrawService` 当前会读取以下内置 key：
+
+- `draw.hint.*`: 绘制过程提示气泡
+- `draw.measurement.*`: 总距离、预览面积、总面积等标签
+
+示例：
+
+```ts
+const drawService = new DrawService(viewer, {
+  useI18n: true,
+  i18n,
+});
+
+i18n.addMessages('en-US', {
+  draw: {
+    hint: {
+      line_continue: 'Left click to continue, right click to undo, double click to finish',
+    },
+  },
+}, { merge: true });
+```
+
+说明：
+
+- `useI18n: false` 时，内部提示会退化为 key 字符串本身
+- 当前没有独立 `fallbackLocale` 配置，未命中语言时会回退到 `zh-CN`
+
+更完整说明见 [i18n API](/api/I18n_API)。
 
 ## 单次绘制配置
 

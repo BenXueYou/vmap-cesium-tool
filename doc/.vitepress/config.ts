@@ -28,6 +28,7 @@ export default defineConfig({
             { text: '架构说明', link: '/guide/Architecture' },
             { text: '迁移指南', link: '/guide/Migration_Guide' },
             { text: 'MapPlugin', link: '/api/MapPlugin_API' },
+            { text: 'i18n', link: '/api/I18n_API' },
             { text: 'ToolbarService', link: '/api/ToolbarService_API' },
             { text: 'OverlayService', link: '/api/OverlayService_API' },
             { text: 'DrawService', link: '/api/DrawService_API' },

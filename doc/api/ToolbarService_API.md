@@ -12,6 +12,8 @@
 import {
   ToolbarService,
   createToolbarService,
+  i18n,
+  type I18nLike,
   type ToolbarServiceOptions,
   type ToolbarCallbacks,
 } from '@xingm/vmap-cesium-toolbar';
@@ -113,6 +115,12 @@ interface ToolbarServiceConfig {
 - `callbacks`: 搜索、测量、缩放、全屏、复位等公开回调入口
 - `i18n` / `useI18n`: 多语言开关和实例注入
 
+说明：
+
+- `useI18n` 默认值为 `true`
+- `ToolbarService.initialize()` 后会注册 `onLocaleChange(...)`
+- 当语言切换时，内部会对工具栏根节点调用 `updateTree(...)`，自动刷新按钮标题、菜单文本和输入框占位文案
+
 ### ToolbarServiceOptions
 
 面向工具栏 UI 和按钮层面的增强配置。
@@ -159,6 +167,49 @@ interface ToolbarPluginOptions {
 1. `config`: 工具栏壳层样式和基础按钮布局
 2. `searchMenu` / `layersMenu`: 搜索面板和图层面板的扩展配置
 3. `callbacks`: 业务回调入口
+
+## 多语言行为
+
+`ToolbarService` 是当前插件中多语言接入最完整的 UI 服务，主要通过以下机制工作：
+
+1. 默认按钮配置里使用 `titleKey`
+2. 菜单项和标签通过 `bindElement(...)` 绑定 i18n key
+3. 初始化后订阅 `onLocaleChange(...)`
+4. 切换语言时对工具栏整棵 DOM 执行 `updateTree(...)`
+
+这意味着：
+
+- 已绑定的工具栏文案会自动跟随语言切换刷新
+- 自定义按钮如果只写 `title`，不会自动翻译
+- 自定义按钮如果同时提供 `titleKey` 且开启 `useI18n`，则可自动跟随切换
+
+示例：
+
+```ts
+const toolbarService = new ToolbarService(
+  {
+    viewer,
+    container: viewer.container as HTMLElement,
+    useI18n: true,
+    i18n,
+  },
+  {
+    buttonConfigs: [
+      {
+        id: 'custom-alert',
+        icon: '!',
+        title: 'Alert',
+        titleKey: 'app.custom_alert_title',
+        sort: 200,
+      },
+    ],
+  },
+);
+
+toolbarService.initialize();
+```
+
+更完整说明见 [i18n API](/api/I18n_API)。
 
 ## 公开方法
 

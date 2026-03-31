@@ -48,6 +48,7 @@ features:
 - [迁移指南](/guide/Migration_Guide)
 - [GeoJSON 使用说明](/guide/GeoJSON_Usage)
 - [多语言（i18n）使用说明](/guide/I18n_Usage)
+- [i18n API](/api/I18n_API)
 
 ### 兼容 API 参考
 

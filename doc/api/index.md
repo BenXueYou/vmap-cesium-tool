@@ -27,6 +27,7 @@ title: API
 ### 新架构服务与内核
 
 - [MapPlugin（地图插件内核）](/api/MapPlugin_API)
+- [i18n（多语言）](/api/I18n_API)
 - [ToolbarService（工具栏服务）](/api/ToolbarService_API)
 - [OverlayService（覆盖物服务）](/api/OverlayService_API)
 - [DrawService（绘制服务）](/api/DrawService_API)

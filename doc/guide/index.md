@@ -9,6 +9,10 @@ title: 使用说明
 - [GeoJSON](/guide/GeoJSON_Usage)
 - [多语言（i18n）](/guide/I18n_Usage)
 
+## 相关 API
+
+- [i18n API](/api/I18n_API)
+
 ## 建议阅读顺序
 
 1. 先看“架构说明”，理解 `core / components / services / adapters / libs` 的职责边界

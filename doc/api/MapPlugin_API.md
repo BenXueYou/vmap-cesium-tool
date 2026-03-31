@@ -17,6 +17,8 @@
 import {
   MapPlugin,
   createMapPlugin,
+  i18n,
+  type I18nLike,
   type MapPluginOptions,
   type ToolbarPluginOptions,
   type OverlayPluginOptions,
@@ -246,6 +248,23 @@ interface ToolbarPluginOptions {
 - `searchMenu`: 搜索面板扩展配置
 - `layersMenu`: 图层菜单扩展配置
 - `callbacks`: 搜索、测量、缩放、全屏、复位的业务回调
+- 多语言注入入口位于 `config.useI18n` 与 `config.i18n`
+
+#### ToolbarConfig 中与 i18n 相关的字段
+
+```ts
+interface ToolbarConfig {
+  // ...其他样式字段
+  useI18n?: boolean;
+  i18n?: I18nLike;
+}
+```
+
+说明：
+
+- `MapPlugin.createToolbarService(...)` 当前读取的是 `services.toolbar.config.useI18n`
+- `MapPlugin.createToolbarService(...)` 当前读取的是 `services.toolbar.config.i18n`
+- 如果把 `i18n` 写到 `services.toolbar` 根级，当前源码不会传给 `ToolbarService`
 
 ### OverlayPluginOptions
 
@@ -262,10 +281,60 @@ interface OverlayPluginOptions {
 ```ts
 interface DrawPluginOptions {
   enabled?: boolean;
+  i18n?: I18nLike;
+  useI18n?: boolean;
 }
 ```
 
+字段说明：
+
+- `enabled`: 是否启用 `DrawService`
+- `i18n`: 注入给 `DrawService` 的多语言实例
+- `useI18n`: 是否启用绘制内部多语言，默认 `true`
+
 ## 公开方法
+
+## 多语言装配示例
+
+```ts
+import { createMapPlugin, i18n } from '@xingm/vmap-cesium-toolbar';
+
+i18n.configure({
+  persist: false,
+  useStoredLocale: false,
+});
+
+i18n.addMessages('en-US', {
+  demo: {
+    located: 'Located: {name}',
+  },
+}, { merge: true });
+
+const mapPlugin = createMapPlugin('cesiumContainer', {
+  services: {
+    toolbar: {
+      enabled: true,
+      config: {
+        useI18n: true,
+        i18n,
+      },
+    },
+    draw: {
+      enabled: true,
+      useI18n: true,
+      i18n,
+    },
+  },
+});
+```
+
+说明：
+
+- `ToolbarService` 的 i18n 由 `services.toolbar.config` 传入
+- `DrawService` 的 i18n 由 `services.draw` 传入
+- `OverlayService` 当前没有独立的 i18n 装配项；如需提示文案，通常在宿主业务中直接调用 `i18n.t(...)`
+
+完整接口见 [i18n API](/api/I18n_API)。
 
 ### initialize
 
