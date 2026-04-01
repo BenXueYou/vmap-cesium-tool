@@ -944,9 +944,15 @@ export class MapPlugin {
     this.layersConfig = this.mergeLayersConfig(config);
     this.currentMapTypeId = this.resolveCurrentMapTypeId(this.layersConfig);
     const mapType = this.getCurrentToolbarMapType();
+    const isForcedMapType = !!mapType?.forcePlaceName;
     const resolvedPlaceNameVisible = this.resolvePlaceNameVisible(this.layersConfig);
-    this.nonForcedPlaceNameVisible = resolvedPlaceNameVisible;
-    this.placeNameVisible = mapType?.forcePlaceName ? true : resolvedPlaceNameVisible;
+
+    if (!isForcedMapType) {
+      this.nonForcedPlaceNameVisible = resolvedPlaceNameVisible;
+    }
+
+    this.placeNameVisible = isForcedMapType ? true : resolvedPlaceNameVisible;
+
     // 如果已初始化，立即应用新配置
     if (this.isInitialized) {
       this.addLayers();
