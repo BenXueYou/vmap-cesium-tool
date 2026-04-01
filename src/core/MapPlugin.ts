@@ -30,6 +30,8 @@ import type { ToolbarCallbacks } from './services/toolbar/types';
 
 import { 
   createTDTImageryConfig,
+  createTDT3DImageryConfig,
+  createTDT3DTerrainProvider,
   createTDTVectorConfig,
   createTDTTerrainConfig 
 } from './layers/TDTMapLayer';
@@ -148,6 +150,7 @@ export class MapPlugin {
   private toolbarMapTypes: MapType[];
   private currentMapTypeId: string;
   private placeNameVisible: boolean;
+  private nonForcedPlaceNameVisible: boolean;
   private noFlyZoneVisible = false;
   private noFlyZoneDataSource: Cesium.CustomDataSource | null = null;
   private noFlyZoneLoadPromise: Promise<Cesium.CustomDataSource> | null = null;
@@ -182,8 +185,11 @@ export class MapPlugin {
     this.initialCenter = this.toInitialCenter(this.cameraConfig);
     this.toolbarMapTypes = this.toolbarLayersMenuConfig.mapTypes || DEFAULT_MAP_TYPES;
     this.currentMapTypeId = this.resolveCurrentMapTypeId(this.layersConfig);
-    this.placeNameVisible = this.toolbarLayersMenuConfig.defaultPlaceNameChecked
+    this.nonForcedPlaceNameVisible = this.toolbarLayersMenuConfig.defaultPlaceNameChecked
       ?? this.resolvePlaceNameVisible(this.layersConfig);
+    this.placeNameVisible = this.getCurrentToolbarMapType()?.forcePlaceName
+      ? true
+      : this.nonForcedPlaceNameVisible;
     this.noFlyZoneVisible = this.noFlyZoneConfig.visible ?? false;
     
     // 工具栏和样式配置（保持向后兼容）
@@ -388,6 +394,23 @@ export class MapPlugin {
     }
   }
 
+  private resetTerrainProvider(): void {
+    if (!this.viewer) {
+      return;
+    }
+
+    this.viewer.terrainProvider = new Cesium.EllipsoidTerrainProvider();
+  }
+
+  private applyTerrainProvider(terrainProviderFactory?: (token: string) => Cesium.TerrainProvider | null): void {
+    if (!this.viewer) {
+      return;
+    }
+
+    const terrainProvider = terrainProviderFactory?.(this.getLayerToken()) || null;
+    this.viewer.terrainProvider = terrainProvider ?? new Cesium.EllipsoidTerrainProvider();
+  }
+
   private async ensureNoFlyZoneDataSource(): Promise<Cesium.CustomDataSource> {
     if (this.noFlyZoneDataSource) {
       return this.noFlyZoneDataSource;
@@ -528,9 +551,9 @@ export class MapPlugin {
   private setMapType(mapTypeId: string): void {
     this.currentMapTypeId = mapTypeId;
     const mapType = this.getCurrentToolbarMapType();
-    if (mapType?.forcePlaceName) {
-      this.placeNameVisible = true;
-    }
+    this.placeNameVisible = mapType?.forcePlaceName
+      ? true
+      : this.nonForcedPlaceNameVisible;
 
     switch (this.layersConfig.type) {
       case 'tdt':
@@ -538,7 +561,7 @@ export class MapPlugin {
           type: 'tdt',
           tdt: {
             ...(this.layersConfig.tdt || { token: '' }),
-            mapTypeId: mapTypeId as 'vec' | 'img' | 'ter',
+            mapTypeId: mapTypeId as TDTLayerConfig['mapTypeId'],
             token: this.layersConfig.tdt?.token || '',
             showLabel: this.placeNameVisible,
           },
@@ -573,7 +596,12 @@ export class MapPlugin {
 
   private setPlaceNameVisible(isChecked: boolean): void {
     const mapType = this.getCurrentToolbarMapType();
-    this.placeNameVisible = mapType?.forcePlaceName ? true : isChecked;
+    if (mapType?.forcePlaceName) {
+      this.placeNameVisible = true;
+    } else {
+      this.placeNameVisible = isChecked;
+      this.nonForcedPlaceNameVisible = isChecked;
+    }
 
     switch (this.layersConfig.type) {
       case 'tdt':
@@ -581,7 +609,7 @@ export class MapPlugin {
           type: 'tdt',
           tdt: {
             ...(this.layersConfig.tdt || { token: '' }),
-            mapTypeId: this.currentMapTypeId as 'vec' | 'img' | 'ter',
+            mapTypeId: this.currentMapTypeId as TDTLayerConfig['mapTypeId'],
             token: this.layersConfig.tdt?.token || '',
             showLabel: this.placeNameVisible,
           },
@@ -716,6 +744,7 @@ export class MapPlugin {
 
     // 清除默认图层
     this.viewer.imageryLayers.removeAll();
+    this.resetTerrainProvider();
 
     switch (type) {
       case 'tdt':
@@ -748,6 +777,7 @@ export class MapPlugin {
     const token = config?.token || '';
     const mapTypeId = config?.mapTypeId || 'img';
     const showLabel = config?.showLabel ?? true;
+    const mapType = this.getCurrentToolbarMapType();
 
     let providers: Cesium.ImageryProvider[] = [];
 
@@ -761,8 +791,17 @@ export class MapPlugin {
       case 'ter':
         providers = createTDTTerrainConfig(token);
         break;
+      case 'tdt3d':
+        providers = createTDT3DImageryConfig(token);
+        break;
       default:
         providers = createTDTImageryConfig(token);
+    }
+
+    this.applyTerrainProvider(mapTypeId === 'tdt3d' ? createTDT3DTerrainProvider : mapType?.terrainProvider);
+
+    if (mapTypeId === 'tdt3d' && this.viewer.scene.mode !== Cesium.SceneMode.SCENE3D) {
+      this.viewer.scene.morphTo3D(0);
     }
 
     // 如果不显示注记，只添加底图
@@ -905,7 +944,9 @@ export class MapPlugin {
     this.layersConfig = this.mergeLayersConfig(config);
     this.currentMapTypeId = this.resolveCurrentMapTypeId(this.layersConfig);
     const mapType = this.getCurrentToolbarMapType();
-    this.placeNameVisible = mapType?.forcePlaceName ? true : this.resolvePlaceNameVisible(this.layersConfig);
+    const resolvedPlaceNameVisible = this.resolvePlaceNameVisible(this.layersConfig);
+    this.nonForcedPlaceNameVisible = resolvedPlaceNameVisible;
+    this.placeNameVisible = mapType?.forcePlaceName ? true : resolvedPlaceNameVisible;
     // 如果已初始化，立即应用新配置
     if (this.isInitialized) {
       this.addLayers();

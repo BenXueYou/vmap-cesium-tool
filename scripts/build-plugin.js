@@ -10,6 +10,26 @@ const __dirname = path.dirname(__filename);
 const projectRoot = path.join(__dirname, '..');
 const distRoot = path.join(projectRoot, 'dist');
 
+function copyDirectory(sourceDir, targetDir) {
+  if (!fs.existsSync(sourceDir)) {
+    return;
+  }
+
+  fs.mkdirSync(targetDir, { recursive: true });
+
+  fs.readdirSync(sourceDir, { withFileTypes: true }).forEach((entry) => {
+    const sourcePath = path.join(sourceDir, entry.name);
+    const targetPath = path.join(targetDir, entry.name);
+
+    if (entry.isDirectory()) {
+      copyDirectory(sourcePath, targetPath);
+      return;
+    }
+
+    fs.copyFileSync(sourcePath, targetPath);
+  });
+}
+
 function getDistTopLevelEntries() {
   if (!fs.existsSync(distRoot)) {
     return [];

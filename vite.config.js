@@ -23,6 +23,7 @@ export default defineConfig(({ mode }) => {
   if (isLib) {
     // 库模式配置 - 仅打包插件核心代码
     return {
+      publicDir: false,
       plugins: [
         vue(),
         dts({

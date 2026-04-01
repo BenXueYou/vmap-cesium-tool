@@ -1,4 +1,3 @@
-import * as Cesium from 'cesium';
 import searchIcon from './assets/toolbar/search@3x.png';
 import measureIcon from './assets/toolbar/measure@3x.png';
 import layersIcon from './assets/toolbar/layers@3x.png';
@@ -13,6 +12,16 @@ import clearIcon from './assets/measure/clear.svg';
 import vecThumbnail from './assets/layers/vec_c.png';
 import imgThumbnail from './assets/layers/img_c.png';
 import terThumbnail from './assets/layers/ter_c.png';
+import threeDThumbnail from './assets/layers/ele_c.jpg';
+
+import {
+  createTDT3DGeoWTFS,
+  createTDT3DImageryConfig,
+  createTDT3DTerrainProvider,
+  createTDTImageryConfig,
+  createTDTTerrainConfig,
+  createTDTVectorConfig,
+} from '../../layers/TDTMapLayer';
 
 import type { CustomButtonConfig, MapType, ToolbarConfig } from '../../types';
 import type { DefaultButtonConfig, MeasureMenuItem } from './types';
@@ -159,45 +168,32 @@ export const DEFAULT_MAP_TYPES: MapType[] = [
     name: '矢量地图',
     nameKey: 'map.types.vec',
     thumbnail: vecThumbnail,
-    provider: (token: string) => [
-      new Cesium.UrlTemplateImageryProvider({
-        url: `https://t{s}.tianditu.gov.cn/vec_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=vec&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={TileMatrix}&TILEROW={TileRow}&TILECOL={TileCol}&tk=${token}`,
-        subdomains: ['0', '1', '2', '3', '4', '5', '6', '7'],
-        maximumLevel: 18,
-        tileWidth: 256,
-        tileHeight: 256,
-      }),
-    ],
+    provider: createTDTVectorConfig,
+    forcePlaceName: true,
   },
   {
     id: 'img',
     name: '影像地图',
     nameKey: 'map.types.img',
     thumbnail: imgThumbnail,
-    provider: (token: string) => [
-      new Cesium.UrlTemplateImageryProvider({
-        url: `https://t{s}.tianditu.gov.cn/img_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=img&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={TileMatrix}&TILEROW={TileRow}&TILECOL={TileCol}&tk=${token}`,
-        subdomains: ['0', '1', '2', '3', '4', '5', '6', '7'],
-        maximumLevel: 18,
-        tileWidth: 256,
-        tileHeight: 256,
-      }),
-    ],
+    provider: createTDTImageryConfig,
   },
   {
     id: 'ter',
     name: '地形地图',
     nameKey: 'map.types.ter',
     thumbnail: terThumbnail,
-    provider: (token: string) => [
-      new Cesium.UrlTemplateImageryProvider({
-        url: `https://t{s}.tianditu.gov.cn/ter_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ter&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={TileMatrix}&TILEROW={TileRow}&TILECOL={TileCol}&tk=${token}`,
-        subdomains: ['0', '1', '2', '3', '4', '5', '6', '7'],
-        maximumLevel: 18,
-        tileWidth: 256,
-        tileHeight: 256,
-      }),
-    ],
+    provider: createTDTTerrainConfig,
     terrainProvider: () => null,
+  },
+  {
+    id: 'tdt3d',
+    name: '三维地图',
+    nameKey: 'map.types.tdt3d',
+    thumbnail: threeDThumbnail,
+    provider: createTDT3DImageryConfig,
+    terrainProvider: createTDT3DTerrainProvider,
+    geoWTFS: createTDT3DGeoWTFS,
+    forcePlaceName: true,
   },
 ];

@@ -139,6 +139,8 @@ export interface MapType {
   id: string;
   name: string;
   nameKey?: string;
+  /** 运行时依赖脚本列表，初始化时可按需加载 */
+  runtimeScripts?: string[];
   /** 选中态左上角"路网"文案（可选，未配置时走 i18n 默认 key） */
   placeNameLabel?: string;
   /** 选中态左上角"路网"文案 i18n key（可选） */
@@ -216,6 +218,8 @@ export interface NoFlyZonePluginOptions {
  */
 export type ProviderType = 'tdt' | 'gaode' | 'baidu' | 'arcgis' | 'osm' | 'custom';
 
+export type TDTMapTypeId = 'vec' | 'img' | 'ter' | 'tdt3d';
+
 // ==================== 分层配置接口 ====================
 
 /**
@@ -236,8 +240,8 @@ export interface CameraConfig {
  * 天地图图层配置
  */
 export interface TDTLayerConfig {
-  /** 天地图子类型：矢量/影像/地形 */
-  mapTypeId?: 'vec' | 'img' | 'ter';
+  /** 天地图子类型：矢量/影像/地形/三维地图 */
+  mapTypeId?: TDTMapTypeId;
   /** 天地图 token */
   token: string;
   /** 是否显示注记层，默认 true */
@@ -413,7 +417,7 @@ export interface MapToolsConfig {
   /** @deprecated 使用 layers.type 代替 */
   mapType?: 'tdt' | 'ion';
   /** @deprecated 使用 layers.tdt.mapTypeId 代替 */
-  tdtMapTypeId?: 'vec' | 'img' | 'ter';
+  tdtMapTypeId?: TDTMapTypeId;
   /** @deprecated 使用 layers.tdt.token 代替 */
   token?: string;
 }

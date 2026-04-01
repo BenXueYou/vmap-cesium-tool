@@ -92,6 +92,7 @@ const enUS = {
       vec: "Vector Map",
       img: "Imagery Map",
       ter: "Terrain Map",
+      tdt3d: "3D Map",
     },
   },
   measurement: {

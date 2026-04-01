@@ -2,8 +2,6 @@
 title: 使用说明
 ---
 
-# 使用说明
-
 - [架构说明](/guide/Architecture)
 - [迁移指南](/guide/Migration_Guide)
 - [GeoJSON](/guide/GeoJSON_Usage)

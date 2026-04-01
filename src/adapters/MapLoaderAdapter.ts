@@ -1,7 +1,7 @@
 import * as Cesium from 'cesium';
 import type { Viewer } from 'cesium';
 import { createMapPlugin, type MapPlugin } from '../core/MapPlugin';
-import type { MapPluginOptions } from '../core/types';
+import type { MapPluginOptions, TDTMapTypeId } from '../core/types';
 
 export interface LegacyMapCenter {
   latitude: number;
@@ -105,7 +105,7 @@ function toMapPluginOptions(options: LegacyInitOptions, initialCenter: LegacyMap
     layers: mapType ? {
       type: 'tdt',
       tdt: {
-        mapTypeId: (options.tdtMapTypeId as 'vec' | 'img' | 'ter' | undefined) || 'img',
+        mapTypeId: (options.tdtMapTypeId as TDTMapTypeId | undefined) || 'img',
         token: options.token || '',
         showLabel: true,
       },

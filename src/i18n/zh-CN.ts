@@ -92,6 +92,7 @@ const zhCN = {
       vec: "矢量地图",
       img: "影像地图",
       ter: "地形地图",
+      tdt3d: "三维地图",
     },
   },
   measurement: {
