@@ -1,28 +1,37 @@
-# tdt_terrain
-> cesium天地图地形和地名，提取自天地图官方插件
+# tdt-terrain-cesium-plugin
+> cesium天地图地形和地名插件，提取自天地图官方插件
+
+## 特别鸣谢
+
+感谢 [just-ads/tdt-cesium-plugin](https://github.com/just-ads/tdt-cesium-plugin) 提供的原始代码。
 
 ## 安装
 
 ```bash
-npm install github:just-ads/tdt-cesium-plugin
+npm install github:BenXueYou/tdt-terrain-cesium-plugin
 ```
 
 ## 使用
 
 ### 地形
 ```javascript
+import Tdt3dPlug from 'tdt-terrain-cesium-plugin';
+
 const viewer = new Cesium.Viewer('container');
 
-viewer.terrainProvider = new TdtPlug.GeoTerrainProvider({
-    url: 'https://t{s}.tianditu.gov.cn/mapservice/swdx?T=elv_c&x={x}&y={y}&l={z}&tk=你的token',
+viewer.terrainProvider = new Tdt3dPlug.GeoTerrainProvider({
+    url: 'https://t{s}.tianditu.gov.cn/mapservice/swdx?T=elv_c&x={x}&y={y}&l={z}&tk={token}',
     subdomains: ['0','1','2','3','4','5','6','7'],
+    token: '你的token'
 });
 
 ```
 ### 地名
 ```javascript
+import Tdt3dPlug from 'tdt-terrain-cesium-plugin';
+
 const viewer = new Cesium.Viewer('container');
-new TdtPlug.GeoWTFS(viewer, {
+new Tdt3dPlug.GeoWTFS(viewer, {
         subdomains: ['0','1','2','3','4','5','6','7'],
         url: 'https://t{s}.tianditu.gov.cn/mapservice/GetTiles?lxys={z},{x},{y}&tk=你的token',
         icoUrl: 'https://t{s}.tianditu.gov.cn/mapservice/GetIcon?id={id}&tk=你的token',
@@ -36,9 +45,9 @@ new TdtPlug.GeoWTFS(viewer, {
             minLevel: 1,
             maxLevel: 20
         },
-        autoCollide: true, //是否开启避让
-        collisionPadding: [5, 10, 8, 5], //开启避让时，标注碰撞增加内边距，上、右、下、左
-        serverFirstStyle: true, //服务端样式优先
+        aotuCollide: true,
+        collisionPadding: [5, 10, 8, 5],
+        serverFirstStyle: true
     })
 ```
 

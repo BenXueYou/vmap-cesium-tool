@@ -26,8 +26,8 @@ export default {
                id === 'pako';
     },
     output: [{
-        name: 'TdtPlug',
-        file: 'dist/tdtplug.umd.js',
+        name: 'Tdt3dPlug',
+        file: 'dist/tdt3dplug.umd.js',
         format: 'umd',
         sourcemap: true,
         banner,
@@ -35,7 +35,7 @@ export default {
             cesium: 'Cesium'
         }
     }, {
-        file: 'dist/tdtplug.es.js',
+        file: 'dist/tdt3dplug.es.js',
         format: 'esm',
         sourcemap: true,
         banner

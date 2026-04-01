@@ -1,8 +1,6 @@
 import * as Cesium from 'cesium';
 import type { TDTLayerConfig } from '../types';
 import { MapLayer } from './MapLayer';
-// @ts-expect-error vendored plugin is local JS bundle without .d.ts
-import TdtPlug from '../../../plugin/tdt-cesium-plugin/dist/tdtplug.es.js';
 
 type TDTPluginModule = {
   GeoTerrainProvider?: new (options: {
@@ -13,7 +11,42 @@ type TDTPluginModule = {
   GeoWTFS?: new (viewer: Cesium.Viewer, options: Record<string, unknown>) => any;
 };
 
-const TDT_PLUGIN = TdtPlug as unknown as TDTPluginModule;
+let TDT_PLUGIN: TDTPluginModule | null = null;
+let triedAutoLoad = false;
+let isAutoLoading = false;
+
+async function tryAutoLoadPlugin(): Promise<void> {
+  if (triedAutoLoad || isAutoLoading) return;
+  isAutoLoading = true;
+  triedAutoLoad = true;
+  
+  try {
+    const mod = await import('tdt-terrain-cesium-plugin');
+    setTDTPlugin(mod);
+    console.debug('成功加载 tdt-terrain-cesium-plugin');
+  } catch (e) {
+    console.debug('未找到 tdt-terrain-cesium-plugin，天地图三维功能将不可用');
+  } finally {
+    isAutoLoading = false;
+  }
+}
+
+export function setTDTPlugin(plugin: unknown): void {
+  TDT_PLUGIN = (plugin as TDTPluginModule).default || (plugin as TDTPluginModule);
+  if (TDT_PLUGIN) {
+    console.debug('天地图插件已设置');
+  }
+}
+
+function getTDTPlugin(): TDTPluginModule | null {
+  if (TDT_PLUGIN === null && !triedAutoLoad && !isAutoLoading) {
+    tryAutoLoadPlugin().catch(e => {
+      console.debug('自动加载 tdt-terrain-cesium-plugin 过程出错:', e);
+    });
+  }
+  return TDT_PLUGIN;
+}
+
 
 const TDT_SUBDOMAINS = ['0', '1', '2', '3', '4', '5', '6', '7'];
 const TDT_BASE_URL = 'https://t{s}.tianditu.gov.cn/';
@@ -41,8 +74,10 @@ export const TDT_3D_INIT_TILES = [
 ];
 
 export const hasTDT3DExtension = (_CesiumNS: typeof Cesium): boolean => {
-  return typeof TDT_PLUGIN.GeoTerrainProvider === 'function'
-    && typeof TDT_PLUGIN.GeoWTFS === 'function';
+  const plugin = getTDTPlugin();
+  return plugin !== null
+    && typeof plugin.GeoTerrainProvider === 'function'
+    && typeof plugin.GeoWTFS === 'function';
 };
 
 const warnMissingTDT3DExtension = (): void => {
@@ -154,6 +189,9 @@ export const createTDTTerrainConfig = (token: string): Cesium.ImageryProvider[] 
   ];
 };
 
+/**
+ * 天地图三维影像图层配置（带注记）
+ */
 export const createTDT3DImageryConfig = (token: string): Cesium.ImageryProvider[] => {
   if (!token) {
     warnMissingToken();
@@ -176,14 +214,17 @@ export const createTDT3DImageryConfig = (token: string): Cesium.ImageryProvider[
     }),
   ];
 };
-
+/**
+ * 天地图三维地形提供者配置
+ */
 export const createTDT3DTerrainProvider = (token: string): Cesium.TerrainProvider | null => {
   if (!hasTDT3DExtension(Cesium)) {
     warnMissingTDT3DExtension();
     return null;
   }
 
-  return new TDT_PLUGIN.GeoTerrainProvider!({
+  const plugin = getTDTPlugin() as TDTPluginModule;
+  return new plugin.GeoTerrainProvider!({
     url: `${TDT_BASE_URL}mapservice/swdx?T=elv_c&x={x}&y={y}&l={z}&tk=${token}`,
     subdomains: TDT_SUBDOMAINS,
     token,
@@ -196,7 +237,8 @@ export const createTDT3DGeoWTFS = (token: string, viewer: Cesium.Viewer): any | 
     return null;
   }
 
-  const wtfs = new TDT_PLUGIN.GeoWTFS!(viewer, {
+  const plugin = getTDTPlugin() as TDTPluginModule;
+  const wtfs = new plugin.GeoWTFS!(viewer, {
     url: `${TDT_BASE_URL}mapservice/GetTiles?lxys={z},{x},{y}&tk=${token}`,
     icoUrl: `${TDT_BASE_URL}mapservice/GetIcon?id={id}&tk=${token}`,
     subdomains: TDT_SUBDOMAINS,

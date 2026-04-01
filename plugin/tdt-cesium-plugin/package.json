@@ -2,14 +2,14 @@
   "name": "tdt-terrain-cesium-plugin",
   "version": "1.0.0",
   "description": "cesium天地图矢量插件",
-  "main": "dist/tdtplug.umd.js",
-  "module": "dist/tdtplug.es.js",
+  "main": "dist/tdt3dplug.umd.js",
+  "module": "dist/tdt3dplug.es.js",
   "type": "module",
   "exports": {
     ".": {
-      "import": "./dist/tdtplug.es.js",
-      "require": "./dist/tdtplug.umd.js",
-      "default": "./dist/tdtplug.es.js"
+      "import": "./dist/tdt3dplug.es.js",
+      "require": "./dist/tdt3dplug.umd.js",
+      "default": "./dist/tdt3dplug.es.js"
     }
   },
   "files": [

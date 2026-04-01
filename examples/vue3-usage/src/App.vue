@@ -196,6 +196,7 @@ onMounted(async () => {
     });
 
     viewer = markRaw(await mapPlugin.initialize());
+    mapPlugin.getToolbarService();
   } catch (error) {
     console.error("地图初始化失败:", error);
     showMessage("地图初始化失败，请检查 Token 或网络配置。", 4000);

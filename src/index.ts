@@ -96,7 +96,19 @@ export type {
 } from './core/services';
 
 // ==================== 图层模块 ====================
-export { HeatmapLayer, PointClusterLayer } from './core/layers';
+export { 
+  HeatmapLayer, 
+  PointClusterLayer,
+  setTDTPlugin,
+  createTDTImageryConfig,
+  createTDTVectorConfig,
+  createTDTTerrainConfig,
+  createTDT3DImageryConfig,
+  createTDT3DTerrainProvider,
+  createTDT3DGeoWTFS,
+  hasTDT3DExtension,
+  TDT_3D_INIT_TILES,
+} from './core/layers';
 export type {
   HeatPoint,
   HeatmapGradient,

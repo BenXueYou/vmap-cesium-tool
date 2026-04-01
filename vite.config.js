@@ -63,12 +63,13 @@ export default defineConfig(({ mode }) => {
           formats: ['es']
         },
         rollupOptions: {
-          external: ['vue', 'cesium'],
+          external: ['vue', 'cesium', 'tdt-terrain-cesium-plugin'],
           output: {
             exports: 'named',
             globals: {
               vue: 'Vue',
-              cesium: 'Cesium'
+              cesium: 'Cesium',
+              'tdt-terrain-cesium-plugin': 'Tdt3dPlug'
             }
           }
         },
@@ -85,7 +86,7 @@ export default defineConfig(({ mode }) => {
       cesium(),
     ],
     optimizeDeps: {
-      include: ["cesium"],
+      include: ["cesium", "tdt-terrain-cesium-plugin"],
     },
     server: {
       host: '0.0.0.0',

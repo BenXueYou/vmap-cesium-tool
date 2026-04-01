@@ -14,6 +14,19 @@ export { BaiduMapLayer } from './BaiduMapLayer';
 export { OSMMapLayer } from './OSMMapLayer';
 export { CustomMapLayer } from './CustomMapLayer';
 
+// 导出天地图相关工具函数
+export {
+  setTDTPlugin,
+  createTDTImageryConfig,
+  createTDTVectorConfig,
+  createTDTTerrainConfig,
+  createTDT3DImageryConfig,
+  createTDT3DTerrainProvider,
+  createTDT3DGeoWTFS,
+  hasTDT3DExtension,
+  TDT_3D_INIT_TILES,
+} from './TDTMapLayer';
+
 // 导出热力图图层
 export { HeatmapLayer } from './HeatmapLayer';
 export type { HeatPoint, HeatmapGradient, HeatmapOptions } from './HeatmapLayer';
