@@ -43,7 +43,7 @@
   },
   "dependencies": {
     "cesium": "^1.134.1",
-    "tdt-terrain-cesium-plugin": "^1.0.0",
+    "tdt-terrain-cesium-plugin": "^1.0.3",
     "vue": "^3.0.0"
   },
   "devDependencies": {

@@ -31,6 +31,7 @@ export default defineConfig(({ mode }) => {
           include: [
             'src/index.ts',
             'src/entry.ts',
+            'src/models.d.ts',
             'src/core/**/*.{ts,d.ts}',
             'src/components/**/*.{ts,d.ts}',
             'src/adapters/**/*.{ts,d.ts}',

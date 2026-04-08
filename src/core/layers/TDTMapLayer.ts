@@ -11,39 +11,70 @@ type TDTPluginModule = {
   GeoWTFS?: new (viewer: Cesium.Viewer, options: Record<string, unknown>) => any;
 };
 
+type TDTPluginImport = TDTPluginModule & {
+  default?: TDTPluginModule;
+};
+
 let TDT_PLUGIN: TDTPluginModule | null = null;
-let triedAutoLoad = false;
-let isAutoLoading = false;
+let tdtPluginLoadPromise: Promise<TDTPluginModule | null> | null = null;
+
+const isTDTPluginReady = (plugin: TDTPluginModule | null): boolean => {
+  return plugin !== null
+    && typeof plugin.GeoTerrainProvider === 'function'
+    && typeof plugin.GeoWTFS === 'function';
+};
+
+const normalizeTDTPlugin = (plugin: unknown): TDTPluginModule | null => {
+  const pluginModule = plugin as TDTPluginImport;
+  const normalized = pluginModule.default || pluginModule;
+  return normalized || null;
+};
 
 async function tryAutoLoadPlugin(): Promise<void> {
-  if (triedAutoLoad || isAutoLoading) return;
-  isAutoLoading = true;
-  triedAutoLoad = true;
-  
-  try {
-    const mod = await import('tdt-terrain-cesium-plugin');
-    setTDTPlugin(mod);
-    console.debug('成功加载 tdt-terrain-cesium-plugin');
-  } catch (e) {
-    console.debug('未找到 tdt-terrain-cesium-plugin，天地图三维功能将不可用');
-  } finally {
-    isAutoLoading = false;
+  if (isTDTPluginReady(TDT_PLUGIN)) {
+    return;
   }
+
+  if (tdtPluginLoadPromise) {
+    TDT_PLUGIN = await tdtPluginLoadPromise;
+    return;
+  }
+
+  tdtPluginLoadPromise = import('tdt-terrain-cesium-plugin')
+    .then((mod) => {
+      const plugin = normalizeTDTPlugin(mod);
+      TDT_PLUGIN = plugin;
+      console.debug('成功加载 tdt-terrain-cesium-plugin');
+      return plugin;
+    })
+    .catch((e) => {
+      console.debug('未找到 tdt-terrain-cesium-plugin，天地图三维功能将不可用', e);
+      return null;
+    })
+    .finally(() => {
+      tdtPluginLoadPromise = null;
+    });
+
+  TDT_PLUGIN = await tdtPluginLoadPromise;
 }
 
 export function setTDTPlugin(plugin: unknown): void {
-  TDT_PLUGIN = (plugin as TDTPluginModule).default || (plugin as TDTPluginModule);
-  if (TDT_PLUGIN) {
+  TDT_PLUGIN = normalizeTDTPlugin(plugin);
+  if (isTDTPluginReady(TDT_PLUGIN)) {
     console.debug('天地图插件已设置');
   }
 }
 
-function getTDTPlugin(): TDTPluginModule | null {
-  if (TDT_PLUGIN === null && !triedAutoLoad && !isAutoLoading) {
-    tryAutoLoadPlugin().catch(e => {
-      console.debug('自动加载 tdt-terrain-cesium-plugin 过程出错:', e);
-    });
+export async function ensureTDT3DExtensionLoaded(): Promise<boolean> {
+  if (isTDTPluginReady(TDT_PLUGIN)) {
+    return true;
   }
+
+  await tryAutoLoadPlugin();
+  return isTDTPluginReady(TDT_PLUGIN);
+}
+
+function getTDTPlugin(): TDTPluginModule | null {
   return TDT_PLUGIN;
 }
 
@@ -51,37 +82,12 @@ function getTDTPlugin(): TDTPluginModule | null {
 const TDT_SUBDOMAINS = ['0', '1', '2', '3', '4', '5', '6', '7'];
 const TDT_BASE_URL = 'https://t{s}.tianditu.gov.cn/';
 
-export const TDT_3D_INIT_TILES = [
-  { x: 6, y: 1, level: 2, boundBox: { minX: 90, minY: 0, maxX: 135, maxY: 45 } },
-  { x: 7, y: 1, level: 2, boundBox: { minX: 135, minY: 0, maxX: 180, maxY: 45 } },
-  { x: 6, y: 0, level: 2, boundBox: { minX: 90, minY: 45, maxX: 135, maxY: 90 } },
-  { x: 7, y: 0, level: 2, boundBox: { minX: 135, minY: 45, maxX: 180, maxY: 90 } },
-  { x: 5, y: 1, level: 2, boundBox: { minX: 45, minY: 0, maxX: 90, maxY: 45 } },
-  { x: 4, y: 1, level: 2, boundBox: { minX: 0, minY: 0, maxX: 45, maxY: 45 } },
-  { x: 5, y: 0, level: 2, boundBox: { minX: 45, minY: 45, maxX: 90, maxY: 90 } },
-  { x: 4, y: 0, level: 2, boundBox: { minX: 0, minY: 45, maxX: 45, maxY: 90 } },
-  { x: 6, y: 2, level: 2, boundBox: { minX: 90, minY: -45, maxX: 135, maxY: 0 } },
-  { x: 6, y: 3, level: 2, boundBox: { minX: 90, minY: -90, maxX: 135, maxY: -45 } },
-  { x: 7, y: 2, level: 2, boundBox: { minX: 135, minY: -45, maxX: 180, maxY: 0 } },
-  { x: 5, y: 2, level: 2, boundBox: { minX: 45, minY: -45, maxX: 90, maxY: 0 } },
-  { x: 4, y: 2, level: 2, boundBox: { minX: 0, minY: -45, maxX: 45, maxY: 0 } },
-  { x: 3, y: 1, level: 2, boundBox: { minX: -45, minY: 0, maxX: 0, maxY: 45 } },
-  { x: 3, y: 0, level: 2, boundBox: { minX: -45, minY: 45, maxX: 0, maxY: 90 } },
-  { x: 2, y: 0, level: 2, boundBox: { minX: -90, minY: 45, maxX: -45, maxY: 90 } },
-  { x: 0, y: 1, level: 2, boundBox: { minX: -180, minY: 0, maxX: -135, maxY: 45 } },
-  { x: 1, y: 0, level: 2, boundBox: { minX: -135, minY: 45, maxX: -90, maxY: 90 } },
-  { x: 0, y: 0, level: 2, boundBox: { minX: -180, minY: 45, maxX: -135, maxY: 90 } },
-];
-
 export const hasTDT3DExtension = (_CesiumNS: typeof Cesium): boolean => {
-  const plugin = getTDTPlugin();
-  return plugin !== null
-    && typeof plugin.GeoTerrainProvider === 'function'
-    && typeof plugin.GeoWTFS === 'function';
+  return isTDTPluginReady(getTDTPlugin());
 };
 
 const warnMissingTDT3DExtension = (): void => {
-  console.warn('未检测到 plugin/tdt-cesium-plugin 可用导出，tdt3d 模式将只加载影像底图。');
+  console.warn('未检测到 tdt-terrain-cesium-plugin 可用导出，tdt3d 模式将只加载影像底图。');
 };
 
 const warnMissingToken = (): void => {
@@ -239,59 +245,12 @@ export const createTDT3DGeoWTFS = (token: string, viewer: Cesium.Viewer): any | 
 
   const plugin = getTDTPlugin() as TDTPluginModule;
   const wtfs = new plugin.GeoWTFS!(viewer, {
-    url: `${TDT_BASE_URL}mapservice/GetTiles?lxys={z},{x},{y}&tk=${token}`,
-    icoUrl: `${TDT_BASE_URL}mapservice/GetIcon?id={id}&tk=${token}`,
+    url: `${TDT_BASE_URL}mapservice/GetTiles?lxys={z},{x},{y}&version=1.0.0&tk=${token}`,
+    icoUrl: `${TDT_BASE_URL}mapservice/GetIcon?id={id}&version=1.0.0&tk=${token}`,
     subdomains: TDT_SUBDOMAINS,
     token,
-    metadata: {
-      boundBox: {
-        minX: -180,
-        minY: -90,
-        maxX: 180,
-        maxY: 90,
-      },
-      minLevel: 1,
-      maxLevel: 20,
-    },
-    depthTestOptimization: true,
-    dTOElevation: 15000,
-    dTOPitch: Cesium.Math.toRadians(-70),
-    aotuCollide: true,
-    collisionPadding: [5, 10, 8, 5],
-    serverFirstStyle: true,
-    labelGraphics: {
-      font: '28px sans-serif',
-      fontSize: 28,
-      fillColor: Cesium.Color.WHITE,
-      scale: 0.5,
-      outlineColor: Cesium.Color.BLACK,
-      outlineWidth: 2,
-      style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-      showBackground: false,
-      backgroundColor: Cesium.Color.RED,
-      backgroundPadding: new Cesium.Cartesian2(10, 10),
-      horizontalOrigin: Cesium.HorizontalOrigin.LEFT,
-      verticalOrigin: Cesium.VerticalOrigin.TOP,
-      eyeOffset: Cesium.Cartesian3.ZERO,
-      pixelOffset: new Cesium.Cartesian2(5, 5),
-      disableDepthTestDistance: undefined,
-    },
-    billboardGraphics: {
-      horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
-      verticalOrigin: Cesium.VerticalOrigin.CENTER,
-      eyeOffset: Cesium.Cartesian3.ZERO,
-      pixelOffset: Cesium.Cartesian2.ZERO,
-      alignedAxis: Cesium.Cartesian3.ZERO,
-      color: Cesium.Color.WHITE,
-      rotation: 0,
-      scale: 1,
-      width: 18,
-      height: 18,
-      disableDepthTestDistance: undefined,
-    },
   });
-  wtfs.initTDT(TDT_3D_INIT_TILES);
-
+  wtfs.initTDT();
   return wtfs;
 };
 

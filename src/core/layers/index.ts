@@ -24,7 +24,6 @@ export {
   createTDT3DTerrainProvider,
   createTDT3DGeoWTFS,
   hasTDT3DExtension,
-  TDT_3D_INIT_TILES,
 } from './TDTMapLayer';
 
 // 导出热力图图层

@@ -183,10 +183,11 @@ export class LayersButtonHandler extends BaseMenu {
     styles: ResolvedPanelStyles,
   ): HTMLElement {
     const isSelected = mapType.id === currentType;
+    const { forcePlaceName=true } = mapType;
     const item = document.createElement('div');
     item.setAttribute('data-map-type', mapType.id);
     Object.assign(item.style, styles.mapTypeCard);
-    if (isSelected) {
+    if (isSelected && forcePlaceName) {
       Object.assign(item.style, styles.mapTypeCardSelected);
     }
 
@@ -196,7 +197,7 @@ export class LayersButtonHandler extends BaseMenu {
       thumbnail.style.backgroundImage = `url(${mapType.thumbnail})`;
     }
 
-    if (isSelected) {
+    if (isSelected && forcePlaceName) {
       const placeNameBadge = this.createPlaceNameToggle(mapType, styles);
       if (placeNameBadge) {
         thumbnail.appendChild(placeNameBadge);

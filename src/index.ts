@@ -107,7 +107,6 @@ export {
   createTDT3DTerrainProvider,
   createTDT3DGeoWTFS,
   hasTDT3DExtension,
-  TDT_3D_INIT_TILES,
 } from './core/layers';
 export type {
   HeatPoint,

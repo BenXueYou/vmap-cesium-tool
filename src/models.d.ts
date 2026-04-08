@@ -4,7 +4,7 @@ declare module '*.gltf' {
   export default value
 }
 
-declare module '../../../plugin/tdt-cesium-plugin/dist/tdtplug.es.js' {
+declare module 'tdt-terrain-cesium-plugin' {
   const value: any
   export default value
 }

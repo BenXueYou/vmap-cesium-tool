@@ -6,5 +6,5 @@
     "outDir": "dist-types",
     "noEmit": false
   },
-  "include": ["src/index.ts", "src/libs/**/*.ts"]
+  "include": ["src/index.ts", "src/libs/**/*.ts", "src/**/*.d.ts"]
 }

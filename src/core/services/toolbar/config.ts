@@ -194,6 +194,6 @@ export const DEFAULT_MAP_TYPES: MapType[] = [
     provider: createTDT3DImageryConfig,
     terrainProvider: createTDT3DTerrainProvider,
     geoWTFS: createTDT3DGeoWTFS,
-    forcePlaceName: true,
+    forcePlaceName: false,
   },
 ];

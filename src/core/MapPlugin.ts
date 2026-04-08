@@ -32,6 +32,7 @@ import {
   createTDTImageryConfig,
   createTDT3DImageryConfig,
   createTDT3DTerrainProvider,
+  ensureTDT3DExtensionLoaded,
   createTDTVectorConfig,
   createTDTTerrainConfig 
 } from './layers/TDTMapLayer';
@@ -479,7 +480,7 @@ export class MapPlugin {
     }
   }
 
-  private syncGeoWTFS(): void {
+  private async syncGeoWTFS(): Promise<void> {
     const viewer = this.viewer;
     if (!viewer) {
       return;
@@ -493,12 +494,21 @@ export class MapPlugin {
       return;
     }
 
+    if (this.currentMapTypeId === 'tdt3d') {
+      await ensureTDT3DExtensionLoaded();
+    }
+
     try {
       this.currentGeoWTFS = mapType?.geoWTFS?.(this.getLayerToken(), viewer) || null;
     } catch (error) {
       console.warn('创建三维路网实例失败:', error);
       this.currentGeoWTFS = null;
     }
+  }
+
+  private async refreshLayersAndGeoWTFS(): Promise<void> {
+    await this.addLayers();
+    await this.syncGeoWTFS();
   }
 
   private updateToolbarLayerState(): void {
@@ -517,10 +527,10 @@ export class MapPlugin {
       isNoFlyZoneChecked: this.noFlyZoneVisible,
       token: this.getLayerToken(),
       onMapTypeChange: (mapTypeId: string) => {
-        this.setMapType(mapTypeId);
+        void this.setMapType(mapTypeId);
       },
       onPlaceNameToggle: (isChecked: boolean) => {
-        this.setPlaceNameVisible(isChecked);
+        void this.setPlaceNameVisible(isChecked);
       },
     });
   }
@@ -528,13 +538,13 @@ export class MapPlugin {
   private createLayersServiceBridge() {
     return {
       setMapType: (mapTypeId: string) => {
-        this.setMapType(mapTypeId);
+        void this.setMapType(mapTypeId);
       },
       setPlaceNameVisible: (isChecked: boolean) => {
-        this.setPlaceNameVisible(isChecked);
+        void this.setPlaceNameVisible(isChecked);
       },
       togglePlaceNameVisibility: () => {
-        this.setPlaceNameVisible(!this.placeNameVisible);
+        void this.setPlaceNameVisible(!this.placeNameVisible);
       },
       showNoFlyZones: async () => {
         await this.showNoFlyZones();
@@ -548,7 +558,7 @@ export class MapPlugin {
     };
   }
 
-  private setMapType(mapTypeId: string): void {
+  private async setMapType(mapTypeId: string): Promise<void> {
     this.currentMapTypeId = mapTypeId;
     const mapType = this.getCurrentToolbarMapType();
     this.placeNameVisible = mapType?.forcePlaceName
@@ -590,11 +600,9 @@ export class MapPlugin {
       default:
         break;
     }
-
-    this.syncGeoWTFS();
   }
 
-  private setPlaceNameVisible(isChecked: boolean): void {
+  private async setPlaceNameVisible(isChecked: boolean): Promise<void> {
     const mapType = this.getCurrentToolbarMapType();
     if (mapType?.forcePlaceName) {
       this.placeNameVisible = true;
@@ -638,8 +646,6 @@ export class MapPlugin {
       default:
         break;
     }
-
-    this.syncGeoWTFS();
   }
 
   private async showNoFlyZones(): Promise<void> {
@@ -705,7 +711,7 @@ export class MapPlugin {
       this.viewer = new Cesium.Viewer(container, viewerOptions);
 
       this.sceneModeListenerDispose = this.viewer.scene.morphComplete.addEventListener(() => {
-        this.syncGeoWTFS();
+        void this.syncGeoWTFS();
       });
 
       // 隐藏版权信息
@@ -713,7 +719,7 @@ export class MapPlugin {
 
       // 添加地图图层
       await this.addLayers();
-      this.syncGeoWTFS();
+      await this.syncGeoWTFS();
 
       // 设置相机视图
       this.setCameraView();
@@ -748,7 +754,7 @@ export class MapPlugin {
 
     switch (type) {
       case 'tdt':
-        this.addTDTLayers(tdt);
+        await this.addTDTLayers(tdt);
         break;
       case 'gaode':
         this.addGaodeLayers(gaode);
@@ -764,14 +770,14 @@ export class MapPlugin {
         break;
       default:
         // 默认添加天地图影像图层
-        this.addTDTLayers(tdt);
+        await this.addTDTLayers(tdt);
     }
   }
 
   /**
    * 添加天地图图层
    */
-  private addTDTLayers(config?: TDTLayerConfig): void {
+  private async addTDTLayers(config?: TDTLayerConfig): Promise<void> {
     if (!this.viewer) return;
 
     const token = config?.token || '';
@@ -796,6 +802,10 @@ export class MapPlugin {
         break;
       default:
         providers = createTDTImageryConfig(token);
+    }
+
+    if (mapTypeId === 'tdt3d') {
+      await ensureTDT3DExtensionLoaded();
     }
 
     this.applyTerrainProvider(mapTypeId === 'tdt3d' ? createTDT3DTerrainProvider : mapType?.terrainProvider);
@@ -955,8 +965,7 @@ export class MapPlugin {
 
     // 如果已初始化，立即应用新配置
     if (this.isInitialized) {
-      this.addLayers();
-      this.syncGeoWTFS();
+      void this.refreshLayersAndGeoWTFS();
     }
 
     this.updateToolbarLayerState();
@@ -998,10 +1007,10 @@ export class MapPlugin {
           isPlaceNameChecked: this.placeNameVisible,
           token: this.getLayerToken(),
           onMapTypeChange: (mapTypeId: string) => {
-            this.setMapType(mapTypeId);
+            void this.setMapType(mapTypeId);
           },
           onPlaceNameToggle: (isChecked: boolean) => {
-            this.setPlaceNameVisible(isChecked);
+            void this.setPlaceNameVisible(isChecked);
           },
         },
         noFlyZone: {
