@@ -150,9 +150,9 @@ export interface MapType {
   thumbnail: string;
   provider: (token: string) => Cesium.ImageryProvider[];
   // 三维地图专用：地形提供者
-  terrainProvider?: (token: string) => Cesium.TerrainProvider | null;
+  terrainProvider?: (token: string, sk?: string) => Cesium.TerrainProvider | null;
   // 三维地图专用：路网服务配置
-  geoWTFS?: (token: string, viewer: Cesium.Viewer) => any | null;
+  geoWTFS?: (token: string, viewer: Cesium.Viewer, sk?: string) => any | null;
 }
 
 export interface LayersPanelStyleConfig {
@@ -244,6 +244,7 @@ export interface TDTLayerConfig {
   mapTypeId?: TDTMapTypeId;
   /** 天地图 token */
   token: string;
+  sk?: string; // 天地图 sk（可选，提供后可启用部分安全防盗链功能）
   /** 是否显示注记层，默认 true */
   showLabel?: boolean;
 }
@@ -256,6 +257,7 @@ export interface GaodeLayerConfig {
   mapTypeId?: 'vector' | 'satellite' | 'terrain';
   /** 高德 key */
   token?: string;
+  sk?: string; // 高德 sk（可选，提供后可启用部分安全防盗链功能）
   /** 是否显示注记层，默认 true */
   showLabel?: boolean;
 }
@@ -268,6 +270,7 @@ export interface BaiduLayerConfig {
   mapTypeId?: 'normal' | 'satellite' | 'terrain';
   /** 百度 ak */
   token?: string;
+  sk?: string;
   /** 是否显示注记层，默认 true */
   showLabel?: boolean;
 }

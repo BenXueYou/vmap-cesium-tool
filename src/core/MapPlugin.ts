@@ -337,6 +337,7 @@ export class MapPlugin {
       result.tdt = {
         mapTypeId: 'img',
         token: '',
+        sk: '',
         showLabel: true,
       };
     }
@@ -395,6 +396,19 @@ export class MapPlugin {
     }
   }
 
+  private getLayerSk(): string {
+    switch (this.layersConfig.type) {
+      case 'tdt':
+        return this.layersConfig.tdt?.sk || '';
+      case 'gaode':
+        return this.layersConfig.gaode?.sk || '';
+      case 'baidu':
+        return this.layersConfig.baidu?.sk || '';
+      default:
+        return '';
+    }
+  }
+
   private resetTerrainProvider(): void {
     if (!this.viewer) {
       return;
@@ -403,12 +417,12 @@ export class MapPlugin {
     this.viewer.terrainProvider = new Cesium.EllipsoidTerrainProvider();
   }
 
-  private applyTerrainProvider(terrainProviderFactory?: (token: string) => Cesium.TerrainProvider | null): void {
+  private applyTerrainProvider(terrainProviderFactory?: (token: string, sk?: string) => Cesium.TerrainProvider | null): void {
     if (!this.viewer) {
       return;
     }
 
-    const terrainProvider = terrainProviderFactory?.(this.getLayerToken()) || null;
+    const terrainProvider = terrainProviderFactory?.(this.getLayerToken(), this.getLayerSk()) || null;
     this.viewer.terrainProvider = terrainProvider ?? new Cesium.EllipsoidTerrainProvider();
   }
 
@@ -499,7 +513,7 @@ export class MapPlugin {
     }
 
     try {
-      this.currentGeoWTFS = mapType?.geoWTFS?.(this.getLayerToken(), viewer) || null;
+      this.currentGeoWTFS = mapType?.geoWTFS?.(this.getLayerToken(), viewer, this.getLayerSk()) || null;
     } catch (error) {
       console.warn('创建三维路网实例失败:', error);
       this.currentGeoWTFS = null;
@@ -709,7 +723,7 @@ export class MapPlugin {
       }
 
       this.viewer = new Cesium.Viewer(container, viewerOptions);
-
+      this.viewer.scene.globe.enableLighting = true // 启用地形光照
       this.sceneModeListenerDispose = this.viewer.scene.morphComplete.addEventListener(() => {
         void this.syncGeoWTFS();
       });
@@ -781,6 +795,7 @@ export class MapPlugin {
     if (!this.viewer) return;
 
     const token = config?.token || '';
+    const sk = config?.sk || '';
     const mapTypeId = config?.mapTypeId || 'img';
     const showLabel = config?.showLabel ?? true;
     const mapType = this.getCurrentToolbarMapType();
@@ -789,19 +804,19 @@ export class MapPlugin {
 
     switch (mapTypeId) {
       case 'vec':
-        providers = createTDTVectorConfig(token);
+        providers = createTDTVectorConfig(token, sk);
         break;
       case 'img':
-        providers = createTDTImageryConfig(token);
+        providers = createTDTImageryConfig(token, sk);
         break;
       case 'ter':
-        providers = createTDTTerrainConfig(token);
+        providers = createTDTTerrainConfig(token, sk);
         break;
       case 'tdt3d':
-        providers = createTDT3DImageryConfig(token);
+        providers = createTDT3DImageryConfig(token, sk);
         break;
       default:
-        providers = createTDTImageryConfig(token);
+        providers = createTDTImageryConfig(token, sk);
     }
 
     if (mapTypeId === 'tdt3d') {

@@ -128,7 +128,8 @@ export function useMapInit(containerId = 'cesiumContainer') {
           type: 'tdt',
           tdt: {
             mapTypeId: 'img',
-            token: tdTokenValue,
+            token: '49029bae45b2cb33eac3f656ef968cb3',
+            sk: '0f82c6e6e2b543ce401c193e0ed0d3b2',
             showLabel: true,
           },
         },
