@@ -3,7 +3,7 @@ import * as Cesium from 'cesium';
 import CesiumPointClusterLayer, {
   type ClusterPoint,
   type PointClusterLayerOptions,
-} from '../libs/CesiumPointClusterLayer';
+} from '../../src/libs/CesiumPointClusterLayer';
 
 /**
  * 点聚类图层相关的辅助逻辑（Vue3 composition API）

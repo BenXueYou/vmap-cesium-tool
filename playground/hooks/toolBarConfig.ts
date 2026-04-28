@@ -8,10 +8,10 @@ import zoomInIcon from "../assets/images/toolbar/zoom-in@3x.png";
 import zoomOutIcon from "../assets/images/toolbar/zoom-out@3x.png";
 import fullscreenIcon from "../assets/images/toolbar/fullscreen@3x.png";
 import { TD_Map_Search_URL, China_Map_Extent } from "./useMap";
-import type { SearchResult } from "../libs/CesiumMapModel";
+import type { SearchResult } from "../../src/libs/CesiumMapModel";
 import type { Viewer } from "cesium";
 import type { Ref } from "vue";
-import { i18n } from "../i18n";
+import { i18n } from "../../src/i18n";
 
 
 export const useToolBarConfig = (viewer: Viewer | undefined, message: Ref<string>) => {

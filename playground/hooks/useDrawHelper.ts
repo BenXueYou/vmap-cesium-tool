@@ -1,8 +1,7 @@
 import { ref, shallowRef, markRaw, type Ref } from "vue";
 import * as Cesium from "cesium";
-import DrawHelper from "../libs/CesiumMapDraw";
-import type { DrawResult } from "../libs/drawHelper";
-import { i18n } from "../i18n";
+import DrawHelper from "../../src/libs/CesiumMapDraw";
+import { i18n } from "../../src/i18n";
 
 /**
  * 绘制相关的辅助逻辑

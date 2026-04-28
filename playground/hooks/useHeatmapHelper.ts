@@ -5,7 +5,7 @@ import CesiumHeatmapLayer, {
   type HeatmapOptions,
   type HeatmapGradient,
   type HeatmapAutoUpdateOptions,
-} from "../libs/CesiumHeatmapLayer";
+} from "../../src/libs/CesiumHeatmapLayer";
 
 /**
  * 热力图相关的辅助逻辑

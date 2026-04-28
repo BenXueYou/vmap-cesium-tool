@@ -1,4 +1,4 @@
-import { getViteTdToken } from "../utils/common";
+import { getViteTdToken } from "../../src/utils/common";
 
 // 天地图Token
 export const TD_Map_TOKEN = getViteTdToken();
