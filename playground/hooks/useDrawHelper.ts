@@ -1,6 +1,6 @@
 import { ref, shallowRef, markRaw, type Ref } from "vue";
 import * as Cesium from "cesium";
-import DrawHelper from "../../src/libs/CesiumMapDraw";
+import { DrawService, type DrawOptions, type DrawResult } from "../../src/index";
 import { i18n } from "../../src/i18n";
 
 /**
@@ -11,13 +11,53 @@ export function useDrawHelper(
   viewer: Ref<Cesium.Viewer | undefined>,
   message: Ref<string>
 ) {
-  const drawHelper = shallowRef<DrawHelper | null>(null);
+  const drawHelper = shallowRef<DrawService | null>(null);
   const isDrawing = ref(false);
   const currentDrawMode = ref<string | null>(null);
 
+  const runAfterMessage = (ms = 2000) => {
+    setTimeout(() => {
+      message.value = "";
+    }, ms);
+  };
+
+  const hideAreaLabelStyle: DrawOptions = {
+    previewAreaLabelStyle: {
+      textColor: Cesium.Color.TRANSPARENT,
+      backgroundColor: Cesium.Color.TRANSPARENT,
+    },
+    totalAreaLabelStyle: {
+      textColor: Cesium.Color.TRANSPARENT,
+      backgroundColor: Cesium.Color.TRANSPARENT,
+    },
+  };
+
+  const hideDistanceLabelStyle: DrawOptions = {
+    segmentDistanceLabelStyle: {
+      textColor: Cesium.Color.TRANSPARENT,
+      backgroundColor: Cesium.Color.TRANSPARENT,
+    },
+    totalDistanceLabelStyle: {
+      textColor: Cesium.Color.TRANSPARENT,
+      backgroundColor: Cesium.Color.TRANSPARENT,
+    },
+  };
+
+  const withDrawEnd = (onDone: (result: DrawResult | null) => void) => {
+    if (!drawHelper.value) return;
+    drawHelper.value.onDrawEnd((result) => {
+      isDrawing.value = false;
+      currentDrawMode.value = null;
+      onDone(result);
+    });
+  };
+
   const initDrawHelper = () => {
     if (!viewer.value) return;
-    drawHelper.value = markRaw(new DrawHelper(viewer.value));
+    drawHelper.value = markRaw(new DrawService(viewer.value, {
+      i18n,
+      useI18n: true,
+    }));
   };
 
   const endDrawing = () => {
@@ -34,31 +74,20 @@ export function useDrawHelper(
 
     currentDrawMode.value = "line";
     isDrawing.value = true;
-    drawHelper.value.onMeasureComplete((result: {
-      type: "line" | "polygon" | "rectangle" | "circle";
-      positions: Cesium.Cartesian3[];
-      distance?: number;
-      areaKm2?: number;
-    }) => {
-      if (result.type === "line") {
+    withDrawEnd((result) => {
+      message.value = i18n.t("draw.done.line");
+      if (result) {
         console.log("线条绘制完成，点信息:", result.positions);
       }
+      runAfterMessage();
     });
+
     drawHelper.value.startDrawingLine({
-      strokeWidth: 4,
-      showDistanceLabel: false, // 不显示距离标签
-      strokeColor: Cesium.Color.BLUE,
+      lineWidth: 4,
+      lineColor: Cesium.Color.BLUE,
+      ...hideDistanceLabelStyle,
     });
     message.value = i18n.t("draw.start.line");
-
-    drawHelper.value.onDrawEnd(() => {
-      isDrawing.value = false;
-      currentDrawMode.value = null;
-      message.value = i18n.t("draw.done.line");
-      setTimeout(() => {
-        message.value = "";
-      }, 2000);
-    });
   };
 
   const addDrawArea = () => {
@@ -67,38 +96,21 @@ export function useDrawHelper(
 
     currentDrawMode.value = "rectangle";
     isDrawing.value = true;
-    drawHelper.value.onMeasureComplete((result: {
-      type: "line" | "polygon" | "rectangle" | "circle";
-      positions: Cesium.Cartesian3[];
-      distance?: number;
-      areaKm2?: number;
-    }) => {
-      if (result.type === "rectangle") {
+
+    withDrawEnd((result) => {
+      message.value = i18n.t("draw.done.rectangle");
+      if (result) {
         console.log("矩形绘制完成，点信息:", result.positions);
       }
+      runAfterMessage();
     });
+
     drawHelper.value.startDrawingRectangle({
       fillColor: Cesium.Color.YELLOW.withAlpha(0.5),
-      outlineColor: Cesium.Color.YELLOW,
-      outlineWidth: 2,
-      showAreaLabel: true,
-      onClick: (entity: Cesium.Entity) => {
-        console.log("矩形区域点击:", entity);
-      },
+      lineColor: Cesium.Color.YELLOW,
+      lineWidth: 2,
     });
     message.value = i18n.t("draw.start.rectangle");
-
-    drawHelper.value.onDrawEnd((entity) => {
-      isDrawing.value = false;
-      currentDrawMode.value = null;
-      message.value = i18n.t("draw.done.rectangle");
-      if (entity) {
-        console.log("关联标签实体:", drawHelper.value?.getEntityLabelEntities(entity));
-      }
-      setTimeout(() => {
-        message.value = "";
-      }, 2000);
-    });
   };
 
   // 测试：绘制矩形但不显示面积标签
@@ -109,25 +121,21 @@ export function useDrawHelper(
     currentDrawMode.value = "rectangle";
     isDrawing.value = true;
 
+    withDrawEnd((result) => {
+      message.value = i18n.t("draw.done.rectangle_no_label");
+      if (result) {
+        console.log("矩形绘制完成(无面积标签)，点信息:", result.positions);
+      }
+      runAfterMessage();
+    });
+
     drawHelper.value.startDrawingRectangle({
       fillColor: Cesium.Color.YELLOW.withAlpha(0.5),
-      outlineColor: Cesium.Color.YELLOW,
-      outlineWidth: 2,
-      showAreaLabel: false,
+      lineColor: Cesium.Color.YELLOW,
+      lineWidth: 2,
+      ...hideAreaLabelStyle,
     });
     message.value = i18n.t("draw.start.rectangle_no_label");
-
-    drawHelper.value.onDrawEnd((entity) => {
-      isDrawing.value = false;
-      currentDrawMode.value = null;
-      message.value = i18n.t("draw.done.rectangle_no_label");
-      if (entity) {
-        console.log("关联标签实体:", drawHelper.value?.getEntityLabelEntities(entity));
-      }
-      setTimeout(() => {
-        message.value = "";
-      }, 2000);
-    });
   };
 
   const addDrawCircle = () => {
@@ -136,32 +144,21 @@ export function useDrawHelper(
 
     currentDrawMode.value = "circle";
     isDrawing.value = true;
-    drawHelper.value.onMeasureComplete((result: {
-      type: "line" | "polygon" | "rectangle" | "circle";
-      positions: Cesium.Cartesian3[];
-      distance?: number;
-      areaKm2?: number;
-    }) => {
-      if (result.type === "circle") {
+
+    withDrawEnd((result) => {
+      message.value = i18n.t("draw.done.circle");
+      if (result) {
         console.log("圆形绘制完成，点信息:", result.positions);
       }
+      runAfterMessage();
     });
+
     drawHelper.value.startDrawingCircle({
       fillColor: Cesium.Color.GREEN.withAlpha(0.5),
-      outlineColor: Cesium.Color.GREEN,
-      outlineWidth: 6,
-      showAreaLabel: true,
+      lineColor: Cesium.Color.GREEN,
+      lineWidth: 6,
     });
     message.value = i18n.t("draw.start.circle");
-
-    drawHelper.value.onDrawEnd(() => {
-      isDrawing.value = false;
-      currentDrawMode.value = null;
-      message.value = i18n.t("draw.done.circle");
-      setTimeout(() => {
-        message.value = "";
-      }, 2000);
-    });
   };
 
   // 测试：绘制圆形但不显示面积标签
@@ -172,25 +169,21 @@ export function useDrawHelper(
     currentDrawMode.value = "circle";
     isDrawing.value = true;
 
+    withDrawEnd((result) => {
+      message.value = i18n.t("draw.done.circle_no_label");
+      if (result) {
+        console.log("圆形绘制完成(无面积标签)，点信息:", result.positions);
+      }
+      runAfterMessage();
+    });
+
     drawHelper.value.startDrawingCircle({
       fillColor: Cesium.Color.GREEN.withAlpha(0.5),
-      outlineColor: Cesium.Color.GREEN,
-      outlineWidth: 6,
-      showAreaLabel: false,
+      lineColor: Cesium.Color.GREEN,
+      lineWidth: 6,
+      ...hideAreaLabelStyle,
     });
     message.value = i18n.t("draw.start.circle_no_label");
-
-    drawHelper.value.onDrawEnd((entity) => {
-      isDrawing.value = false;
-      currentDrawMode.value = null;
-      message.value = i18n.t("draw.done.circle_no_label");
-      if (entity) {
-        console.log("关联标签实体:", drawHelper.value?.getEntityLabelEntities(entity));
-      }
-      setTimeout(() => {
-        message.value = "";
-      }, 2000);
-    });
   };
 
   const addDrawPolygon = () => {
@@ -199,39 +192,23 @@ export function useDrawHelper(
 
     currentDrawMode.value = "polygon";
     isDrawing.value = true;
-    drawHelper.value.onMeasureComplete((result: {
-      type: "line" | "polygon" | "rectangle" | "circle";
-      positions: Cesium.Cartesian3[];
-      distance?: number;
-      areaKm2?: number;
-    }) => {
-      if (result.type === "polygon") {
+
+    withDrawEnd((result) => {
+      message.value = i18n.t("draw.done.polygon");
+      if (result) {
         console.log("多边形绘制完成，点信息:", result.positions);
+      } else {
+        console.log("多边形绘制完成: result is null (可能点数不足)");
       }
+      runAfterMessage();
     });
+
     drawHelper.value.startDrawingPolygon({
-      strokeWidth: 4,
-      strokeColor: Cesium.Color.YELLOW,
+      lineWidth: 4,
+      lineColor: Cesium.Color.YELLOW,
       fillColor: Cesium.Color.YELLOW.withAlpha(0.5),
-      showAreaLabel: true,
     });
     message.value = i18n.t("draw.start.polygon");
-
-    drawHelper.value.onDrawEnd((entity: Cesium.Entity | null) => {
-      console.log("多边形绘制完成:", entity);
-      isDrawing.value = false;
-      currentDrawMode.value = null;
-      message.value = i18n.t("draw.done.polygon");
-      setTimeout  (() => {
-        message.value = "";
-        if (entity) {
-          console.log("多边形绘制完成:", (entity as any)._borderEntity);
-          console.log("关联标签实体:", drawHelper.value?.getEntityLabelEntities(entity));
-        } else {
-          console.log("多边形绘制完成: entity is null (可能点数不足/被拦截)");
-        }
-      }, 2000);
-    });
   };
 
   /**
@@ -245,40 +222,23 @@ export function useDrawHelper(
     currentDrawMode.value = "polygon";
     isDrawing.value = true;
 
-    drawHelper.value.onMeasureComplete((result: {
-      type: "line" | "polygon" | "rectangle" | "circle";
-      positions: Cesium.Cartesian3[];
-      distance?: number;
-      areaKm2?: number;
-    }) => {
-      if (result.type === "polygon") {
+    withDrawEnd((result) => {
+      message.value = result
+        ? i18n.t("draw.done.polygon_point_intercept_ok")
+        : i18n.t("draw.done.polygon_point_intercept_end");
+      if (result) {
         console.log("[PointIntercept] 多边形绘制完成，点信息:", result.positions);
       }
+      runAfterMessage();
     });
 
     drawHelper.value.startDrawingPolygon({
-      strokeWidth: 4,
-      strokeColor: Cesium.Color.ORANGE,
+      lineWidth: 4,
+      lineColor: Cesium.Color.ORANGE,
       fillColor: Cesium.Color.ORANGE.withAlpha(0.35),
-      showAreaLabel: true,
-      selfIntersectionEnabled: true, // 不允许自相交
-      // 严格：不允许擦边、不允许继续（即：检测到就拒绝落点/拒绝完成）
-      selfIntersectionAllowTouch: false,
-      selfIntersectionAllowContinue: false,
     });
 
-    message.value = i18n.t("draw.start.polygon_point_intercept");
-
-    drawHelper.value.onDrawEnd((entity: Cesium.Entity | null) => {
-      isDrawing.value = false;
-      currentDrawMode.value = null;
-      message.value = entity
-        ? i18n.t("draw.done.polygon_point_intercept_ok")
-        : i18n.t("draw.done.polygon_point_intercept_end");
-      setTimeout(() => {
-        message.value = "";
-      }, 2000);
-    });
+    message.value = `${i18n.t("draw.start.polygon_point_intercept")}（DrawService 暂不支持落点前自相交拦截，按标准多边形绘制）`;
   };
 
   /**
@@ -293,30 +253,21 @@ export function useDrawHelper(
     currentDrawMode.value = "polygon";
     isDrawing.value = true;
 
-    drawHelper.value.startDrawingPolygon({
-      strokeWidth: 4,
-      strokeColor: Cesium.Color.CYAN,
-      fillColor: Cesium.Color.CYAN.withAlpha(0.35),
-      showAreaLabel: true,
-      selfIntersectionEnabled: true,
-      // 严格：不允许擦边、不允许继续（兜底拦截将阻止完成）
-      selfIntersectionAllowTouch: false,
-      selfIntersectionAllowContinue: false,
-    });
-
-    message.value = i18n.t("draw.start.polygon_finish_fallback");
-
-    drawHelper.value.onDrawEnd((entity: Cesium.Entity | null) => {
-      console.log("[FinishFallback] onDrawEnd entity:", entity);
-      isDrawing.value = false;
-      currentDrawMode.value = null;
-      message.value = entity
+    withDrawEnd((result) => {
+      message.value = result
         ? i18n.t("draw.done.polygon_finish_fallback_ok")
         : i18n.t("draw.done.polygon_finish_fallback_blocked");
-      setTimeout(() => {
-        message.value = "";
-      }, 2500);
+      console.log("[FinishFallback] onDrawEnd result:", result);
+      runAfterMessage(2500);
     });
+
+    drawHelper.value.startDrawingPolygon({
+      lineWidth: 4,
+      lineColor: Cesium.Color.CYAN,
+      fillColor: Cesium.Color.CYAN.withAlpha(0.35),
+    });
+
+    message.value = `${i18n.t("draw.start.polygon_finish_fallback")}（DrawService 暂不支持完成前自相交兜底，按标准多边形绘制）`;
   };
 
   // 测试：绘制多边形但不显示面积标签
@@ -327,26 +278,21 @@ export function useDrawHelper(
     currentDrawMode.value = "polygon";
     isDrawing.value = true;
 
+    withDrawEnd((result) => {
+      message.value = i18n.t("draw.done.polygon_no_label");
+      if (result) {
+        console.log("多边形绘制完成(不显示面积标签)，点信息:", result.positions);
+      }
+      runAfterMessage();
+    });
+
     drawHelper.value.startDrawingPolygon({
-      strokeWidth: 4,
-      strokeColor: Cesium.Color.YELLOW,
+      lineWidth: 4,
+      lineColor: Cesium.Color.YELLOW,
       fillColor: Cesium.Color.YELLOW.withAlpha(0.5),
-      showAreaLabel: false,
+      ...hideAreaLabelStyle,
     });
     message.value = i18n.t("draw.start.polygon_no_label");
-
-    drawHelper.value.onDrawEnd((entity: Cesium.Entity | null) => {
-      console.log("多边形绘制完成(不显示面积标签):", entity);
-      isDrawing.value = false;
-      currentDrawMode.value = null;
-      message.value = i18n.t("draw.done.polygon_no_label");
-      if (entity) {
-        console.log("关联标签实体:", drawHelper.value?.getEntityLabelEntities(entity));
-      }
-      setTimeout(() => {
-        message.value = "";
-      }, 2000);
-    });
   };
 
   const destroyDrawHelper = () => {

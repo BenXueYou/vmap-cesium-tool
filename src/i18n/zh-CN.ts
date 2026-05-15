@@ -33,6 +33,11 @@ const zhCN = {
     custom_visibility_title: "可见配置项",
   },
   ui: {
+    group: {
+      draw: "绘制",
+      overlay: "覆盖物/叠加物",
+      overlay_edit: "覆盖物编辑",
+    },
     draw: {
       line: "绘制线条",
       area: "绘制区域",
@@ -58,6 +63,7 @@ const zhCN = {
       label: "添加标签",
       rectangle: "添加矩形",
       info_window: "添加窗口",
+      info_window_close: "关闭窗口",
       ring: "添加圆环",
       ring_test: "测试添加圆环性能",
       heatmap: "添加热力图",

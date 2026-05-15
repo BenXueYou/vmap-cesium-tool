@@ -33,6 +33,11 @@ const enUS = {
     custom_visibility_title: "Visibility",
   },
   ui: {
+    group: {
+      draw: "Draw",
+      overlay: "Overlay",
+      overlay_edit: "Overlay Edit",
+    },
     draw: {
       line: "Draw line",
       area: "Draw area",
@@ -58,6 +63,7 @@ const enUS = {
       label: "Add label",
       rectangle: "Add rectangle",
       info_window: "Add info window",
+      info_window_close: "Close info window",
       ring: "Add ring",
       ring_test: "Test ring performance",
       heatmap: "Add heatmap",

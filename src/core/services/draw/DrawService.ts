@@ -2,7 +2,7 @@ import type { Cartesian3, Entity, Viewer } from 'cesium';
 
 import { DrawEntityFactory } from './entities/drawEntityFactory';
 import { DrawEntityRegistry } from './entities/drawEntityRegistry';
-import { getMinimumPointCount } from './geometry/drawGeometry';
+import { calculatePolygonArea, getMinimumPointCount } from './geometry/drawGeometry';
 import { isValidCartesian3 } from './geometry/drawPosition';
 import { DrawInteractionController } from './DrawInteractionController';
 import { buildHintText, DrawHintController } from './labels/drawHint';
@@ -12,6 +12,7 @@ import { resolveLabelStyle, resolveMeasurementTheme } from './measurementThemeRe
 import type { DrawCallbacks } from './types/drawState';
 import type { DrawMode, DrawOptions, DrawResult, DrawServiceOptions } from './types/drawTypes';
 import { i18n as defaultI18n } from '../../../i18n';
+import { isClosedPolygonSelfIntersecting } from '../../../utils/selfIntersection';
 
 export type {
   DrawArtifacts,
@@ -40,16 +41,28 @@ export class DrawService {
 
   private callbacks: DrawCallbacks = {};
 
+  /**
+   * 构造函数，初始化绘图服务实例
+   * @param viewer - Viewer视图实例，用于显示和交互
+   * @param options - DrawServiceOptions类型的配置对象，包含可选的国际化等配置
+   */
   constructor(private readonly viewer: Viewer, options: DrawServiceOptions = {}) {
+    // 初始化配置选项
     this.options = options;
+    // 设置国际化配置，如果未提供则使用默认配置
     this.i18n = options.i18n ?? defaultI18n;
+    // 设置是否使用国际化，默认为true
     this.useI18n = options.useI18n ?? true;
+    // 创建交互控制器，用于处理绘图交互
     this.interactionController = new DrawInteractionController(viewer);
+    // 创建标签工厂，用于生成测量标签
     this.labelFactory = new MeasurementLabelFactory(viewer, {
       i18n: this.i18n,
       useI18n: this.useI18n,
     });
+    // 创建提示控制器，用于显示绘图提示
     this.hintController = new DrawHintController(viewer);
+    // 创建实体工厂，用于生成绘图实体
     this.entityFactory = new DrawEntityFactory(viewer, this.labelFactory);
   }
 
@@ -220,6 +233,17 @@ export class DrawService {
       this.endDrawing();
       this.emitDrawEnd(null);
       return;
+    }
+
+    if (mode === 'polygon') {
+      const isSelfIntersecting = isClosedPolygonSelfIntersecting(positions, { allowTouch: false });
+      const area = calculatePolygonArea(positions);
+      const hasValidArea = Number.isFinite(area) && area > 1e-6;
+      if (isSelfIntersecting || !hasValidArea) {
+        this.endDrawing();
+        this.emitDrawEnd(null);
+        return;
+      }
     }
 
     const artifacts = this.entityFactory.createFinal(mode, positions, resolveMeasurementTheme(this.store.getOptions()));
