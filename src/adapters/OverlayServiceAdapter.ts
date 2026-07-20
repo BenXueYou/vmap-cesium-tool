@@ -56,11 +56,12 @@ export class OverlayServiceAdapter {
 
   constructor(viewer: Viewer, options: LegacyCesiumOverlayServiceOptions = {}) {
     this.viewer = viewer;
-    this.hoverEnabled = options.enableHoverHandler ?? true;
+    this.hoverEnabled = options.picking?.hover ?? options.enableHoverHandler ?? true;
     this.overlayEditOptions = options.overlayEditOptions;
     this.overlayService = new OverlayService(viewer, {
       enableHoverHandler: this.hoverEnabled,
       clickPickMinIntervalMs: options.clickPickMinIntervalMs,
+      picking: options.picking,
       onOverlayEditChange: options.onOverlayEditChange as any,
       onOverlayEditEnd: options.onOverlayEditEnd as any,
     });

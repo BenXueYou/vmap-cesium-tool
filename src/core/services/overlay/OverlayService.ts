@@ -11,6 +11,8 @@ import { Rectangle, type RectangleOptions } from '../../entities/Rectangle';
 import { Circle, type CircleOptions } from '../../entities/Circle';
 import { Ring, type RingOptions } from '../../entities/Ring';
 import type { OverlayClickHighlightOptions, OverlayEntity } from '../../entities/BaseOverlay';
+import { resolveOverlayPickCandidates } from './OverlayPickResolver';
+import { PickGovernor, type PickGovernorOptions } from '../../../utils/PickGovernor';
 
 type OverlayInstance = Marker | Label | Icon | SVG | InfoWindow | Polyline | Polygon | Rectangle | Circle | Ring;
 
@@ -53,12 +55,42 @@ interface OverlayGraphicsSnapshot {
 export interface OverlayServiceOptions {
   /** 是否启用 hover 处理器（默认 true） */
   enableHoverHandler?: boolean;
-  /** 点击节流间隔（毫秒，默认 120） */
+  /** 点击防抖/节流间隔（毫秒，默认 250） */
   clickPickMinIntervalMs?: number;
+  /** 拾取交互的集中配置，旧的平铺选项仍可继续使用。 */
+  picking?: OverlayPickingOptions;
   /** 覆盖物编辑变化回调 */
   onOverlayEditChange?: (entity: Entity) => void;
   /** 覆盖物编辑结束回调 */
   onOverlayEditEnd?: (entity: Entity | null) => void;
+}
+
+/**
+ * 覆盖物拾取配置。
+ *
+ * `enabled` 是 hover 和点击指针交互的总开关；`hover` 和 `selection`
+ * 分别控制两类指针交互。尺寸和数量配置会直接约束每次 drill picking
+ * 的工作量。
+ */
+export interface OverlayPickingOptions {
+  enabled?: boolean;
+  hover?: boolean;
+  selection?: boolean;
+  pickWidth?: number;
+  pickHeight?: number;
+  drillLimit?: number;
+  clickDebounceMs?: number;
+  governorProfiles?: PickGovernorOptions['profiles'];
+}
+
+interface ResolvedOverlayPickingOptions {
+  enabled: boolean;
+  hover: boolean;
+  selection: boolean;
+  pickWidth: number;
+  pickHeight: number;
+  drillLimit: number;
+  clickDebounceMs: number;
 }
 
 type OverlayEditKind = 'point' | 'polyline' | 'polygon' | 'rectangle' | 'circle';
@@ -125,7 +157,11 @@ export class OverlayService {
   private overlays: Map<string, OverlayInstance> = new Map();
   private entityOverlayMap: Map<Entity, OverlayInstance> = new Map();
   private options: Required<OverlayServiceOptions>;
+  private readonly picking: ResolvedOverlayPickingOptions;
+  private readonly pickGovernor: PickGovernor;
   private hoverEnabled: boolean;
+  private readonly creationOrderById = new Map<string, number>();
+  private nextCreationOrder = 1;
   private nextId = 1;
   private clickHandler: Cesium.ScreenSpaceEventHandler | null = null;
   private hoverHandler: Cesium.ScreenSpaceEventHandler | null = null;
@@ -155,11 +191,26 @@ export class OverlayService {
     this.viewer = viewer;
     this.options = {
       enableHoverHandler: options.enableHoverHandler ?? true,
-      clickPickMinIntervalMs: options.clickPickMinIntervalMs ?? 120,
+      clickPickMinIntervalMs: options.clickPickMinIntervalMs ?? 250,
+      picking: options.picking ?? {},
       onOverlayEditChange: options.onOverlayEditChange ?? (() => undefined),
       onOverlayEditEnd: options.onOverlayEditEnd ?? (() => undefined),
     };
-    this.hoverEnabled = this.options.enableHoverHandler;
+    const grouped = options.picking ?? {};
+    this.picking = {
+      enabled: grouped.enabled ?? true,
+      hover: grouped.hover ?? options.enableHoverHandler ?? true,
+      selection: grouped.selection ?? true,
+      pickWidth: this.normalizePositiveInteger(grouped.pickWidth, 3),
+      pickHeight: this.normalizePositiveInteger(grouped.pickHeight, 3),
+      drillLimit: this.normalizePositiveInteger(grouped.drillLimit, 16),
+      clickDebounceMs: this.normalizeNonNegativeNumber(
+        grouped.clickDebounceMs,
+        options.clickPickMinIntervalMs ?? 250,
+      ),
+    };
+    this.pickGovernor = new PickGovernor({ profiles: grouped.governorProfiles });
+    this.hoverEnabled = this.picking.enabled && this.picking.hover;
 
     // 初始化各个工厂
     this.markerFactory = new MarkerFactory(viewer, this);
@@ -192,6 +243,13 @@ export class OverlayService {
    */
   registerOverlay(id: string, overlay: OverlayInstance): void {
     this.overlays.set(id, overlay);
+    if (!this.creationOrderById.has(id)) {
+      this.creationOrderById.set(id, this.nextCreationOrder++);
+    }
+    const rootEntity = overlay.getEntity() as OverlayEntity;
+    if (!Number.isFinite(rootEntity._pickPriority)) {
+      rootEntity._pickPriority = 0;
+    }
     this.bindOverlayEntities(overlay);
   }
 
@@ -204,6 +262,7 @@ export class OverlayService {
       this.unbindOverlayEntities(overlay);
     }
     this.overlays.delete(id);
+    this.creationOrderById.delete(id);
   }
 
   /**
@@ -301,6 +360,7 @@ export class OverlayService {
     this.unbindOverlayEntities(overlay);
     overlay.remove();
     this.overlays.delete(id);
+    this.creationOrderById.delete(id);
     return true;
   }
 
@@ -385,7 +445,7 @@ export class OverlayService {
    */
   setHoverEnabled(enabled: boolean): void {
     const next = !!enabled;
-    this.hoverEnabled = next;
+    this.hoverEnabled = this.picking.enabled && this.picking.hover && next;
 
     if (!next) {
       this.setHighlightTargets(this.hoverHighlightTargets, 'hover', false);
@@ -393,7 +453,7 @@ export class OverlayService {
       return;
     }
 
-    if (this.hoverHandler === null) {
+    if (this.hoverEnabled && this.hoverHandler === null) {
       this.setupHoverHandler();
     }
   }
@@ -1053,6 +1113,14 @@ export class OverlayService {
     return new Cesium.Rectangle(west, south, east, north);
   }
 
+  private normalizePositiveInteger(value: number | undefined, fallback: number): number {
+    return Number.isFinite(value) && value! > 0 ? Math.max(1, Math.floor(value!)) : fallback;
+  }
+
+  private normalizeNonNegativeNumber(value: number | undefined, fallback: number): number {
+    return Number.isFinite(value) && value! >= 0 ? value! : fallback;
+  }
+
   /**
    * 安装 Hover 处理器
    */
@@ -1085,8 +1153,16 @@ export class OverlayService {
 
         const pickPosition = this.pendingHoverPosition;
         this.pendingHoverPosition = null;
+        if (!this.hoverEnabled) {
+          clearHover();
+          return;
+        }
         if (!pickPosition) {
           clearHover();
+          return;
+        }
+
+        if (!this.pickGovernor.shouldPick('hover', pickPosition)) {
           return;
         }
 
@@ -1120,8 +1196,12 @@ export class OverlayService {
   private setupClickHandler(): void {
     this.clickHandler = new Cesium.ScreenSpaceEventHandler(this.viewer.scene.canvas);
     this.clickHandler.setInputAction((click: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
+      if (!this.picking.enabled || !this.picking.selection) {
+        return;
+      }
+
       const now = Date.now();
-      if (now - this.lastClickPickAt < this.options.clickPickMinIntervalMs) {
+      if (now - this.lastClickPickAt < this.picking.clickDebounceMs) {
         return;
       }
 
@@ -1183,33 +1263,62 @@ export class OverlayService {
     reason: 'click' | 'hover',
   ): OverlayEntity | null {
     const pickedObjects = this.safeDrillPick(windowPosition);
-    for (const pickedObject of pickedObjects) {
-      const entity = this.resolvePickedOverlayEntity(pickedObject);
-      if (!entity || entity.show === false) {
-        continue;
-      }
+    const candidates = resolveOverlayPickCandidates(pickedObjects, {
+      reason,
+      resolveRoot: (pickedObject) => this.resolvePickedOverlayRoot(pickedObject),
+      isEligible: ({ root }, pickReason) => {
+        if (root.show === false) {
+          return false;
+        }
 
-      if (reason === 'hover' && !entity._hoverHighlight) {
-        continue;
-      }
+        if (pickReason === 'hover') {
+          return !!root._hoverHighlight;
+        }
 
-      if (reason === 'click' && !entity._clickHighlight && !entity._onClick) {
-        continue;
-      }
+        return !!root._clickHighlight || !!root._onClick;
+      },
+    });
 
-      return entity;
-    }
-
-    return null;
+    return candidates[0]?.root ?? null;
   }
 
   private safeDrillPick(windowPosition: Cesium.Cartesian2): any[] {
     try {
-      const picks = this.viewer.scene.drillPick(windowPosition);
+      const picks = this.viewer.scene.drillPick(
+        windowPosition,
+        this.picking.drillLimit,
+        this.picking.pickWidth,
+        this.picking.pickHeight,
+      );
       return Array.isArray(picks) ? picks : [];
     } catch {
       return [];
     }
+  }
+
+  private resolvePickedOverlayRoot(pickedObject: any): {
+    overlayId: string;
+    root: OverlayEntity;
+    pickPriority: number;
+    creationOrder: number;
+  } | null {
+    const root = this.resolvePickedOverlayEntity(pickedObject);
+    if (!root || typeof root.id !== 'string') {
+      return null;
+    }
+
+    const overlayId = String(root.id);
+    const creationOrder = this.creationOrderById.get(overlayId);
+    if (creationOrder === undefined) {
+      return null;
+    }
+
+    return {
+      overlayId,
+      root,
+      pickPriority: Number.isFinite(root._pickPriority) ? root._pickPriority! : 0,
+      creationOrder,
+    };
   }
 
   private resolvePickedOverlayEntity(pickedObject: any): OverlayEntity | null {

@@ -1,6 +1,7 @@
 import * as Cesium from 'cesium';
 import type { Cartesian3, Cartographic, Color, MaterialProperty, Rectangle, Entity } from 'cesium';
 import type { I18nLike } from '../i18n';
+import type { OverlayPickingOptions } from './services/overlay/OverlayService';
 import type { ToolbarCallbacks } from './services/toolbar/types';
 import type {
   BaseMapConfig,
@@ -448,6 +449,8 @@ export interface OverlayPluginOptions {
   enableHoverHandler?: boolean;
   /** 点击节流间隔 */
   clickPickMinIntervalMs?: number;
+  /** 覆盖物拾取集中配置 */
+  picking?: OverlayPickingOptions;
 }
 
 /**

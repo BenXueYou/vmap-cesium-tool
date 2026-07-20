@@ -4,6 +4,6 @@
  * @packageDocumentation
  */
 export { OverlayService } from './OverlayService';
-export type { OverlayServiceOptions } from './OverlayService';
+export type { OverlayServiceOptions, OverlayPickingOptions } from './OverlayService';
 export { resolveOverlayPickCandidates, } from './OverlayPickResolver';
 export type { OverlayPickCandidate, OverlayPickReason, OverlayPickResolverOptions, OverlayPickRoot, } from './OverlayPickResolver';

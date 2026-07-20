@@ -21,6 +21,8 @@ export interface BaseOverlayOptions {
     clickHighlight?: boolean | OverlayClickHighlightOptions;
     /** Hover 高亮配置 */
     hoverHighlight?: boolean | OverlayHoverHighlightOptions;
+    /** 屏幕拾取业务优先级，数值越大越优先（默认 0） */
+    pickPriority?: number;
     /** 自定义元数据 */
     metadata?: Record<string, any>;
     /** 兼容旧版图层分组键 */
@@ -48,6 +50,8 @@ export interface OverlayEntity extends Entity {
     _clickHighlight?: boolean | OverlayClickHighlightOptions;
     /** Hover 高亮配置 */
     _hoverHighlight?: boolean | OverlayHoverHighlightOptions;
+    /** 屏幕拾取业务优先级 */
+    _pickPriority?: number;
     /** 高亮联动的实体集合 */
     _highlightEntities?: Entity[];
     /** 当前是否处于高亮状态 */

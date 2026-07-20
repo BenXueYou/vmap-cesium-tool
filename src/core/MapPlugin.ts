@@ -1274,6 +1274,7 @@ export class MapPlugin {
     this.overlayService = new OverlayService(viewer, {
       enableHoverHandler: options.enableHoverHandler,
       clickPickMinIntervalMs: options.clickPickMinIntervalMs,
+      picking: options.picking,
     });
     return this.overlayService;
   }

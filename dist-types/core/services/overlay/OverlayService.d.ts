@@ -10,6 +10,7 @@ import { Rectangle, type RectangleOptions } from '../../entities/Rectangle';
 import { Circle, type CircleOptions } from '../../entities/Circle';
 import { Ring, type RingOptions } from '../../entities/Ring';
 import type { OverlayEntity } from '../../entities/BaseOverlay';
+import { type PickGovernorOptions } from '../../../utils/PickGovernor';
 type OverlayInstance = Marker | Label | Icon | SVG | InfoWindow | Polyline | Polygon | Rectangle | Circle | Ring;
 /**
  * 覆盖物服务选项
@@ -17,12 +18,31 @@ type OverlayInstance = Marker | Label | Icon | SVG | InfoWindow | Polyline | Pol
 export interface OverlayServiceOptions {
     /** 是否启用 hover 处理器（默认 true） */
     enableHoverHandler?: boolean;
-    /** 点击节流间隔（毫秒，默认 120） */
+    /** 点击防抖/节流间隔（毫秒，默认 250） */
     clickPickMinIntervalMs?: number;
+    /** 拾取交互的集中配置，旧的平铺选项仍可继续使用。 */
+    picking?: OverlayPickingOptions;
     /** 覆盖物编辑变化回调 */
     onOverlayEditChange?: (entity: Entity) => void;
     /** 覆盖物编辑结束回调 */
     onOverlayEditEnd?: (entity: Entity | null) => void;
+}
+/**
+ * 覆盖物拾取配置。
+ *
+ * `enabled` 是 hover 和点击指针交互的总开关；`hover` 和 `selection`
+ * 分别控制两类指针交互。尺寸和数量配置会直接约束每次 drill picking
+ * 的工作量。
+ */
+export interface OverlayPickingOptions {
+    enabled?: boolean;
+    hover?: boolean;
+    selection?: boolean;
+    pickWidth?: number;
+    pickHeight?: number;
+    drillLimit?: number;
+    clickDebounceMs?: number;
+    governorProfiles?: PickGovernorOptions['profiles'];
 }
 /**
  * 覆盖物服务类
@@ -59,7 +79,11 @@ export declare class OverlayService {
     private overlays;
     private entityOverlayMap;
     private options;
+    private readonly picking;
+    private readonly pickGovernor;
     private hoverEnabled;
+    private readonly creationOrderById;
+    private nextCreationOrder;
     private nextId;
     private clickHandler;
     private hoverHandler;
@@ -207,6 +231,8 @@ export declare class OverlayService {
     private circleRadiusHandlePosition;
     private rectangleToPositions;
     private positionsToRectangle;
+    private normalizePositiveInteger;
+    private normalizeNonNegativeNumber;
     /**
      * 安装 Hover 处理器
      */
@@ -220,6 +246,7 @@ export declare class OverlayService {
     private collectOverlayEntities;
     private pickOverlayEntity;
     private safeDrillPick;
+    private resolvePickedOverlayRoot;
     private resolvePickedOverlayEntity;
     private resolveOverlayByPickId;
     private resolveOverlayEntity;

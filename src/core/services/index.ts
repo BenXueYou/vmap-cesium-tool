@@ -12,6 +12,7 @@ export type {
   OverlayPickResolverOptions,
   OverlayPickRoot,
   OverlayServiceOptions,
+  OverlayPickingOptions,
 } from './overlay';
 
 // 导出绘制服务

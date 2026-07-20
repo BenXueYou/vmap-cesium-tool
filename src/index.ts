@@ -99,6 +99,7 @@ export {
 } from './core/services';
 export type {
   OverlayServiceOptions,
+  OverlayPickingOptions,
   OverlayPickCandidate,
   OverlayPickReason,
   OverlayPickResolverOptions,
