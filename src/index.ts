@@ -90,9 +90,19 @@ export type {
 } from './core/entities';
 
 // ==================== 服务模块 ====================
-export { OverlayService, DrawService, ToolbarService, createToolbarService } from './core/services';
+export {
+  OverlayService,
+  resolveOverlayPickCandidates,
+  DrawService,
+  ToolbarService,
+  createToolbarService,
+} from './core/services';
 export type {
   OverlayServiceOptions,
+  OverlayPickCandidate,
+  OverlayPickReason,
+  OverlayPickResolverOptions,
+  OverlayPickRoot,
   DrawMode,
   DrawOptions,
   DrawResult,

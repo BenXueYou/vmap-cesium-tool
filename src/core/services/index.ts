@@ -5,8 +5,14 @@
  */
 
 // 导出覆盖物服务
-export { OverlayService } from './overlay/OverlayService';
-export type { OverlayServiceOptions } from './overlay/OverlayService';
+export { OverlayService, resolveOverlayPickCandidates } from './overlay';
+export type {
+  OverlayPickCandidate,
+  OverlayPickReason,
+  OverlayPickResolverOptions,
+  OverlayPickRoot,
+  OverlayServiceOptions,
+} from './overlay';
 
 // 导出绘制服务
 export { DrawService } from './draw';
