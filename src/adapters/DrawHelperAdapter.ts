@@ -4,10 +4,11 @@ import {
   DrawService,
   type DrawMode,
   type DrawOptions as NewDrawOptions,
-  type DrawResult,
   type MeasurementTheme,
   type MeasurementSummaryLabelStyle,
 } from '../core/services/draw/DrawService';
+import type { CoordSystem, LngLat } from '../core/types';
+import { cartesianToLngLat } from '../core/mapProviders/coordinates/cesium';
 
 /**
  * 旧版绘制回调接口（保持向后兼容）
@@ -19,6 +20,8 @@ export interface LegacyDrawCallbacks {
   onMeasureComplete?: (result: {
     type: 'line' | 'polygon' | 'rectangle' | 'circle';
     positions: Cartesian3[];
+    geographicPositions?: LngLat[];
+    outputCoordSystem?: CoordSystem;
     distance?: number;
     areaKm2?: number;
   }) => void;
@@ -31,6 +34,10 @@ export interface LegacyDrawOptions {
   measurementTheme?: MeasurementTheme;
   lineColor?: Cesium.Color | string;
   lineWidth?: number;
+  strokeColor?: Cesium.Color | string;
+  strokeWidth?: number;
+  outlineColor?: Cesium.Color | string;
+  outlineWidth?: number;
   fillColor?: Cesium.Color | string;
   clampToGround?: boolean;
   segmentDistanceLabelStyle?: MeasurementSummaryLabelStyle;
@@ -38,7 +45,11 @@ export interface LegacyDrawOptions {
   previewAreaLabelStyle?: MeasurementSummaryLabelStyle;
   totalAreaLabelStyle?: MeasurementSummaryLabelStyle;
   hintBubbleStyle?: MeasurementSummaryLabelStyle;
+  selfIntersectionEnabled?: boolean;
+  selfIntersectionAllowTouch?: boolean;
+  selfIntersectionAllowContinue?: boolean;
   onClick?: (entity: Entity, positions?: Cartesian3[]) => void;
+  outputCoordSystem?: CoordSystem;
 }
 
 /**
@@ -94,10 +105,14 @@ export class DrawHelperAdapter {
       this.callbacks?.onDrawEnd?.(result?.entity ?? null);
       
       if (result && this.callbacks?.onMeasureComplete) {
-        const type = this.mapDrawModeToType(this.drawService.getCurrentDrawMode());
+        const legacyType = result.type === 'point' ? 'polygon' : result.type;
         this.callbacks.onMeasureComplete({
-          type,
+          type: legacyType,
           positions: result.positions,
+          geographicPositions: result.geographicPositions,
+          outputCoordSystem: result.outputCoordSystem,
+          distance: result.distance,
+          areaKm2: result.area !== undefined ? result.area / 1_000_000 : undefined,
         });
       }
     });
@@ -108,34 +123,29 @@ export class DrawHelperAdapter {
   }
 
   /**
-   * 映射绘制模式到类型字符串
-   */
-  private mapDrawModeToType(mode: DrawMode): 'line' | 'polygon' | 'rectangle' | 'circle' {
-    switch (mode) {
-      case 'line': return 'line';
-      case 'polygon': return 'polygon';
-      case 'rectangle': return 'rectangle';
-      case 'circle': return 'circle';
-      default: return 'polygon';
-    }
-  }
-
-  /**
    * 转换选项格式
    */
   private convertOptions(options: LegacyDrawOptions = {}): NewDrawOptions {
     return {
       measurementTheme: options.measurementTheme,
-      lineColor: options.lineColor,
-      lineWidth: options.lineWidth,
+      lineColor: options.lineColor || options.strokeColor || options.outlineColor,
+      lineWidth: options.lineWidth ?? options.strokeWidth ?? options.outlineWidth,
       fillColor: options.fillColor,
+      strokeColor: options.strokeColor,
+      strokeWidth: options.strokeWidth,
+      outlineColor: options.outlineColor,
+      outlineWidth: options.outlineWidth,
       clampToGround: options.clampToGround,
       segmentDistanceLabelStyle: options.segmentDistanceLabelStyle,
       totalDistanceLabelStyle: options.totalDistanceLabelStyle,
       previewAreaLabelStyle: options.previewAreaLabelStyle,
       totalAreaLabelStyle: options.totalAreaLabelStyle,
       hintBubbleStyle: options.hintBubbleStyle,
+      selfIntersectionEnabled: options.selfIntersectionEnabled,
+      selfIntersectionAllowTouch: options.selfIntersectionAllowTouch,
+      selfIntersectionAllowContinue: options.selfIntersectionAllowContinue,
       onClick: options.onClick,
+      outputCoordSystem: options.outputCoordSystem,
     };
   }
 
@@ -191,6 +201,23 @@ export class DrawHelperAdapter {
   }
 
   /**
+   * 兼容旧版完整清空方法。
+   * 旧实现会直接清空场景中的实体，这里保留同名 API。
+   */
+  clearAllEntities(): void {
+    this.viewer.entities.removeAll();
+    this.drawService.clearAll();
+  }
+
+  /**
+   * 兼容旧版点实体清空方法。
+   * 新版绘制服务不单独维护点池，这里退化为清空当前绘制结果。
+   */
+  clearAllPoints(): void {
+    this.drawService.clearAll();
+  }
+
+  /**
    * 删除指定实体
    */
   removeEntity(entity: Entity): void {
@@ -209,6 +236,14 @@ export class DrawHelperAdapter {
    */
   isDrawing(): boolean {
     return this.drawService.isDrawingMode();
+  }
+
+  /**
+   * 兼容旧版场景模式切换通知。
+   * 新绘制服务内部不依赖固定偏移，这里保留空实现以避免业务侧报错。
+   */
+  handleSceneModeChanged(): void {
+    // no-op
   }
 
   /**
@@ -245,10 +280,16 @@ export class DrawHelperAdapter {
   onMeasureComplete(callback: (result: {
     type: 'line' | 'polygon' | 'rectangle' | 'circle';
     positions: Cartesian3[];
+    geographicPositions?: LngLat[];
+    outputCoordSystem?: CoordSystem;
     distance?: number;
     areaKm2?: number;
   }) => void): void {
     this.callbacks = { ...this.callbacks, onMeasureComplete: callback };
+  }
+
+  getPositionLngLat(position: Cartesian3, outputCoordSystem: CoordSystem = 'WGS84'): LngLat {
+    return cartesianToLngLat(position, outputCoordSystem);
   }
 
   /**

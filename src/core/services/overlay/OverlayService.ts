@@ -55,6 +55,39 @@ export interface OverlayServiceOptions {
   enableHoverHandler?: boolean;
   /** 点击节流间隔（毫秒，默认 120） */
   clickPickMinIntervalMs?: number;
+  /** 覆盖物编辑变化回调 */
+  onOverlayEditChange?: (entity: Entity) => void;
+  /** 覆盖物编辑结束回调 */
+  onOverlayEditEnd?: (entity: Entity | null) => void;
+}
+
+type OverlayEditKind = 'point' | 'polyline' | 'polygon' | 'rectangle' | 'circle';
+
+interface OverlayEditHandleStyle {
+  color: Cesium.Color;
+  outlineColor: Cesium.Color;
+  pixelSize: number;
+}
+
+interface OverlayEditCameraState {
+  enableInputs: boolean;
+  enableTranslate: boolean;
+  enableRotate: boolean;
+  enableTilt: boolean;
+  enableLook: boolean;
+}
+
+interface OverlayEditState {
+  entity: OverlayEntity;
+  kind: OverlayEditKind;
+  handles: Entity[];
+  handler: Cesium.ScreenSpaceEventHandler;
+  activeHandleIndex: number | null;
+  controlPoints: Cesium.Cartesian3[];
+  radiusMeters?: number;
+  isDragging: boolean;
+  cameraState: OverlayEditCameraState | null;
+  previousCursor: string;
 }
 
 /**
@@ -92,6 +125,7 @@ export class OverlayService {
   private overlays: Map<string, OverlayInstance> = new Map();
   private entityOverlayMap: Map<Entity, OverlayInstance> = new Map();
   private options: Required<OverlayServiceOptions>;
+  private hoverEnabled: boolean;
   private nextId = 1;
   private clickHandler: Cesium.ScreenSpaceEventHandler | null = null;
   private hoverHandler: Cesium.ScreenSpaceEventHandler | null = null;
@@ -101,6 +135,9 @@ export class OverlayService {
   private pendingHoverRaf: number | null = null;
   private pendingHoverPosition: Cesium.Cartesian2 | null = null;
   private readonly highlightCache = new WeakMap<Entity, OverlayGraphicsSnapshot>();
+  private overlayEditEnabled = false;
+  private overlayEditOptions: Record<string, any> = {};
+  private overlayEditState: OverlayEditState | null = null;
 
   // 各种覆盖物工厂实例
   private markerFactory: MarkerFactory;
@@ -119,7 +156,10 @@ export class OverlayService {
     this.options = {
       enableHoverHandler: options.enableHoverHandler ?? true,
       clickPickMinIntervalMs: options.clickPickMinIntervalMs ?? 120,
+      onOverlayEditChange: options.onOverlayEditChange ?? (() => undefined),
+      onOverlayEditEnd: options.onOverlayEditEnd ?? (() => undefined),
     };
+    this.hoverEnabled = this.options.enableHoverHandler;
 
     // 初始化各个工厂
     this.markerFactory = new MarkerFactory(viewer, this);
@@ -134,7 +174,7 @@ export class OverlayService {
     this.ringFactory = new RingFactory(viewer, this);
 
     // 安装事件处理器
-    if (this.options.enableHoverHandler) {
+    if (this.hoverEnabled) {
       this.setupHoverHandler();
     }
     this.setupClickHandler();
@@ -340,6 +380,680 @@ export class OverlayService {
   }
 
   /**
+   * 动态开启/关闭 hover 高亮处理器。
+   * 兼容旧版 overlayService 的运行时切换行为。
+   */
+  setHoverEnabled(enabled: boolean): void {
+    const next = !!enabled;
+    this.hoverEnabled = next;
+
+    if (!next) {
+      this.setHighlightTargets(this.hoverHighlightTargets, 'hover', false);
+      this.hoverHighlightTargets = [];
+      return;
+    }
+
+    if (this.hoverHandler === null) {
+      this.setupHoverHandler();
+    }
+  }
+
+  /**
+   * 获取当前 hover 高亮开关状态。
+   */
+  isHoverEnabled(): boolean {
+    return this.hoverEnabled;
+  }
+
+  setOverlayEditMode(enabled: boolean, overlayEditOptions?: Record<string, any>): void {
+    this.overlayEditEnabled = !!enabled;
+    if (overlayEditOptions) {
+      this.overlayEditOptions = {
+        ...this.overlayEditOptions,
+        ...overlayEditOptions,
+      };
+    }
+
+    if (!this.overlayEditEnabled) {
+      this.stopOverlayEdit();
+    }
+  }
+
+  getOverlayEditModeEnabled(): boolean {
+    return this.overlayEditEnabled;
+  }
+
+  startOverlayEdit(entityOrId: OverlayEntity | Entity | string | number, overlayEditOptions?: Record<string, any>): boolean {
+    const target = this.resolveEditableOverlay(entityOrId);
+    if (!target) {
+      return false;
+    }
+
+    const kind = this.detectEditableKind(target);
+    if (!kind) {
+      return false;
+    }
+
+    this.stopOverlayEdit();
+    this.overlayEditEnabled = true;
+    if (overlayEditOptions) {
+      this.overlayEditOptions = {
+        ...this.overlayEditOptions,
+        ...overlayEditOptions,
+      };
+    }
+
+    const controlPoints = this.resolveEditableControlPoints(target, kind);
+    if (controlPoints.length === 0) {
+      this.overlayEditEnabled = false;
+      return false;
+    }
+
+    const handler = new Cesium.ScreenSpaceEventHandler(this.viewer.scene.canvas);
+    const state: OverlayEditState = {
+      entity: target,
+      kind,
+      handles: [],
+      handler,
+      activeHandleIndex: null,
+      controlPoints: controlPoints.map((point) => point.clone()),
+      radiusMeters: kind === 'circle' ? this.resolveCircleRadius(target, controlPoints) : undefined,
+      isDragging: false,
+      cameraState: null,
+      previousCursor: this.viewer.scene.canvas.style.cursor || '',
+    };
+
+    state.handles = this.createEditHandles(state);
+    this.overlayEditState = state;
+
+    handler.setInputAction((click: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
+      const picked = this.viewer.scene.pick(click.position);
+      const pickedEntity = this.resolvePickedEditHandle(picked);
+      if (!pickedEntity) {
+        return;
+      }
+
+      const index = state.handles.findIndex((handle) => handle === pickedEntity);
+      if (index >= 0) {
+        state.activeHandleIndex = index;
+        state.isDragging = true;
+        state.cameraState = this.suspendCameraControls();
+        this.viewer.scene.canvas.style.cursor = 'grabbing';
+      }
+    }, Cesium.ScreenSpaceEventType.LEFT_DOWN);
+
+    handler.setInputAction((movement: Cesium.ScreenSpaceEventHandler.MotionEvent) => {
+      if (state.activeHandleIndex === null) {
+        return;
+      }
+
+      const position = this.pickEditPosition(movement.endPosition);
+      if (!position) {
+        return;
+      }
+
+      this.applyDragForHandle(state, state.activeHandleIndex, position);
+      this.syncEditHandles(state);
+      this.emitOverlayEditChange(state.entity);
+      this.viewer.scene.requestRender();
+    }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+
+    handler.setInputAction(() => {
+      this.releaseEditDrag(state);
+      state.activeHandleIndex = null;
+    }, Cesium.ScreenSpaceEventType.LEFT_UP);
+
+    handler.setInputAction(() => {
+      this.stopOverlayEdit();
+    }, Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
+
+    return true;
+  }
+
+  stopOverlayEdit(): Entity | null {
+    const state = this.overlayEditState;
+    if (!state) {
+      return null;
+    }
+
+    const entity = state.entity;
+    this.releaseEditDrag(state);
+    state.handles.forEach((handle) => {
+      this.viewer.entities.remove(handle);
+    });
+    state.handler.destroy();
+    this.overlayEditState = null;
+    this.overlayEditEnabled = false;
+    this.emitOverlayEditEnd(entity);
+    this.viewer.scene.requestRender();
+    return entity;
+  }
+
+  private suspendCameraControls(): OverlayEditCameraState {
+    const controller = this.viewer.scene.screenSpaceCameraController;
+    const snapshot: OverlayEditCameraState = {
+      enableInputs: controller.enableInputs,
+      enableTranslate: controller.enableTranslate,
+      enableRotate: controller.enableRotate,
+      enableTilt: controller.enableTilt,
+      enableLook: controller.enableLook,
+    };
+
+    controller.enableInputs = false;
+    controller.enableTranslate = false;
+    controller.enableRotate = false;
+    controller.enableTilt = false;
+    controller.enableLook = false;
+
+    return snapshot;
+  }
+
+  private restoreCameraControls(snapshot: OverlayEditCameraState | null): void {
+    if (!snapshot) {
+      return;
+    }
+
+    const controller = this.viewer.scene.screenSpaceCameraController;
+    controller.enableInputs = snapshot.enableInputs;
+    controller.enableTranslate = snapshot.enableTranslate;
+    controller.enableRotate = snapshot.enableRotate;
+    controller.enableTilt = snapshot.enableTilt;
+    controller.enableLook = snapshot.enableLook;
+  }
+
+  private releaseEditDrag(state: OverlayEditState): void {
+    if (!state.isDragging && !state.cameraState) {
+      return;
+    }
+
+    this.restoreCameraControls(state.cameraState);
+    state.cameraState = null;
+    state.isDragging = false;
+    this.viewer.scene.canvas.style.cursor = state.previousCursor;
+  }
+
+  private resolveEditableOverlay(entityOrId: OverlayEntity | Entity | string | number): OverlayEntity | null {
+    if (typeof entityOrId === 'string' || typeof entityOrId === 'number') {
+      const overlay = this.overlays.get(String(entityOrId));
+      return overlay?.getEntity() as OverlayEntity | null;
+    }
+
+    if (this.entityOverlayMap.has(entityOrId as Entity)) {
+      return this.entityOverlayMap.get(entityOrId as Entity)?.getEntity() as OverlayEntity | null;
+    }
+
+    return entityOrId as OverlayEntity;
+  }
+
+  private detectEditableKind(entity: OverlayEntity): OverlayEditKind | null {
+    const overlayType = String((entity as any)._overlayType ?? '');
+    if (
+      overlayType === 'circle-primitive' ||
+      overlayType === 'circle' ||
+      entity.ellipse ||
+      (entity as any)._outerRadius !== undefined ||
+      (entity as any)._centerCartographic !== undefined
+    ) return 'circle';
+    if (overlayType === 'polygon-primitive' || entity.polygon) return 'polygon';
+    if (
+      overlayType === 'rectangle-primitive' ||
+      overlayType === 'rectangle' ||
+      entity.rectangle ||
+      (entity as any)._outerRectangle !== undefined
+    ) return 'rectangle';
+    if (entity.point) return 'point';
+    if (entity.polyline) return 'polyline';
+    return null;
+  }
+
+  private resolveEditableControlPoints(entity: OverlayEntity, kind: OverlayEditKind): Cesium.Cartesian3[] {
+    if (kind === 'point') {
+      const pos = this.getEntityPosition(entity);
+      return pos ? [pos] : [];
+    }
+
+    if (kind === 'polyline') {
+      return this.getPolylinePositions(entity);
+    }
+
+    if (kind === 'polygon') {
+      return this.getPolygonPositions(entity);
+    }
+
+    if (kind === 'rectangle') {
+      const rect = this.getRectangleCoordinates(entity);
+      return rect ? this.rectangleToPositions(rect, this.getRectangleHeight(entity)) : [];
+    }
+
+    if (kind === 'circle') {
+      const info = this.getCircleInfo(entity);
+      return info ? [info.center, info.radiusHandle] : [];
+    }
+
+    return [];
+  }
+
+  private createEditHandles(state: OverlayEditState): Entity[] {
+    const handles: Entity[] = [];
+    const style = this.resolveHandleStyle();
+
+    state.controlPoints.forEach((position, index) => {
+      handles.push(this.viewer.entities.add({
+        id: `${String(state.entity.id)}__edit_handle_${index}`,
+        position: new Cesium.ConstantPositionProperty(position.clone()),
+        point: {
+          pixelSize: style.pixelSize,
+          color: style.color,
+          outlineColor: style.outlineColor,
+          outlineWidth: 2,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        },
+      }));
+    });
+
+    return handles;
+  }
+
+  private resolveHandleStyle(): OverlayEditHandleStyle {
+    const options = this.overlayEditOptions || {};
+    const vertex = options.vertex && typeof options.vertex === 'object' ? options.vertex : {};
+    return {
+      color: this.resolveHandleColor(vertex.color ?? '#1e88e5', Cesium.Color.fromCssColorString('#1e88e5')),
+      outlineColor: this.resolveHandleColor(vertex.outlineColor ?? '#ffffff', Cesium.Color.WHITE),
+      pixelSize: typeof vertex.pixelSize === 'number' ? vertex.pixelSize : 10,
+    };
+  }
+
+  private resolveHandleColor(color: Cesium.Color | string | undefined, fallback: Cesium.Color): Cesium.Color {
+    if (color instanceof Cesium.Color) {
+      return color;
+    }
+
+    if (typeof color === 'string') {
+      try {
+        return Cesium.Color.fromCssColorString(color);
+      } catch {
+        return fallback;
+      }
+    }
+
+    return fallback;
+  }
+
+  private resolvePickedEditHandle(pickedObject: any): Entity | null {
+    const candidate = pickedObject?.id instanceof Cesium.Entity
+      ? pickedObject.id
+      : pickedObject?.primitive instanceof Cesium.Entity
+        ? pickedObject.primitive
+        : null;
+
+    if (!candidate) {
+      return null;
+    }
+
+    return this.overlayEditState?.handles.includes(candidate) ? candidate : null;
+  }
+
+  private pickEditPosition(position: Cesium.Cartesian2): Cesium.Cartesian3 | null {
+    const ray = this.viewer.camera.getPickRay(position);
+    if (ray) {
+      const picked = this.viewer.scene.globe.pick(ray, this.viewer.scene);
+      if (picked) {
+        return picked;
+      }
+    }
+
+    return this.viewer.camera.pickEllipsoid(position, this.viewer.scene.globe.ellipsoid) ?? null;
+  }
+
+  private applyDragForHandle(state: OverlayEditState, handleIndex: number, position: Cesium.Cartesian3): void {
+    const kind = state.kind;
+    if (kind === 'point') {
+      state.controlPoints[0] = position.clone();
+      this.applyPointPosition(state.entity, position);
+      return;
+    }
+
+    if (kind === 'polyline') {
+      state.controlPoints[handleIndex] = position.clone();
+      this.applyPolylinePositions(state.entity, state.controlPoints);
+      return;
+    }
+
+    if (kind === 'polygon') {
+      state.controlPoints[handleIndex] = position.clone();
+      this.applyPolygonPositions(state.entity, state.controlPoints);
+      return;
+    }
+
+    if (kind === 'rectangle') {
+      state.controlPoints[handleIndex] = position.clone();
+      const rect = this.positionsToRectangle(state.controlPoints);
+      if (rect) {
+        this.applyRectangleCoordinates(state.entity, rect);
+      }
+      return;
+    }
+
+    if (kind === 'circle') {
+      if (handleIndex === 0) {
+        const radius = state.radiusMeters ?? this.resolveCircleRadius(state.entity, state.controlPoints);
+        state.controlPoints[0] = position.clone();
+        const nextRadius = Number.isFinite(radius) ? radius : this.calculateCircleRadiusMeters(position, state.controlPoints[1] ?? position);
+        this.applyCircle(state.entity, position, nextRadius);
+        state.radiusMeters = nextRadius;
+        state.controlPoints[1] = this.circleRadiusHandlePosition(position, nextRadius);
+        return;
+      }
+
+      const center = state.controlPoints[0];
+      const radius = this.calculateCircleRadiusMeters(center, position);
+      state.controlPoints[1] = position.clone();
+      state.radiusMeters = radius;
+      this.applyCircle(state.entity, center, radius);
+      return;
+    }
+  }
+
+  private syncEditHandles(state: OverlayEditState): void {
+    const style = this.resolveHandleStyle();
+
+    if (state.kind === 'point') {
+      if (state.handles[0]) {
+        state.handles[0].position = new Cesium.ConstantPositionProperty(state.controlPoints[0].clone());
+      }
+      return;
+    }
+
+    if (state.kind === 'rectangle') {
+      const rect = this.positionsToRectangle(state.controlPoints);
+      if (!rect) {
+        return;
+      }
+      const corners = this.rectangleToPositions(rect, this.getRectangleHeight(state.entity));
+      corners.forEach((corner, index) => {
+        if (state.handles[index]) {
+          state.handles[index].position = new Cesium.ConstantPositionProperty(corner);
+        }
+      });
+      return;
+    }
+
+    if (state.kind === 'circle') {
+      const center = state.controlPoints[0];
+      const radius = state.radiusMeters ?? this.resolveCircleRadius(state.entity, state.controlPoints);
+      if (state.handles[0]) {
+        state.handles[0].position = new Cesium.ConstantPositionProperty(center.clone());
+      }
+      if (state.handles[1] && Number.isFinite(radius)) {
+        state.handles[1].position = new Cesium.ConstantPositionProperty(this.circleRadiusHandlePosition(center, radius));
+      }
+      return;
+    }
+
+    state.controlPoints.forEach((point, index) => {
+      if (state.handles[index]) {
+        state.handles[index].position = new Cesium.ConstantPositionProperty(point.clone());
+      }
+    });
+  }
+
+  private emitOverlayEditChange(entity: OverlayEntity): void {
+    this.options.onOverlayEditChange?.(entity);
+  }
+
+  private emitOverlayEditEnd(entity: OverlayEntity | null): void {
+    this.options.onOverlayEditEnd?.(entity);
+  }
+
+  private applyPointPosition(entity: OverlayEntity, position: Cesium.Cartesian3): void {
+    const overlay = this.entityOverlayMap.get(entity as Entity);
+    if (overlay && typeof (overlay as any).setPosition === 'function') {
+      (overlay as any).setPosition(position);
+      return;
+    }
+
+    entity.position = new Cesium.ConstantPositionProperty(position.clone());
+  }
+
+  private applyPolylinePositions(entity: OverlayEntity, positions: Cesium.Cartesian3[]): void {
+    const overlay = this.entityOverlayMap.get(entity as Entity);
+    if (overlay && typeof (overlay as any).setPositions === 'function') {
+      (overlay as any).setPositions(positions.map((point) => point.clone()));
+      return;
+    }
+
+    if (entity.polyline) {
+      entity.polyline.positions = new Cesium.ConstantProperty(positions.map((point) => point.clone()));
+    }
+  }
+
+  private applyPolygonPositions(entity: OverlayEntity, positions: Cesium.Cartesian3[]): void {
+    const overlay = this.entityOverlayMap.get(entity as Entity);
+    if (overlay && typeof (overlay as any).setPositions === 'function') {
+      (overlay as any).setPositions(positions.map((point) => point.clone()));
+      return;
+    }
+
+    if (entity.polygon) {
+      entity.polygon.hierarchy = new Cesium.ConstantProperty(new Cesium.PolygonHierarchy(positions.map((point) => point.clone())));
+    }
+  }
+
+  private applyRectangleCoordinates(entity: OverlayEntity, rect: Cesium.Rectangle): void {
+    const overlay = this.entityOverlayMap.get(entity as Entity);
+    if (overlay && typeof (overlay as any).setCoordinates === 'function') {
+      (overlay as any).setCoordinates(Cesium.Rectangle.clone(rect));
+      return;
+    }
+
+    if (entity.rectangle) {
+      entity.rectangle.coordinates = new Cesium.ConstantProperty(Cesium.Rectangle.clone(rect));
+      return;
+    }
+
+    if (entity.polygon) {
+      const positions = this.rectangleToPositions(rect, this.getRectangleHeight(entity));
+      entity.polygon.hierarchy = new Cesium.ConstantProperty(new Cesium.PolygonHierarchy(positions));
+    }
+  }
+
+  private applyCircle(entity: OverlayEntity, center: Cesium.Cartesian3, radiusMeters: number): void {
+    const overlay = this.entityOverlayMap.get(entity as Entity);
+    if (overlay) {
+      if (typeof (overlay as any).setPosition === 'function') {
+        (overlay as any).setPosition(center.clone());
+      } else {
+        entity.position = new Cesium.ConstantPositionProperty(center.clone());
+      }
+
+      if (typeof (overlay as any).setRadius === 'function') {
+        (overlay as any).setRadius(radiusMeters);
+        return;
+      }
+    }
+
+    const centerCarto = Cesium.Cartographic.fromCartesian(center);
+    if (!centerCarto) {
+      return;
+    }
+
+    if (entity.ellipse) {
+      entity.position = new Cesium.ConstantPositionProperty(center.clone());
+      entity.ellipse.semiMajorAxis = new Cesium.ConstantProperty(radiusMeters);
+      entity.ellipse.semiMinorAxis = new Cesium.ConstantProperty(radiusMeters);
+      return;
+    }
+
+    if ((entity as any)._outerRadius !== undefined) {
+      (entity as any)._outerRadius = radiusMeters;
+      (entity as any)._centerCartographic = new Cesium.Cartographic(centerCarto.longitude, centerCarto.latitude, centerCarto.height ?? 0);
+    }
+  }
+
+  private getEntityPosition(entity: OverlayEntity): Cesium.Cartesian3 | null {
+    if (entity.position) {
+      const value = entity.position.getValue(Cesium.JulianDate.now());
+      if (value) {
+        return value.clone();
+      }
+    }
+
+    return null;
+  }
+
+  private getPolylinePositions(entity: OverlayEntity): Cesium.Cartesian3[] {
+    if (entity.polyline?.positions) {
+      const value = entity.polyline.positions.getValue(Cesium.JulianDate.now());
+      if (Array.isArray(value)) {
+        return value.map((point) => point.clone());
+      }
+    }
+
+    return [];
+  }
+
+  private getPolygonPositions(entity: OverlayEntity): Cesium.Cartesian3[] {
+    if ((entity as any)._overlayType === 'polygon-primitive') {
+      const outline = (entity as any)._primitiveOutlinePositions as Cesium.Cartesian3[] | undefined;
+      if (Array.isArray(outline) && outline.length > 0) {
+        const points = outline.length > 1 && Cesium.Cartesian3.equals(outline[0], outline[outline.length - 1])
+          ? outline.slice(0, -1)
+          : outline.slice();
+        return points.map((point) => point.clone());
+      }
+    }
+
+    if (entity.polygon?.hierarchy) {
+      const value = entity.polygon.hierarchy.getValue(Cesium.JulianDate.now());
+      const positions = Array.isArray(value) ? value : value?.positions;
+      if (Array.isArray(positions)) {
+        return positions.map((point) => point.clone());
+      }
+    }
+
+    return [];
+  }
+
+  private getRectangleCoordinates(entity: OverlayEntity): Cesium.Rectangle | null {
+    if (entity.rectangle?.coordinates) {
+      const rect = entity.rectangle.coordinates.getValue(Cesium.JulianDate.now());
+      if (rect) {
+        return Cesium.Rectangle.clone(rect);
+      }
+    }
+
+    if ((entity as any)._outerRectangle) {
+      return Cesium.Rectangle.clone((entity as any)._outerRectangle);
+    }
+
+    return null;
+  }
+
+  private getRectangleHeight(entity: OverlayEntity): number {
+    if (entity.rectangle && (entity.rectangle as any).height !== undefined) {
+      const height = (entity.rectangle as any).height.getValue?.(Cesium.JulianDate.now());
+      return Number.isFinite(height) ? Number(height) : 0;
+    }
+
+    return 0;
+  }
+
+  private resolveCircleRadius(entity: OverlayEntity, controlPoints: Cesium.Cartesian3[]): number {
+    if (controlPoints.length >= 2) {
+      return this.calculateCircleRadiusMeters(controlPoints[0], controlPoints[1]);
+    }
+
+    if (entity.ellipse?.semiMajorAxis) {
+      const radius = entity.ellipse.semiMajorAxis.getValue(Cesium.JulianDate.now());
+      if (Number.isFinite(radius)) {
+        return Number(radius);
+      }
+    }
+
+    const root: any = entity as any;
+    if (Number.isFinite(root._outerRadius)) {
+      return Number(root._outerRadius);
+    }
+
+    return 0;
+  }
+
+  private getCircleInfo(entity: OverlayEntity): { center: Cesium.Cartesian3; radiusHandle: Cesium.Cartesian3 } | null {
+    const center = this.getEntityPosition(entity);
+    if (!center) {
+      return null;
+    }
+
+    const radius = this.resolveCircleRadius(entity, [center]);
+    if (!(radius > 0)) {
+      return null;
+    }
+
+    return {
+      center,
+      radiusHandle: this.circleRadiusHandlePosition(center, radius),
+    };
+  }
+
+  private calculateCircleRadiusMeters(center: Cesium.Cartesian3, edge: Cesium.Cartesian3): number {
+    const centerCarto = Cesium.Cartographic.fromCartesian(center);
+    const edgeCarto = Cesium.Cartographic.fromCartesian(edge);
+    if (!centerCarto || !edgeCarto) {
+      return 0;
+    }
+
+    const earthRadius = 6378137.0;
+    const deltaLatitude = edgeCarto.latitude - centerCarto.latitude;
+    const deltaLongitude = edgeCarto.longitude - centerCarto.longitude;
+    const a = Math.sin(deltaLatitude / 2) * Math.sin(deltaLatitude / 2)
+      + Math.cos(centerCarto.latitude) * Math.cos(edgeCarto.latitude)
+      * Math.sin(deltaLongitude / 2) * Math.sin(deltaLongitude / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return earthRadius * c;
+  }
+
+  private circleRadiusHandlePosition(center: Cesium.Cartesian3, radiusMeters: number): Cesium.Cartesian3 {
+    const carto = Cesium.Cartographic.fromCartesian(center);
+    if (!carto) {
+      return center.clone();
+    }
+
+    const R = 6378137.0;
+    const dLon = Math.max(0, radiusMeters) / (R * Math.max(Math.cos(carto.latitude), 1e-6));
+    return Cesium.Cartesian3.fromRadians(carto.longitude + dLon, carto.latitude, carto.height ?? 0);
+  }
+
+  private rectangleToPositions(rect: Cesium.Rectangle, heightMeters: number): Cesium.Cartesian3[] {
+    return [
+      Cesium.Cartesian3.fromRadians(rect.west, rect.south, heightMeters),
+      Cesium.Cartesian3.fromRadians(rect.east, rect.south, heightMeters),
+      Cesium.Cartesian3.fromRadians(rect.east, rect.north, heightMeters),
+      Cesium.Cartesian3.fromRadians(rect.west, rect.north, heightMeters),
+    ];
+  }
+
+  private positionsToRectangle(positions: Cesium.Cartesian3[]): Cesium.Rectangle | null {
+    if (positions.length < 2) {
+      return null;
+    }
+
+    const cartographics = positions
+      .map((position) => Cesium.Cartographic.fromCartesian(position))
+      .filter((item): item is Cesium.Cartographic => !!item);
+
+    if (cartographics.length < 2) {
+      return null;
+    }
+
+    const west = Math.min(...cartographics.map((item) => item.longitude));
+    const east = Math.max(...cartographics.map((item) => item.longitude));
+    const south = Math.min(...cartographics.map((item) => item.latitude));
+    const north = Math.max(...cartographics.map((item) => item.latitude));
+    return new Cesium.Rectangle(west, south, east, north);
+  }
+
+  /**
    * 安装 Hover 处理器
    */
   private setupHoverHandler(): void {
@@ -351,6 +1065,11 @@ export class OverlayService {
     };
 
     this.hoverHandler.setInputAction((movement: Cesium.ScreenSpaceEventHandler.MotionEvent) => {
+      if (!this.hoverEnabled) {
+        clearHover();
+        return;
+      }
+
       if (!movement.endPosition) {
         clearHover();
         return;
@@ -500,16 +1219,45 @@ export class OverlayService {
         ? pickedObject.primitive
         : null;
 
-    if (!candidate) {
-      return null;
+    if (candidate) {
+      const overlay = this.entityOverlayMap.get(candidate);
+      if (!overlay) {
+        return null;
+      }
+
+      return overlay.getEntity() as OverlayEntity;
     }
 
-    const overlay = this.entityOverlayMap.get(candidate);
-    if (!overlay) {
-      return null;
+    const pickId = pickedObject?.id;
+    if (typeof pickId === 'string' || typeof pickId === 'number') {
+      const normalized = this.resolveOverlayByPickId(pickId);
+      return normalized;
     }
 
-    return overlay.getEntity() as OverlayEntity;
+    const primitiveId = pickedObject?.primitive?.id;
+    if (typeof primitiveId === 'string' || typeof primitiveId === 'number') {
+      return this.resolveOverlayByPickId(primitiveId);
+    }
+
+    return null;
+  }
+
+  private resolveOverlayByPickId(raw: string | number): OverlayEntity | null {
+    const id = String(raw);
+    const direct = this.overlays.get(id);
+    if (direct) {
+      return direct.getEntity() as OverlayEntity;
+    }
+
+    const rootId = id.replace(/__(fill|border|outer)$/, '');
+    if (rootId !== id) {
+      const root = this.overlays.get(rootId);
+      if (root) {
+        return root.getEntity() as OverlayEntity;
+      }
+    }
+
+    return null;
   }
 
   private resolveOverlayEntity(entityOrId: OverlayEntity | Entity | string): OverlayEntity | null {
@@ -595,6 +1343,19 @@ export class OverlayService {
   }
 
   private applyEntityHighlight(entity: OverlayEntity, options: Required<OverlayClickHighlightOptions>): void {
+    if ((entity as any)._overlayType === 'circle-primitive' || (entity as any)._overlayType === 'polygon-primitive') {
+      const hlColor = this.resolveHighlightColor(options.color);
+      try {
+        const overlay = this.entityOverlayMap.get(entity);
+        if (overlay && typeof (overlay as any).applyPrimitiveHighlight === 'function') {
+          (overlay as any).applyPrimitiveHighlight(entity as Entity, hlColor, options.fillAlpha);
+        }
+      } catch {
+        // ignore
+      }
+      return;
+    }
+
     const highlightColor = this.resolveHighlightColor(options.color);
     const snapshot = this.captureEntityStyle(entity);
 
@@ -638,6 +1399,18 @@ export class OverlayService {
   }
 
   private restoreEntityStyle(entity: OverlayEntity): void {
+    if ((entity as any)._overlayType === 'circle-primitive' || (entity as any)._overlayType === 'polygon-primitive') {
+      try {
+        const overlay = this.entityOverlayMap.get(entity);
+        if (overlay && typeof (overlay as any).restorePrimitiveHighlight === 'function') {
+          (overlay as any).restorePrimitiveHighlight(entity as Entity);
+        }
+      } catch {
+        // ignore
+      }
+      return;
+    }
+
     const snapshot = this.highlightCache.get(entity);
     if (!snapshot) {
       return;
@@ -796,6 +1569,15 @@ export class OverlayService {
     this.hoverHandler?.destroy();
     this.hoverHandler = null;
     this.entityOverlayMap.clear();
+    try {
+      if (typeof this.viewer?.isDestroyed === 'function' && this.viewer.isDestroyed()) {
+        this.overlays.clear();
+        return;
+      }
+    } catch {
+      this.overlays.clear();
+      return;
+    }
     this.removeAllOverlays();
   }
 }
@@ -858,6 +1640,7 @@ class InfoWindowFactory extends OverlayFactory<InfoWindow, InfoWindowOptions> {
   create(options: InfoWindowOptions): InfoWindow {
     const opts = { ...options, id: options.id || this.service.generateId('infowindow') };
     const infoWindow = new InfoWindow(this.viewer, opts);
+    this.viewer.entities.add(infoWindow.getEntity());
     this.service.registerOverlay(opts.id!, infoWindow);
     return infoWindow;
   }
@@ -877,7 +1660,9 @@ class PolygonFactory extends OverlayFactory<Polygon, PolygonOptions> {
   create(options: PolygonOptions): Polygon {
     const opts = { ...options, id: options.id || this.service.generateId('polygon') };
     const polygon = new Polygon(this.viewer, opts);
-    this.viewer.entities.add(polygon.getEntity());
+    if ((polygon.getEntity() as any)._overlayType !== 'polygon-primitive') {
+      this.viewer.entities.add(polygon.getEntity());
+    }
     this.service.registerOverlay(opts.id!, polygon);
     return polygon;
   }
@@ -897,7 +1682,9 @@ class CircleFactory extends OverlayFactory<Circle, CircleOptions> {
   create(options: CircleOptions): Circle {
     const opts = { ...options, id: options.id || this.service.generateId('circle') };
     const circle = new Circle(this.viewer, opts);
-    this.viewer.entities.add(circle.getEntity());
+    if ((circle.getEntity() as any)._overlayType !== 'circle-primitive') {
+      this.viewer.entities.add(circle.getEntity());
+    }
     this.service.registerOverlay(opts.id!, circle);
     return circle;
   }

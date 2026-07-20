@@ -1,10 +1,10 @@
-import searchIcon from "./assets/images/toolbar/search@3x.png";
-import measureIcon from "./assets/images/toolbar/measure@3x.png";
-import layersIcon from "./assets/images/toolbar/layers@3x.png";
-import locationIcon from "./assets/images/toolbar/location@3x.png";
-import zoomInIcon from "./assets/images/toolbar/zoom-in@3x.png";
-import zoomOutIcon from "./assets/images/toolbar/zoom-out@3x.png";
-import fullscreenIcon from "./assets/images/toolbar/fullscreen@3x.png";
+import searchIcon from "../src/assets/images/toolbar/search@3x.png";
+import measureIcon from "../src/assets/images/toolbar/measure@3x.png";
+import layersIcon from "../src/assets/images/toolbar/layers@3x.png";
+import locationIcon from "../src/assets/images/toolbar/location@3x.png";
+import zoomInIcon from "../src/assets/images/toolbar/zoom-in@3x.png";
+import zoomOutIcon from "../src/assets/images/toolbar/zoom-out@3x.png";
+import fullscreenIcon from "../src/assets/images/toolbar/fullscreen@3x.png";
 
 export const defaultHeatmapData = [
     [
@@ -735,390 +735,22 @@ export const defaultHeatmapData = [
             "appearTime": 1766913378000
         },
         {
-            "lng": "120.1973037",
-            "lat": "30.1859741",
-            "height": "142",
-            "appearTime": 1766918128000
+            "lng": "120.1984481",
+            "lat": "30.1866531",
+            "height": "153",
+            "appearTime": 1766916961000
         },
         {
             "lng": "120.1984481",
-            "lat": "30.1861057",
-            "height": "151",
-            "appearTime": 1766920566000
-        }
-    ],
-    [
-        {
-            "lng": "120.1979827",
-            "lat": "30.1856975",
-            "height": "43",
-            "appearTime": 1766974375000
-        },
-        {
-            "lng": "120.1979293",
-            "lat": "30.1857624",
-            "height": "32",
-            "appearTime": 1766977597000
-        },
-        {
-            "lng": "120.1984786",
-            "lat": "30.1876525",
-            "height": "73",
-            "appearTime": 1766977904000
-        },
-        {
-            "lng": "120.1976928",
-            "lat": "30.1857852",
-            "height": "161",
-            "appearTime": 1766978449000
-        },
-        {
-            "lng": "120.1981048",
-            "lat": "30.1855907",
-            "height": "79",
-            "appearTime": 1766979216000
-        },
-        {
-            "lng": "120.1979675",
-            "lat": "30.1857299",
-            "height": "45",
-            "appearTime": 1766984643000
-        },
-        {
-            "lng": "120.1980514",
-            "lat": "30.1856174",
-            "height": "68",
-            "appearTime": 1766986944000
-        },
-        {
-            "lng": "120.1979675",
-            "lat": "30.1856803",
-            "height": "193",
-            "appearTime": 1766987124000
-        },
-        {
-            "lng": "120.1980895",
-            "lat": "30.1856212",
-            "height": "78",
-            "appearTime": 1766987465000
-        },
-        {
-            "lng": "120.1979522",
-            "lat": "30.1857166",
-            "height": "157",
-            "appearTime": 1766987616000
-        },
-        {
-            "lng": "120.1979675",
-            "lat": "30.1857414",
-            "height": "46",
-            "appearTime": 1766987956000
-        },
-        {
-            "lng": "120.1983413",
-            "lat": "30.1856288",
-            "height": "115",
-            "appearTime": 1766988865000
-        },
-        {
-            "lng": "120.1979675",
-            "lat": "30.1856822",
-            "height": "83",
-            "appearTime": 1766989306000
-        },
-        {
-            "lng": "120.1980667",
-            "lat": "30.1857929",
-            "height": "66",
-            "appearTime": 1766989866000
-        },
-        {
-            "lng": "120.1979675",
-            "lat": "30.1856803",
-            "height": "106",
-            "appearTime": 1766990475000
-        },
-        {
-            "lng": "120.197998",
-            "lat": "30.1857471",
-            "height": "53",
-            "appearTime": 1766991617000
-        },
-        {
-            "lng": "120.1980819",
-            "lat": "30.1856632",
-            "height": "71",
-            "appearTime": 1766992340000
-        },
-        {
-            "lng": "120.197998",
-            "lat": "30.1857128",
-            "height": "48",
-            "appearTime": 1766993042000
-        },
-        {
-            "lng": "120.1979675",
-            "lat": "30.1856803",
-            "height": "163",
-            "appearTime": 1766993265000
-        },
-        {
-            "lng": "120.1979675",
-            "lat": "30.1856803",
-            "height": "49",
-            "appearTime": 1766994375000
-        },
-        {
-            "lng": "120.1980209",
-            "lat": "30.185707",
-            "height": "52",
-            "appearTime": 1766994886000
-        },
-        {
-            "lng": "120.1978988",
-            "lat": "30.1856174",
-            "height": "71",
-            "appearTime": 1766995047000
-        },
-        {
-            "lng": "120.1979675",
-            "lat": "30.1856803",
-            "height": "52",
-            "appearTime": 1766995396000
-        },
-        {
-            "lng": "120.1979675",
-            "lat": "30.1856803",
-            "height": "45",
-            "appearTime": 1766997445000
-        },
-        {
-            "lng": "120.1980361",
-            "lat": "30.1856307",
-            "height": "67",
-            "appearTime": 1766998436000
-        },
-        {
-            "lng": "120.1981353",
-            "lat": "30.1855735",
-            "height": "77",
-            "appearTime": 1766999583000
-        },
-        {
-            "lng": "120.1984176",
             "lat": "30.1866531",
             "height": "152",
-            "appearTime": 1766999784000
-        },
-        {
-            "lng": "120.1979675",
-            "lat": "30.1856803",
-            "height": "55",
-            "appearTime": 1766999831000
-        },
-        {
-            "lng": "120.1979675",
-            "lat": "30.1856803",
-            "height": "85",
-            "appearTime": 1766999941000
-        },
-        {
-            "lng": "120.197174",
-            "lat": "30.1851291",
-            "height": "151",
-            "appearTime": 1767000131000
-        },
-        {
-            "lng": "120.1986541",
-            "lat": "30.1860713",
-            "height": "102",
-            "appearTime": 1767000315000
-        },
-        {
-            "lng": "120.1980361",
-            "lat": "30.1856689",
-            "height": "60",
-            "appearTime": 1767000411000
-        },
-        {
-            "lng": "120.1979675",
-            "lat": "30.1856803",
-            "height": "68",
-            "appearTime": 1767000551000
-        },
-        {
-            "lng": "120.1975326",
-            "lat": "30.1843433",
-            "height": "116",
-            "appearTime": 1767000641000
-        },
-        {
-            "lng": "120.1979675",
-            "lat": "30.1856822",
-            "height": "80",
-            "appearTime": 1767001376000
-        },
-        {
-            "lng": "120.1979675",
-            "lat": "30.1857032",
-            "height": "42",
-            "appearTime": 1767001756000
-        },
-        {
-            "lng": "120.1979675",
-            "lat": "30.1856822",
-            "height": "74",
-            "appearTime": 1767001892000
-        },
-        {
-            "lng": "120.1979675",
-            "lat": "30.1856803",
-            "height": "73",
-            "appearTime": 1767002483000
-        },
-        {
-            "lng": "120.1979675",
-            "lat": "30.1856803",
-            "height": "49",
-            "appearTime": 1767003009000
-        },
-        {
-            "lng": "120.1979675",
-            "lat": "30.1856803",
-            "height": "75",
-            "appearTime": 1767003138000
+            "appearTime": 1766920558000
         },
         {
             "lng": "120.1984481",
-            "lat": "30.186346",
-            "height": "155",
-            "appearTime": 1767003371000
-        },
-        {
-            "lng": "120.1979675",
-            "lat": "30.1856803",
-            "height": "73",
-            "appearTime": 1767003427000
-        },
-        {
-            "lng": "120.1979675",
-            "lat": "30.1856803",
-            "height": "56",
-            "appearTime": 1767004230000
-        },
-        {
-            "lng": "120.1979675",
-            "lat": "30.1856803",
-            "height": "71",
-            "appearTime": 1767004716000
-        },
-        {
-            "lng": "120.1979675",
-            "lat": "30.1856803",
-            "height": "44",
-            "appearTime": 1767005228000
-        },
-        {
-            "lng": "120.1979675",
-            "lat": "30.1856822",
-            "height": "74",
-            "appearTime": 1767005421000
-        },
-        {
-            "lng": "120.1979675",
-            "lat": "30.1856803",
-            "height": "87",
-            "appearTime": 1767005681000
-        },
-        {
-            "lng": "120.1979675",
-            "lat": "30.1857509",
-            "height": "54",
-            "appearTime": 1767006921000
-        },
-        {
-            "lng": "120.1979675",
-            "lat": "30.1856822",
-            "height": "81",
-            "appearTime": 1767007254000
-        },
-        {
-            "lng": "120.1979675",
-            "lat": "30.1856822",
-            "height": "73",
-            "appearTime": 1767007579000
-        },
-        {
-            "lng": "120.1979675",
-            "lat": "30.1856803",
-            "height": "49",
-            "appearTime": 1767008490000
-        },
-        {
-            "lng": "120.1979675",
-            "lat": "30.1856803",
-            "height": "88",
-            "appearTime": 1767008787000
-        },
-        {
-            "lng": "120.1979675",
-            "lat": "30.1856803",
-            "height": "45",
-            "appearTime": 1767008953000
-        },
-        {
-            "lng": "120.1979675",
-            "lat": "30.1856861",
-            "height": "86",
-            "appearTime": 1767009349000
-        },
-        {
-            "lng": "120.1979675",
-            "lat": "30.1856803",
-            "height": "81",
-            "appearTime": 1767009731000
-        },
-        {
-            "lng": "120.1979675",
-            "lat": "30.1856803",
-            "height": "42",
-            "appearTime": 1767010503000
-        },
-        {
-            "lng": "120.1979675",
-            "lat": "30.1856899",
-            "height": "41",
-            "appearTime": 1767011076000
-        },
-        {
-            "lng": "120.1980361",
-            "lat": "30.1856861",
-            "height": "56",
-            "appearTime": 1767012181000
-        },
-        {
-            "lng": "120.1979675",
-            "lat": "30.1856803",
-            "height": "52",
-            "appearTime": 1767012497000
-        },
-        {
-            "lng": "120.1979827",
-            "lat": "30.1856861",
-            "height": "44",
-            "appearTime": 1767013925000
-        },
-        {
-            "lng": "120.1979675",
-            "lat": "30.1856803",
-            "height": "44",
-            "appearTime": 1767014389000
-        },
-        {
-            "lng": "120.1979675",
-            "lat": "30.1856803",
-            "height": "42",
-            "appearTime": 1767015130000
+            "lat": "30.1866531",
+            "height": "150",
+            "appearTime": 1766924168000
         }
     ],
     [
@@ -1531,7 +1163,7 @@ export const defaultHeatmapColors = {
 
 export const defaultHeatmapOpacity = {
     0.0: 0.0,
-    0.5: 0.5, // 1.0: 1.0,    
+    0.5: 0.5,
 }
 
 export const toolbarSearchMenu = {
@@ -1685,4 +1317,3 @@ export const toolbarButtonConfigs = [
         hoverColor: 'rgba(9, 109, 236, 0.95)',
     },
 ];
-

@@ -42,6 +42,8 @@ export interface RingOptions extends BaseOverlayOptions {
   segments?: number;
   /** 兼容旧版发光宽度配置 */
   glowWidth?: number;
+  /** 兼容旧版动画速度字段（当前保留，不参与渲染） */
+  speed?: number;
 }
 
 /**

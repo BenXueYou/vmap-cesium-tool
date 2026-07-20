@@ -14,3 +14,6 @@ export type { DrawMode, DrawOptions, DrawResult, DrawServiceOptions, Measurement
 
 // 导出工具栏服务（新架构）
 export * from './toolbar/index';
+
+// 导出标绘服务
+export * from './mark';

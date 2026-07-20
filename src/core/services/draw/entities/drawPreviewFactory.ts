@@ -1,7 +1,13 @@
 import * as Cesium from 'cesium';
 import type { Cartesian3, Entity, Viewer } from 'cesium';
 
-import { calculateDistance, calculatePolygonArea, generateCirclePositions, getRectangleCornerPositions } from '../geometry/drawGeometry';
+import {
+  calculateDistance,
+  calculatePolygonArea,
+  calculateRectangleArea,
+  generateCirclePositions,
+  getRectangleCornerPositions,
+} from '../geometry/drawGeometry';
 import { toCartographic } from '../geometry/drawPosition';
 import { MeasurementLabelFactory } from '../labels/measurementLabelFactory';
 import type { ResolvedMeasurementTheme } from '../types/drawTypes';
@@ -62,10 +68,9 @@ export class DrawPreviewFactory {
     }
 
     const entities = [
-      this.createPolygonFillEntity(corners, theme.fill.color, theme.stroke.clampToGround),
-      this.createPolylineEntity(corners, theme.stroke.color, theme.stroke.width, theme.stroke.clampToGround, true),
+      this.createRectangleEntity(start, end, theme),
     ];
-    const areaLabel = this.labelFactory.createAreaLabelEntity(corners, calculatePolygonArea(corners), 'preview', theme);
+    const areaLabel = this.labelFactory.createAreaLabelEntity(corners, calculateRectangleArea(corners), 'preview', theme);
     if (areaLabel) {
       entities.push(areaLabel);
     }
@@ -143,6 +148,40 @@ export class DrawPreviewFactory {
         outline: false,
         heightReference: clampToGround ? Cesium.HeightReference.RELATIVE_TO_GROUND : Cesium.HeightReference.NONE,
         ...(clampToGround ? { height: 0.1 } : {}),
+      },
+    });
+  }
+
+  createRectangleEntity(start: Cartesian3, end: Cartesian3, theme: ResolvedMeasurementTheme): Entity {
+    const startCarto = toCartographic(start);
+    const endCarto = toCartographic(end);
+    if (!startCarto || !endCarto) {
+      return this.viewer.entities.add({
+        rectangle: {
+          coordinates: Cesium.Rectangle.fromDegrees(0, 0, 0, 0),
+          outline: true,
+        },
+      });
+    }
+
+    const rectangle = new Cesium.Rectangle(
+      Math.min(startCarto.longitude, endCarto.longitude),
+      Math.min(startCarto.latitude, endCarto.latitude),
+      Math.max(startCarto.longitude, endCarto.longitude),
+      Math.max(startCarto.latitude, endCarto.latitude),
+    );
+
+    return this.viewer.entities.add({
+      rectangle: {
+        coordinates: rectangle,
+        material: theme.fill.color,
+        outline: true,
+        outlineColor: theme.stroke.color,
+        outlineWidth: theme.stroke.width,
+        heightReference: theme.stroke.clampToGround
+          ? Cesium.HeightReference.RELATIVE_TO_GROUND
+          : Cesium.HeightReference.NONE,
+        ...(theme.stroke.clampToGround ? { height: 0.1 } : {}),
       },
     });
   }

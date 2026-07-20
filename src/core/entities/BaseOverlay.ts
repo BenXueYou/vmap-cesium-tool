@@ -1,5 +1,7 @@
 import * as Cesium from 'cesium';
 import type { Viewer, Entity } from 'cesium';
+import { coordinateService } from '../mapProviders/coordinates/CoordinateService';
+import type { CoordSystem } from '../mapProviders/coordinates/types';
 
 /**
  * 覆盖物位置类型
@@ -26,6 +28,8 @@ export interface BaseOverlayOptions {
   metadata?: Record<string, any>;
   /** 兼容旧版图层分组键 */
   layerKey?: string;
+  /** 当前入参坐标系，默认 WGS84 */
+  coordSystem?: CoordSystem;
 }
 
 /** 点击高亮配置 */
@@ -110,6 +114,17 @@ export abstract class BaseOverlay {
   protected destroyed = false;
 
   /**
+   * Viewer 是否仍可访问
+   */
+  protected isViewerAvailable(): boolean {
+    try {
+      return !!this.viewer && (typeof this.viewer.isDestroyed !== 'function' || !this.viewer.isDestroyed());
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * 构造函数
    * @param viewer - Cesium Viewer 实例
    * @param options - 基础配置选项
@@ -160,7 +175,12 @@ export abstract class BaseOverlay {
     
     if (Array.isArray(position)) {
       const [lng, lat, height = 0] = position;
-      return Cesium.Cartesian3.fromDegrees(lng, lat, height);
+      const point = coordinateService.toWGS84({
+        longitude: lng,
+        latitude: lat,
+        height,
+      }, this.options.coordSystem || 'WGS84');
+      return Cesium.Cartesian3.fromDegrees(point.longitude, point.latitude, point.height ?? height);
     }
     
     return undefined;
@@ -171,9 +191,14 @@ export abstract class BaseOverlay {
    */
   protected toLngLat(cartesian: Cesium.Cartesian3): [number, number] {
     const cartographic = Cesium.Cartographic.fromCartesian(cartesian);
+    const point = coordinateService.fromWGS84({
+      longitude: Cesium.Math.toDegrees(cartographic.longitude),
+      latitude: Cesium.Math.toDegrees(cartographic.latitude),
+      height: cartographic.height,
+    }, this.options.coordSystem || 'WGS84');
     return [
-      Cesium.Math.toDegrees(cartographic.longitude),
-      Cesium.Math.toDegrees(cartographic.latitude),
+      point.longitude,
+      point.latitude,
     ];
   }
 
@@ -189,6 +214,13 @@ export abstract class BaseOverlay {
    */
   getId(): string {
     return this.entity.id || '';
+  }
+
+  /**
+   * 兼容 0.x：外部常直接把覆盖物实例当作 Entity 用，读取 `id`。
+   */
+  get id(): string {
+    return this.getId();
   }
 
   /**
@@ -220,6 +252,10 @@ export abstract class BaseOverlay {
     if (this.destroyed) return;
     
     try {
+      if (!this.isViewerAvailable()) {
+        this.destroyed = true;
+        return;
+      }
       // 从 Viewer 中移除 Entity
       if (this.entity && this.viewer.entities.contains(this.entity)) {
         this.viewer.entities.remove(this.entity);

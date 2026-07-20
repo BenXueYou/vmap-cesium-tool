@@ -1,0 +1,241 @@
+import type { Viewer, Entity } from 'cesium';
+import { Marker, type MarkerOptions } from '../../entities/Marker';
+import { Label, type LabelOptions } from '../../entities/Label';
+import { Icon, type IconOptions } from '../../entities/Icon';
+import { SVG, type SvgOptions } from '../../entities/SVG';
+import { InfoWindow, type InfoWindowOptions } from '../../entities/InfoWindow';
+import { Polyline, type PolylineOptions } from '../../entities/Polyline';
+import { Polygon, type PolygonOptions } from '../../entities/Polygon';
+import { Rectangle, type RectangleOptions } from '../../entities/Rectangle';
+import { Circle, type CircleOptions } from '../../entities/Circle';
+import { Ring, type RingOptions } from '../../entities/Ring';
+import type { OverlayEntity } from '../../entities/BaseOverlay';
+type OverlayInstance = Marker | Label | Icon | SVG | InfoWindow | Polyline | Polygon | Rectangle | Circle | Ring;
+/**
+ * 覆盖物服务选项
+ */
+export interface OverlayServiceOptions {
+    /** 是否启用 hover 处理器（默认 true） */
+    enableHoverHandler?: boolean;
+    /** 点击节流间隔（毫秒，默认 120） */
+    clickPickMinIntervalMs?: number;
+    /** 覆盖物编辑变化回调 */
+    onOverlayEditChange?: (entity: Entity) => void;
+    /** 覆盖物编辑结束回调 */
+    onOverlayEditEnd?: (entity: Entity | null) => void;
+}
+/**
+ * 覆盖物服务类
+ *
+ * 统一管理所有覆盖物的创建、更新和删除。
+ * 基于新的实体类架构，提供便捷的服务层 API。
+ *
+ * @example
+ * ```typescript
+ * const overlayService = new OverlayService(viewer);
+ *
+ * // 添加标记
+ * const marker = overlayService.addMarker({
+ *   position: [120.1, 30.2],
+ *   pixelSize: 12,
+ *   color: '#FF0000'
+ * });
+ *
+ * // 添加多边形
+ * const polygon = overlayService.addPolygon({
+ *   positions: [[120.1, 30.2], [120.2, 30.3], [120.3, 30.25]],
+ *   material: 'rgba(255, 0, 0, 0.3)'
+ * });
+ *
+ * // 根据 ID 获取覆盖物
+ * const m = overlayService.getOverlay(marker.getId());
+ *
+ * // 删除覆盖物
+ * overlayService.removeOverlay(marker.getId());
+ * ```
+ */
+export declare class OverlayService {
+    private viewer;
+    private overlays;
+    private entityOverlayMap;
+    private options;
+    private hoverEnabled;
+    private nextId;
+    private clickHandler;
+    private hoverHandler;
+    private clickHighlightTargets;
+    private hoverHighlightTargets;
+    private lastClickPickAt;
+    private pendingHoverRaf;
+    private pendingHoverPosition;
+    private readonly highlightCache;
+    private overlayEditEnabled;
+    private overlayEditOptions;
+    private overlayEditState;
+    private markerFactory;
+    private labelFactory;
+    private iconFactory;
+    private svgFactory;
+    private infoWindowFactory;
+    private polylineFactory;
+    private polygonFactory;
+    private rectangleFactory;
+    private circleFactory;
+    private ringFactory;
+    constructor(viewer: Viewer, options?: OverlayServiceOptions);
+    /**
+     * 生成唯一 ID
+     */
+    generateId(prefix?: string): string;
+    /**
+     * 注册覆盖物
+     */
+    registerOverlay(id: string, overlay: OverlayInstance): void;
+    /**
+     * 注销覆盖物
+     */
+    unregisterOverlay(id: string): void;
+    /**
+     * 根据 ID 获取覆盖物
+     */
+    getOverlay(id: string): OverlayInstance | undefined;
+    /**
+     * 获取所有覆盖物 ID
+     */
+    getAllOverlayIds(): string[];
+    /**
+     * 添加 Marker
+     */
+    addMarker(options: MarkerOptions): Marker;
+    /**
+     * 添加 Label
+     */
+    addLabel(options: LabelOptions): Label;
+    /**
+     * 添加 Icon
+     */
+    addIcon(options: IconOptions): Icon;
+    /**
+     * 添加 SVG
+     */
+    addSvg(options: SvgOptions): SVG;
+    /**
+     * 添加 InfoWindow
+     */
+    addInfoWindow(options: InfoWindowOptions): InfoWindow;
+    /**
+     * 添加 Polyline
+     */
+    addPolyline(options: PolylineOptions): Polyline;
+    /**
+     * 添加 Polygon
+     */
+    addPolygon(options: PolygonOptions): Polygon;
+    /**
+     * 添加 Rectangle
+     */
+    addRectangle(options: RectangleOptions): Rectangle;
+    /**
+     * 添加 Circle
+     */
+    addCircle(options: CircleOptions): Circle;
+    /**
+     * 添加 Ring
+     */
+    addRing(options: RingOptions): Ring;
+    /**
+     * 根据 ID 删除覆盖物
+     */
+    removeOverlay(id: string): boolean;
+    /**
+     * 删除所有覆盖物
+     */
+    removeAllOverlays(): void;
+    /**
+     * 设置覆盖物可见性
+     */
+    setOverlayVisible(id: string, visible: boolean): boolean;
+    /**
+     * 显式切换覆盖物高亮状态。
+     */
+    toggleOverlayHighlight(entityOrId: OverlayEntity | Entity | string, reason?: 'click' | 'hover'): boolean;
+    /**
+     * 显式设置覆盖物高亮状态。
+     */
+    setOverlayHighlight(entityOrId: OverlayEntity | Entity | string, enabled: boolean, reason?: 'click' | 'hover'): boolean;
+    /**
+     * 动态开启/关闭 hover 高亮处理器。
+     * 兼容旧版 overlayService 的运行时切换行为。
+     */
+    setHoverEnabled(enabled: boolean): void;
+    /**
+     * 获取当前 hover 高亮开关状态。
+     */
+    isHoverEnabled(): boolean;
+    setOverlayEditMode(enabled: boolean, overlayEditOptions?: Record<string, any>): void;
+    getOverlayEditModeEnabled(): boolean;
+    startOverlayEdit(entityOrId: OverlayEntity | Entity | string | number, overlayEditOptions?: Record<string, any>): boolean;
+    stopOverlayEdit(): Entity | null;
+    private suspendCameraControls;
+    private restoreCameraControls;
+    private releaseEditDrag;
+    private resolveEditableOverlay;
+    private detectEditableKind;
+    private resolveEditableControlPoints;
+    private createEditHandles;
+    private resolveHandleStyle;
+    private resolveHandleColor;
+    private resolvePickedEditHandle;
+    private pickEditPosition;
+    private applyDragForHandle;
+    private syncEditHandles;
+    private emitOverlayEditChange;
+    private emitOverlayEditEnd;
+    private applyPointPosition;
+    private applyPolylinePositions;
+    private applyPolygonPositions;
+    private applyRectangleCoordinates;
+    private applyCircle;
+    private getEntityPosition;
+    private getPolylinePositions;
+    private getPolygonPositions;
+    private getRectangleCoordinates;
+    private getRectangleHeight;
+    private resolveCircleRadius;
+    private getCircleInfo;
+    private calculateCircleRadiusMeters;
+    private circleRadiusHandlePosition;
+    private rectangleToPositions;
+    private positionsToRectangle;
+    /**
+     * 安装 Hover 处理器
+     */
+    private setupHoverHandler;
+    /**
+     * 安装点击处理器
+     */
+    private setupClickHandler;
+    private bindOverlayEntities;
+    private unbindOverlayEntities;
+    private collectOverlayEntities;
+    private pickOverlayEntity;
+    private safeDrillPick;
+    private resolvePickedOverlayEntity;
+    private resolveOverlayByPickId;
+    private resolveOverlayEntity;
+    private getHighlightTargets;
+    private setHighlightTargets;
+    private setEntityHighlight;
+    private isHighlightActive;
+    private clearOverlayHighlightState;
+    private normalizeHighlightOptions;
+    private resolveHighlightColor;
+    private applyEntityHighlight;
+    private restoreEntityStyle;
+    private captureEntityStyle;
+    /**
+     * 销毁服务
+     */
+    destroy(): void;
+}
+export {};

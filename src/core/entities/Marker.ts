@@ -44,6 +44,11 @@ export class Marker extends BaseOverlay {
   constructor(viewer: Viewer, options: MarkerOptions) {
     super(viewer, options);
     this.markerOptions = options;
+
+    const position = this.toCartesian3(options.position);
+    if (position) {
+      this.entity.position = new Cesium.ConstantPositionProperty(position);
+    }
     
     // 设置点标记属性
     this.entity.point = this.createPointGraphics(options);

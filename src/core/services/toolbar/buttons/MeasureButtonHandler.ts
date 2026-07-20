@@ -13,11 +13,13 @@ type MeasurementMode = 'distance' | 'area' | null;
 
 interface DrawCompletionResult {
   positions?: any[];
+  geographicPositions?: any[];
 }
 
 interface LegacyMeasureCompleteResult {
   type?: 'line' | 'polygon' | 'rectangle' | 'circle';
   positions?: any[];
+  geographicPositions?: any[];
 }
 
 /**
@@ -50,6 +52,7 @@ export interface MeasureButtonHandlerOptions {
   
   /** 清除测量回调 */
   onClear?: () => void;
+  onMeasurementComplete?: (result: { type: 'distance' | 'area'; positions: any[]; value: number }) => void;
 }
 
 /**
@@ -209,11 +212,21 @@ export class MeasureButtonHandler extends BaseButtonHandler {
     }
 
     if (event.type === 'distance') {
-      this.options.onDistanceComplete?.(event.positions, event.value);
+      this.options.onMeasurementComplete?.({
+        type: 'distance',
+        positions: (event as any).geographicPositions || event.positions,
+        value: event.value,
+      });
+      this.options.onDistanceComplete?.((event as any).geographicPositions || event.positions, event.value);
       return;
     }
 
-    this.options.onAreaComplete?.(event.positions, event.value);
+    this.options.onMeasurementComplete?.({
+      type: 'area',
+      positions: (event as any).geographicPositions || event.positions,
+      value: event.value,
+    });
+    this.options.onAreaComplete?.((event as any).geographicPositions || event.positions, event.value);
   }
 
   private handleClearComplete(): void {
@@ -229,12 +242,22 @@ export class MeasureButtonHandler extends BaseButtonHandler {
     }
 
     if (result.type === 'line') {
-      this.options.onDistanceComplete?.(result.positions, calculateTotalDistance(result.positions));
+      this.options.onMeasurementComplete?.({
+        type: 'distance',
+        positions: result.geographicPositions || result.positions,
+        value: calculateTotalDistance(result.positions),
+      });
+      this.options.onDistanceComplete?.(result.geographicPositions || result.positions, calculateTotalDistance(result.positions));
       return;
     }
 
     if (result.type === 'polygon' || result.type === 'rectangle' || result.type === 'circle') {
-      this.options.onAreaComplete?.(result.positions, calculatePolygonArea(result.positions));
+      this.options.onMeasurementComplete?.({
+        type: 'area',
+        positions: result.geographicPositions || result.positions,
+        value: calculatePolygonArea(result.positions),
+      });
+      this.options.onAreaComplete?.(result.geographicPositions || result.positions, calculatePolygonArea(result.positions));
     }
   }
 
@@ -247,11 +270,21 @@ export class MeasureButtonHandler extends BaseButtonHandler {
     }
 
     if (mode === 'distance') {
-      this.options.onDistanceComplete?.(result.positions, calculateTotalDistance(result.positions));
+      this.options.onMeasurementComplete?.({
+        type: 'distance',
+        positions: result.geographicPositions || result.positions,
+        value: calculateTotalDistance(result.positions),
+      });
+      this.options.onDistanceComplete?.(result.geographicPositions || result.positions, calculateTotalDistance(result.positions));
       return;
     }
 
-    this.options.onAreaComplete?.(result.positions, calculatePolygonArea(result.positions));
+    this.options.onMeasurementComplete?.({
+      type: 'area',
+      positions: result.geographicPositions || result.positions,
+      value: calculatePolygonArea(result.positions),
+    });
+    this.options.onAreaComplete?.(result.geographicPositions || result.positions, calculatePolygonArea(result.positions));
   }
 
   /**

@@ -1,5 +1,57 @@
 # CesiumMapToolbar 自定义功能示例
 
+## 新增：标绘、绘制与编辑示例
+
+- `examples/mark-draw-edit-example.ts`
+- 对应文档：`doc/guide/Mark_Draw_Edit_Guide.md`
+- 覆盖 `CesiumMapMark`、`DrawHelper`、`rectangle` 语义、基础编辑和工作区绘制
+
+## 多底图接入示例
+
+新增示例文件：`examples/multi-provider-example.ts`
+
+该示例展示了以下能力：
+
+- 使用 `baseMap + mapAuth` 初始化多厂商底图
+- 内置天地图 / 高德 / 腾讯 / 百度鉴权示例
+- 展示高德安全密钥 `sk` 的传递方式
+- 演示 `CesiumMapMark` 标绘与坐标输出
+- 预留离线 `custom + xyz` 切换片段
+
+当前示例中已写入的测试配置：
+
+```ts
+const mapAuth = {
+  tdt: {
+    token: '0624b682cd8f7233295ed929682804b4',
+    sk: '9cf0eb485c2f1cb679a09ad000ac5797',
+  },
+  gaode: {
+    key: '083cf2fc37d04fc1d4f45b4ea2a5d1e8',
+  },
+  tencent: {
+    key: '3Y3BZ-WXTLA-BV6KT-COBRB-4GXKO-7MFQC',
+  },
+  baidu: {
+    ak: '8c4RjhGrynydOwm1NSTBW8gt1DTE1riA',
+  },
+};
+```
+
+默认运行的是高德卫星底图：
+
+```ts
+await initCesium('cesiumContainer', {
+  baseMap: {
+    provider: 'gaode',
+    type: 'satellite',
+    showLabel: true,
+    sk: '85f329e4b2f551232cd24862c753055f',
+  },
+  mapAuth,
+});
+```
+
 本文档展示了如何使用 CesiumMapToolbar 的自定义按钮和搜索功能，以及 DrawHelper 的地图绘制功能。
 
 ## 0. 自动恢复（最小接入：onRecovered 重绑 toolbar/overlay/heatmap）

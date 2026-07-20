@@ -37,8 +37,20 @@ export type {
   CameraConfig,
   LayersConfig,
   ProviderType,
+  BaseMapConfig,
+  BaseMapProviderId,
+  MapAuthConfig,
+  ProviderSearchOptions,
+  CreditsOptions,
+  BaseMapRectangle,
+  OfflineCameraBoundsConfig,
+  CoordSystem,
+  CoordinateAwareInput,
+  CoordinateAwareOutput,
   TDTLayerConfig,
   GaodeLayerConfig,
+  TencentLayerConfig,
+  GoogleLayerConfig,
   BaiduLayerConfig,
   ArcGISLayerConfig,
   OSMLayerConfig,
@@ -91,13 +103,22 @@ export type {
   MeasurementSummaryLabelStyle,
   MeasurementTheme,
   MeasurementVertexStyle,
+  MarkCallbacks,
+  MarkDrawOptions,
+  MarkDrawResult,
+  MarkDrawType,
+  MarkEditOptions,
+  MarkExportItem,
+  MarkServiceOptions,
+  MarkWorkAreaKind,
+  MarkWorkAreaType,
   ToolbarServiceOptions,
   ToolbarCallbacks,
 } from './core/services';
+export { MarkService, MarkToolbar } from './core/services';
 
 // ==================== 图层模块 ====================
 export { 
-  HeatmapLayer, 
   PointClusterLayer,
   setTDTPlugin,
   createTDTImageryConfig,
@@ -108,14 +129,20 @@ export {
   createTDT3DGeoWTFS,
   hasTDT3DExtension,
 } from './core/layers';
+export { HeatmapLayer } from './adapters/HeatmapLayerAdapter';
+export { baseMapRegistry } from './core/mapProviders/registry';
+export { ProviderSearchService, createAmapSignature, normalizeMapAuth } from './core/mapProviders/ProviderSearchService';
 export type {
-  HeatPoint,
-  HeatmapGradient,
-  HeatmapOptions,
   ClusterPoint,
   ClusterStyleStep,
   PointClusterLayerOptions,
 } from './core/layers';
+export type {
+  HeatPoint,
+  HeatmapAutoUpdateOptions,
+  HeatmapGradient,
+  HeatmapOptions,
+} from './adapters/HeatmapLayerAdapter';
 
 // ==================== 组件模块 ====================
 export {
@@ -137,6 +164,7 @@ export {
 // ==================== 国际化 ====================
 export { i18n } from './i18n';
 export type { I18nLike } from './i18n';
+export { CoordinateService, coordinateService } from './core/mapProviders/coordinates/CoordinateService';
 
 // ==================== 工具函数 ====================
 // export * from './utils'; // 暂时注释，等待 utils 模块创建
@@ -157,11 +185,14 @@ export type { LegacyCesiumMapToolbarCallbacks } from './adapters/ToolbarAdapter'
 
 export { initCesium } from './adapters/MapLoaderAdapter';
 export type { LegacyInitOptions, LegacyInitResult, LegacyMapCenter } from './adapters/MapLoaderAdapter';
+export { MapMarkAdapter as CesiumMapMark } from './adapters/MapMarkAdapter';
+export type { CesiumMapMarkOptions } from './adapters/MapMarkAdapter';
 
 export {
   DrawHelperAdapter as CompatDrawHelper,
   OverlayServiceAdapter as CompatCesiumOverlayService,
   ToolbarAdapter as CompatCesiumMapToolbar,
+  MapMarkAdapter as CompatCesiumMapMark,
 } from './adapters';
 
 // ==================== 便捷工厂函数 ====================

@@ -20,6 +20,8 @@ title: API
 - `DrawService`
 - `Marker`、`Label`、`Icon`、`SVG`、`InfoWindow`、`Polyline`、`Polygon`、`Rectangle`、`Circle`、`Ring`
 - `HeatmapLayer`、`PointClusterLayer`
+- `baseMapRegistry`、`CoordinateService`、`coordinateService`
+- `MarkService`、`MarkToolbar`、`CesiumMapMark`
 - `Toolbar`、`ToolbarButton`、`SearchBox`
 
 ## 当前可直接查看的 API 页面
@@ -31,6 +33,8 @@ title: API
 - [ToolbarService（工具栏服务）](/api/ToolbarService_API)
 - [OverlayService（覆盖物服务）](/api/OverlayService_API)
 - [DrawService（绘制服务）](/api/DrawService_API)
+- [多厂商与坐标 API](/api/MapProvider_API)
+- [MarkService / CesiumMapMark API](/api/MarkService_API)
 
 ### 兼容层 API
 

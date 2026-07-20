@@ -211,6 +211,7 @@ export class ToolbarService {
         getAreaDrawOptions: callbacks?.getAreaDrawOptions,
         onDistanceComplete: callbacks?.onDistanceComplete,
         onAreaComplete: callbacks?.onAreaComplete,
+        onMeasurementComplete: callbacks?.onMeasurementComplete,
         onClear: callbacks?.onClear,
       },
       this.i18n,
@@ -264,7 +265,7 @@ export class ToolbarService {
         const handler = new SimpleButtonHandler(
           {
             id: btnConfig.id,
-            title: btnConfig.title,
+            title: btnConfig.title || btnConfig.titleKey || btnConfig.id,
             titleKey: btnConfig.titleKey,
             icon: btnConfig.icon as string | HTMLElement,
             toggleable: id === 'view2d3d',
@@ -302,7 +303,7 @@ export class ToolbarService {
         this.toolbar.addButton({
           id: btnConfig.id,
           icon: btnConfig.icon,
-          title: btnConfig.title,
+          title: btnConfig.title || btnConfig.titleKey || btnConfig.id,
           titleKey: btnConfig.titleKey,
           size: btnConfig.size,
           color: btnConfig.color,
@@ -369,7 +370,7 @@ export class ToolbarService {
     
     const handlerConfig: SimpleButtonConfig = {
       id: config.id,
-      title: config.title,
+      title: config.title || config.titleKey || config.id,
       titleKey: config.titleKey,
       icon: iconValue as string | HTMLElement,
       onClick: onClick as (() => void) || config.onClick,
@@ -478,6 +479,7 @@ export class ToolbarService {
       getAreaDrawOptions: this.config.callbacks?.getAreaDrawOptions,
       onDistanceComplete: this.config.callbacks?.onDistanceComplete,
       onAreaComplete: this.config.callbacks?.onAreaComplete,
+      onMeasurementComplete: this.config.callbacks?.onMeasurementComplete,
       onClear: this.config.callbacks?.onClear,
     });
   }
@@ -535,6 +537,27 @@ export class ToolbarService {
         service?.hideNoFlyZones?.();
       },
     });
+  }
+
+  /**
+   * 获取搜索服务
+   */
+  getSearchService(): any {
+    return this.searchService ?? null;
+  }
+
+  /**
+   * 获取测量服务
+   */
+  getMeasurementService(): any {
+    return this.measurementService ?? null;
+  }
+
+  /**
+   * 获取图层服务
+   */
+  getLayersService(): any {
+    return this.layersService ?? null;
   }
 
   /**

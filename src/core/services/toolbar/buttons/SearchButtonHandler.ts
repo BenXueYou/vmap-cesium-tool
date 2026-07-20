@@ -3,9 +3,11 @@
  * 处理搜索功能的按钮点击、搜索框显示等逻辑
  */
 
+import * as Cesium from 'cesium';
 import { BaseButtonHandler } from './BaseButtonHandler';
 import type { ToolbarButton } from '../../../../components/ToolbarButton';
 import searchIcon from '../assets/toolbar/search@3x.png';
+import { coordinateService } from '../../../mapProviders/coordinates/CoordinateService';
 
 interface SearchContainerStyleConfig {
   containerStyle?: Partial<CSSStyleDeclaration>;
@@ -568,6 +570,7 @@ export class SearchButtonHandler extends BaseButtonHandler {
 
       item.addEventListener('click', () => {
         Object.assign(item.style, activeStyle);
+        this.flyToResult(result);
         this.options.onSelect?.(result);
         this.closeSearch();
       });
@@ -576,6 +579,32 @@ export class SearchButtonHandler extends BaseButtonHandler {
     });
 
     this.searchContainer.appendChild(resultsContainer);
+  }
+
+  /**
+   * 飞到搜索结果位置
+   */
+  private flyToResult(result: any): void {
+    const longitude = Number(result?.longitude);
+    const latitude = Number(result?.latitude);
+    if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) {
+      return;
+    }
+
+    const point = coordinateService.toWGS84({
+      longitude,
+      latitude,
+      height: Number.isFinite(Number(result?.height)) ? Number(result.height) : 2000,
+    }, result?.coordSystem || 'WGS84');
+
+    this.viewer.camera.flyTo({
+      destination: Cesium.Cartesian3.fromDegrees(
+        point.longitude,
+        point.latitude,
+        point.height ?? 2000,
+      ),
+      duration: 1.2,
+    });
   }
 
   /**

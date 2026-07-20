@@ -50,6 +50,7 @@ export class CesiumMapToolbar {
   // 当前测量模式：none（未测量）、distance（测距）、area（测面）
   private measurementService!: MeasurementService;
   private unsubscribeI18n?: () => void;
+  private sceneModeListenerDispose?: (() => void) | null;
   private i18n: I18nLike;
   private useI18n: boolean;
 
@@ -162,6 +163,10 @@ export class CesiumMapToolbar {
       },
       fullscreenCallback: this.fullscreenCallback, // 全屏回调
       resetLocationCallback: this.resetLocationCallback // 复位位置回调
+    });
+    this.syncView2D3DButton();
+    this.sceneModeListenerDispose = this.viewer.scene.morphComplete.addEventListener(() => {
+      this.syncView2D3DButton();
     });
 
     // 自动加载禁飞区（如果默认勾选）
@@ -512,7 +517,7 @@ export class CesiumMapToolbar {
     if (config.titleKey && this.useI18n) {
       this.i18n.bindElement(button, config.titleKey, 'title');
     } else {
-      button.title = config.title;
+      button.title = config.title || config.titleKey || config.id;
     }
 
     const buttonSize = config.size || this.config.buttonSize;
@@ -970,12 +975,30 @@ export class CesiumMapToolbar {
   }
 
   /**
+   * 同步 view2d3d 按钮显示当前场景模式
+   */
+  private syncView2D3DButton(): void {
+    if (!this.toolbarElement) return;
+
+    const button = this.toolbarElement.querySelector('[data-tool="view2d3d"]') as HTMLElement | null;
+    if (!button) return;
+
+    const is2D = this.viewer.scene.mode === Cesium.SceneMode.SCENE2D;
+    button.textContent = is2D ? '2D' : '3D';
+    button.setAttribute('data-scene-mode', is2D ? '2d' : '3d');
+  }
+
+  /**
    * 销毁工具栏
    */
   destroy(): void {
     if (this.unsubscribeI18n) {
       this.unsubscribeI18n();
       this.unsubscribeI18n = undefined;
+    }
+    if (this.sceneModeListenerDispose) {
+      this.sceneModeListenerDispose();
+      this.sceneModeListenerDispose = null;
     }
     // 清理禁飞区服务
     this.notFlyZonesService.destroy();

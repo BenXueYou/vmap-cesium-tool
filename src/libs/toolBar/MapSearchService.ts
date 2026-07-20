@@ -2,6 +2,7 @@ import * as Cesium from 'cesium';
 import type { Viewer } from 'cesium';
 import type { SearchResult, SearchCallback } from '../CesiumMapModel';
 import type { I18nLike } from '../../i18n';
+import { coordinateService } from '../../core/mapProviders/coordinates/CoordinateService';
 
 /**
  * 搜索服务 - 存根实现
@@ -145,11 +146,17 @@ export class SearchService {
   }
 
   private flyToResult(result: SearchResult): void {
+    const point = coordinateService.toWGS84({
+      longitude: result.longitude,
+      latitude: result.latitude,
+      height: result.height ?? 2000,
+    }, (result as SearchResult & { coordSystem?: 'WGS84' | 'GCJ02' | 'BD09' }).coordSystem || 'WGS84');
+
     this.viewer.camera.flyTo({
       destination: Cesium.Cartesian3.fromDegrees(
-        result.longitude,
-        result.latitude,
-        result.height ?? 2000
+        point.longitude,
+        point.latitude,
+        point.height ?? 2000
       ),
       duration: 1.2
     });

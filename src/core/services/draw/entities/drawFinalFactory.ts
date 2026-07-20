@@ -1,7 +1,13 @@
 import * as Cesium from 'cesium';
 import type { Cartesian3, Entity, Viewer } from 'cesium';
 
-import { calculateDistance, calculatePolygonArea, generateCirclePositions, getRectangleCornerPositions } from '../geometry/drawGeometry';
+import {
+  calculateDistance,
+  calculatePolygonArea,
+  calculateRectangleArea,
+  generateCirclePositions,
+  getRectangleCornerPositions,
+} from '../geometry/drawGeometry';
 import { toCartographic } from '../geometry/drawPosition';
 import { MeasurementLabelFactory } from '../labels/measurementLabelFactory';
 import type { DrawArtifacts, ResolvedMeasurementTheme } from '../types/drawTypes';
@@ -53,11 +59,36 @@ export class DrawFinalFactory {
       return null;
     }
 
-    const primary = this.previewFactory.createPolygonFillEntity(corners, theme.fill.color, theme.stroke.clampToGround);
+    const startCarto = toCartographic(positions[0]);
+    const endCarto = toCartographic(positions[1]);
+    if (!startCarto || !endCarto) {
+      return null;
+    }
+
+    const rectangle = new Cesium.Rectangle(
+      Math.min(startCarto.longitude, endCarto.longitude),
+      Math.min(startCarto.latitude, endCarto.latitude),
+      Math.max(startCarto.longitude, endCarto.longitude),
+      Math.max(startCarto.latitude, endCarto.latitude),
+    );
+
+    const primary = this.viewer.entities.add({
+      rectangle: {
+        coordinates: rectangle,
+        material: theme.fill.color,
+        outline: true,
+        outlineColor: theme.stroke.color,
+        outlineWidth: theme.stroke.width,
+        heightReference: theme.stroke.clampToGround
+          ? Cesium.HeightReference.RELATIVE_TO_GROUND
+          : Cesium.HeightReference.NONE,
+        ...(theme.stroke.clampToGround ? { height: 0.1 } : {}),
+      },
+    });
     const auxiliary: Entity[] = [
-      this.previewFactory.createPolylineEntity(corners, theme.stroke.color, theme.stroke.width, theme.stroke.clampToGround, true),
+      ...this.labelFactory.createVertexMarkerEntities(corners, theme),
     ];
-    const areaLabel = this.labelFactory.createAreaLabelEntity(corners, calculatePolygonArea(corners), 'final', theme);
+    const areaLabel = this.labelFactory.createAreaLabelEntity(corners, calculateRectangleArea(corners), 'final', theme);
     if (areaLabel) {
       auxiliary.push(areaLabel);
     }

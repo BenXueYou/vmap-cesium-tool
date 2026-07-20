@@ -99,6 +99,7 @@ export interface ToolbarCallbacks {
   getAreaDrawOptions?: () => any;
   onDistanceComplete?: (positions: any[], distance: number) => void;
   onAreaComplete?: (positions: any[], area: number) => void;
+  onMeasurementComplete?: (result: { type: 'distance' | 'area'; positions: any[]; value: number }) => void;
   onClear?: () => void;
   
   /** 缩放回调 */
@@ -121,6 +122,7 @@ export interface SearchResult {
   longitude: number;
   latitude: number;
   height?: number;
+  coordSystem?: 'WGS84' | 'GCJ02' | 'BD09';
 }
 
 /**
@@ -137,6 +139,7 @@ export interface SearchServiceConfig {
 export interface MeasurementCompleteEvent {
   type: 'distance' | 'area';
   positions: any[];
+  geographicPositions?: any[];
   value: number;
 }
 

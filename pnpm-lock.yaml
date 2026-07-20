@@ -11,6 +11,9 @@ importers:
       cesium:
         specifier: ^1.134.1
         version: 1.134.1
+      crypto-js:
+        specifier: 4.2.0
+        version: 4.2.0
       tdt-terrain-cesium-plugin:
         specifier: ^1.0.1
         version: 1.0.1(cesium@1.134.1)(pako@2.1.0)(protobufjs@7.5.4)
@@ -21,6 +24,9 @@ importers:
       '@types/cesium':
         specifier: ^1.70.4
         version: 1.70.4
+      '@types/crypto-js':
+        specifier: 4.2.2
+        version: 4.2.2
       '@vitejs/plugin-vue':
         specifier: ^6.0.1
         version: 6.0.1(vite@7.1.9(@types/node@24.7.2))(vue@3.5.22(typescript@5.9.3))
@@ -727,6 +733,9 @@ packages:
     resolution: {integrity: sha512-dSBhF5qftTCyB8xYRpumjzeEdEiV0wjDfmLtXF+1cNYUHvn2xs2HcvxCKFCqH6hEcATPWDP0WW6aaCCqrUo9dQ==}
     deprecated: This is a stub types definition. cesium provides its own type definitions, so you do not need this installed.
 
+  '@types/crypto-js@4.2.2':
+    resolution: {integrity: sha512-sDOLlVbHhXpAUAL0YHDUUwDZf3iN4Bwi4W6a0W0b+QcAezUbRtH4FVb+9J4h+XFPW7l/gQ9F8qC7P+Ec4k8QVQ==}
+
   '@types/estree@1.0.8':
     resolution: {integrity: sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w==}
 
@@ -997,6 +1006,9 @@ packages:
 
   confbox@0.2.2:
     resolution: {integrity: sha512-1NB+BKqhtNipMsov4xI/NnhCKp9XG9NamYp5PVm9klAT0fsrNPjaFICsCFhNhwZJKNh7zB/3q8qXz0E9oaMNtQ==}
+
+  crypto-js@4.2.0:
+    resolution: {integrity: sha512-KALDyEYgpY+Rlob/iriUtjV6d5Eq+Y191A5g4UqLAi8CyGP9N1+FdVbkc1SxKc2r4YAYqG8JzO2KGL+AizD70Q==}
 
   copy-anything@4.0.5:
     resolution: {integrity: sha512-7Vv6asjS4gMOuILabD3l739tsaxFQmC+a7pLZm02zyvs8p977bL3zEgq3yDk5rn9B0PbYgIv++jmHcuUab4RhA==}
@@ -2292,6 +2304,8 @@ snapshots:
     dependencies:
       cesium: 1.134.1
 
+  '@types/crypto-js@4.2.2': {}
+
   '@types/estree@1.0.8': {}
 
   '@types/hast@3.0.4':
@@ -2586,6 +2600,8 @@ snapshots:
   confbox@0.1.8: {}
 
   confbox@0.2.2: {}
+
+  crypto-js@4.2.0: {}
 
   copy-anything@4.0.5:
     dependencies:

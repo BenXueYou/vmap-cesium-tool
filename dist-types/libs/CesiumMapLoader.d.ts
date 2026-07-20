@@ -1,0 +1,73 @@
+import * as Cesium from 'cesium';
+import type { Viewer as CesiumViewer } from 'cesium';
+import { Terrain, TerrainProvider } from 'cesium';
+import { type CesiumAutoRecoverOptions } from './CesiumAutoRecover';
+interface InitOptions {
+    orderIndependentTranslucency?: boolean;
+    fxaa?: boolean;
+    msaaSamples?: number;
+    terrain?: Terrain;
+    terrainProvider?: TerrainProvider;
+    mapType?: string;
+    tdtMapTypeId?: string;
+    imageryProvider?: Cesium.UrlTemplateImageryProvider;
+    imageryLayers?: Cesium.ImageryLayerCollection;
+    terrainShadows?: Cesium.ShadowMode;
+    contextOptions?: Cesium.ContextOptions;
+    scene3DOnly?: boolean;
+    selectionIndicator?: boolean;
+    navigationHelpButton?: boolean;
+    fullscreenButton?: boolean;
+    geocoder?: boolean;
+    homeButton?: boolean;
+    infoBox?: boolean;
+    vrButton?: boolean;
+    sceneModePicker?: boolean;
+    timeline?: boolean;
+    animation?: boolean;
+    isFly?: boolean;
+    flyDuration?: number;
+    baseLayerPicker?: boolean;
+    navigationInstructionsInitiallyVisible?: boolean;
+    clock?: Cesium.Clock;
+    sceneMode?: Cesium.SceneMode;
+    screenSpaceEventHandler?: Cesium.ScreenSpaceEventHandler;
+    useDefaultRenderLoop?: boolean;
+    targetFrameRate?: number;
+    showRenderLoopErrors?: boolean;
+    automaticallyTrackDataSourceClocks?: boolean;
+    dataSources?: Cesium.DataSourceCollection;
+    creationTime?: number;
+    useBrowserRecommendedResolution?: boolean;
+    resolutionScale?: number;
+    orderIndependentTransparency?: boolean;
+    shadows?: boolean;
+    depthTestAgainstTerrain?: boolean;
+    terrainExaggeration?: number;
+    maximumScreenSpaceError?: number;
+    maximumNumberOfLoadedTiles?: number;
+    requestRenderMode?: boolean;
+    maximumRenderTimeChange?: number;
+    token?: string;
+    cesiumToken?: string;
+    success?: () => void;
+    cancel?: () => void;
+    mapCenter?: MapCenter;
+    /** 渲染异常自动恢复（可选）：会重建 Viewer，需在回调里替换引用 */
+    autoRecover?: CesiumAutoRecoverOptions;
+}
+interface MapCenter {
+    latitude: number;
+    longitude: number;
+    height: number;
+    pitch?: number;
+    heading?: number;
+    coordSystem?: 'WGS84' | 'GCJ02' | 'BD09';
+}
+export declare const setCameraView: (viewer: CesiumViewer, center: MapCenter) => void;
+export declare const setCameraFlyTo: (viewer: CesiumViewer, center: MapCenter, options: InitOptions) => void;
+export declare function initCesium(containerId: string, options: InitOptions, mapCenterOrCesiumToken?: MapCenter | string, cesiumToken?: string): Promise<{
+    viewer: CesiumViewer;
+    initialCenter: MapCenter;
+}>;
+export {};

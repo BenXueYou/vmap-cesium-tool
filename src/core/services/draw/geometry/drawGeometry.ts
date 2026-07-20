@@ -57,6 +57,30 @@ export function calculatePolygonArea(positions: Cartesian3[]): number {
   return Math.abs(area) / 2;
 }
 
+export function calculateRectangleArea(positions: Cartesian3[]): number {
+  if (positions.length < 4) {
+    return 0;
+  }
+
+  const cartographics = positions
+    .map((position) => toCartographic(position))
+    .filter((item): item is Cesium.Cartographic => !!item);
+  if (cartographics.length < 4) {
+    return 0;
+  }
+
+  const west = Math.min(...cartographics.map((item) => item.longitude));
+  const east = Math.max(...cartographics.map((item) => item.longitude));
+  const south = Math.min(...cartographics.map((item) => item.latitude));
+  const north = Math.max(...cartographics.map((item) => item.latitude));
+  const southWest = Cesium.Cartographic.fromRadians(west, south, 0);
+  const southEast = Cesium.Cartographic.fromRadians(east, south, 0);
+  const northWest = Cesium.Cartographic.fromRadians(west, north, 0);
+  const width = calculateDistance(southWest, southEast);
+  const height = calculateDistance(southWest, northWest);
+  return width * height;
+}
+
 export function getRectangleCornerPositions(start: Cartesian3, end: Cartesian3): Cartesian3[] {
   const startCarto = toCartographic(start);
   const endCarto = toCartographic(end);
@@ -70,10 +94,10 @@ export function getRectangleCornerPositions(start: Cartesian3, end: Cartesian3):
   const north = Math.max(startCarto.latitude, endCarto.latitude);
 
   return [
-    Cesium.Cartesian3.fromRadians(west, north, 0),
-    Cesium.Cartesian3.fromRadians(east, north, 0),
-    Cesium.Cartesian3.fromRadians(east, south, 0),
     Cesium.Cartesian3.fromRadians(west, south, 0),
+    Cesium.Cartesian3.fromRadians(east, south, 0),
+    Cesium.Cartesian3.fromRadians(east, north, 0),
+    Cesium.Cartesian3.fromRadians(west, north, 0),
   ];
 }
 

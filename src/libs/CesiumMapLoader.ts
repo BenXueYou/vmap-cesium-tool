@@ -4,6 +4,8 @@ import type { Viewer as CesiumViewer } from 'cesium'
 import { TDTMapTypes } from './config/CesiumMapConfig'
 import { Ion, Viewer, createWorldTerrainAsync, Terrain, TerrainProvider } from 'cesium'
 import { enableCesiumAutoRecover, type CesiumAutoRecoverOptions } from './CesiumAutoRecover'
+import { lngLatToCartesian } from '../core/mapProviders/coordinates/cesium'
+import { hideCesiumCredit } from '../utils/hideCesiumCredit'
 interface InitOptions {
   // 其他相关配置
   orderIndependentTranslucency?: boolean // 无序半透明度,
@@ -67,6 +69,7 @@ interface MapCenter {
   height: number,
   pitch?: number
   heading?: number
+  coordSystem?: 'WGS84' | 'GCJ02' | 'BD09'
 }
 
 const defaultMapOptions: InitOptions = {
@@ -101,7 +104,11 @@ const defaultMapOptions: InitOptions = {
 
 export const setCameraView = (viewer: CesiumViewer, center: MapCenter) => {
   viewer.camera.setView({
-    destination: Cesium.Cartesian3.fromDegrees(center.longitude, center.latitude, center.height), // 中国中心坐标
+    destination: lngLatToCartesian({
+      longitude: center.longitude,
+      latitude: center.latitude,
+      height: center.height,
+    }, center.coordSystem || 'WGS84'), // 中国中心坐标
     orientation: {
       heading: Cesium.Math.toRadians(center.heading || 0), // 方向角度
       pitch: Cesium.Math.toRadians(center.pitch || 0), // 俯
@@ -112,7 +119,11 @@ export const setCameraView = (viewer: CesiumViewer, center: MapCenter) => {
 export const setCameraFlyTo = (viewer: CesiumViewer, center: MapCenter, options: InitOptions) => {
   // 设置初始视角为中国区域 (经度, 纬度, 高度)
   viewer.camera.flyTo({
-    destination: Cesium.Cartesian3.fromDegrees(center.longitude, center.latitude, center.height), // 中国中心坐标
+    destination: lngLatToCartesian({
+      longitude: center.longitude,
+      latitude: center.latitude,
+      height: center.height,
+    }, center.coordSystem || 'WGS84'), // 中国中心坐标
     orientation: {
       heading: Cesium.Math.toRadians(center.heading || 0), // 方向角度
       pitch: Cesium.Math.toRadians(center.pitch || 0), // 俯
@@ -151,7 +162,7 @@ export async function initCesium(
       ...defaultMapOptions,
       ...options
     });
-    (viewer.cesiumWidget.creditContainer as HTMLElement).style.display = 'none';
+    hideCesiumCredit(viewer);
     viewer.scene.postProcessStages.fxaa.enabled = options.fxaa ?? true;
     viewer.scene.globe.depthTestAgainstTerrain = options.depthTestAgainstTerrain ?? false; // 启用地形深度测试
     // 地形提供者
@@ -167,7 +178,8 @@ export async function initCesium(
       const tdtMapTypeId = options.tdtMapTypeId || 'img';
       const tdtMapType = TDTMapTypes.find((type: { id: string }) => type.id === tdtMapTypeId)
         || TDTMapTypes.find((type: { id: string }) => type.id === 'img');
-      tdtMapType?.provider(token).forEach((provider: Cesium.ImageryProvider) => {
+      const providers = await Promise.resolve(tdtMapType?.provider(token) || []);
+      providers.forEach((provider: Cesium.ImageryProvider) => {
         viewer.imageryLayers.addImageryProvider(provider);
       });
     }

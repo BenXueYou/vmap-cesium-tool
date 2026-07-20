@@ -1,5 +1,8 @@
 import * as Cesium from 'cesium';
+import { setCesiumCreditVisible } from '../utils/hideCesiumCredit';
 import type {
+  BaseMapConfig,
+  MapAuthConfig,
   CameraConfig,
   DrawPluginOptions,
   GaodeLayerConfig,
@@ -16,40 +19,50 @@ import type {
   ToolbarLayersMenuOptions,
   ToolbarConfig,
   ToolbarPluginOptions,
+  ProviderSearchOptions,
+  CreditsOptions,
 } from './types';
 import { 
   DEFAULT_CAMERA_CONFIG,
   DEFAULT_PROVIDER_TYPE,
 } from './constants';
-import { DEFAULT_TOOLBAR_STYLE, DEFAULT_MAP_TYPES } from './services/toolbar/config';
+import { DEFAULT_TOOLBAR_STYLE, withDefaultMapTypeThumbnails } from './services/toolbar/config';
 import { OverlayService } from './services/overlay/OverlayService';
 import { DrawService } from './services/draw/DrawService';
 import { ToolbarService } from './services/toolbar/ToolbarService';
 import type { ToolbarServiceOptions } from './services/toolbar/ToolbarService';
 import type { ToolbarCallbacks } from './services/toolbar/types';
-
-import { 
-  createTDTImageryConfig,
-  createTDT3DImageryConfig,
-  createTDT3DTerrainProvider,
-  ensureTDT3DExtensionLoaded,
-  createTDTVectorConfig,
-  createTDTTerrainConfig 
-} from './layers/TDTMapLayer';
-
-import {
-  createGaodeImageryConfig,
-  createGaodeVectorConfig
-} from './layers/GaodeMapLayer';
-
-import {  createOSMConfig } from './layers/OSMMapLayer';
+import { ensureTDT3DExtensionLoaded } from './layers/TDTMapLayer';
+import { createTDT3DTerrainProvider, createTDT3DImageryConfig, createTDTImageryConfig, createTDTTerrainConfig, createTDTVectorConfig } from './layers/TDTMapLayer';
+import { createGaodeImageryConfig, createGaodeVectorConfig } from './layers/GaodeMapLayer';
 import { createBaiduImageryConfig } from './layers/BaiduMapLayer';
+import { createOSMConfig } from './layers/OSMMapLayer';
 import { loadAllAirportNoFlyZones, geojsonCoordinatesToCartesian3 } from '../utils/geojson';
+import {
+  baseMapRegistry,
+  buildDefaultBaseMap,
+  mapTypeIdToBaseMapConfig,
+  normalizeProviderId,
+  resolveMapTypeId,
+} from './mapProviders/registry';
+import { coordinateService } from './mapProviders/coordinates/CoordinateService';
+import { normalizeMapAuth, ProviderSearchService } from './mapProviders/ProviderSearchService';
 
 interface InitialCenter {
   longitude: number;
   latitude: number;
   height: number;
+}
+
+export interface LayersServiceBridge {
+  setMapType: (mapTypeId: string) => void;
+  setPlaceNameVisible: (isChecked: boolean) => void;
+  togglePlaceNameVisibility: () => void;
+  showNoFlyZones: () => Promise<void>;
+  hideNoFlyZones: () => void;
+  toggleNoFlyZoneVisibility: () => void;
+  toggleNoFlyZones: () => Promise<void>;
+  getNoFlyZoneVisible: () => boolean;
 }
 
 class PluginMapController {
@@ -139,6 +152,10 @@ export class MapPlugin {
   private viewerOptions: Cesium.Viewer.ConstructorOptions;
   private cameraConfig: CameraConfig;
   private layersConfig: LayersConfig;
+  private baseMapConfig: BaseMapConfig;
+  private mapAuthConfig: MapAuthConfig | undefined;
+  private providerSearchConfig: ProviderSearchOptions;
+  private creditsConfig: CreditsOptions;
   private cesiumToken: string;
   
   // 工具栏和样式配置
@@ -157,6 +174,8 @@ export class MapPlugin {
   private noFlyZoneLoadPromise: Promise<Cesium.CustomDataSource> | null = null;
   private currentGeoWTFS: any = null;
   private sceneModeListenerDispose: (() => void) | null = null;
+  private offlineCleanup: (() => void) | null = null;
+  private layerRequestVersion = 0;
 
   private toolbarService: ToolbarService | null = null;
   private overlayService: OverlayService | null = null;
@@ -179,15 +198,22 @@ export class MapPlugin {
     this.viewerOptions = options.viewerOptions || {};
     this.cameraConfig = this.mergeCameraConfig(options.camera);
     this.layersConfig = this.mergeLayersConfig(options.layers);
+    this.baseMapConfig = this.resolveBaseMapConfig(options);
+    this.mapAuthConfig = normalizeMapAuth(options.mapAuth);
+    this.providerSearchConfig = options.providerSearch || {};
+    this.creditsConfig = { visible: true, ...(options.credits || {}) };
     this.cesiumToken = options.cesiumToken || '';
     this.servicesConfig = options.services || {};
     this.toolbarLayersMenuConfig = this.getToolbarLayersMenuConfig(options.services?.toolbar);
     this.noFlyZoneConfig = this.resolveNoFlyZoneConfig(options.noFlyZone);
     this.initialCenter = this.toInitialCenter(this.cameraConfig);
-    this.toolbarMapTypes = this.toolbarLayersMenuConfig.mapTypes || DEFAULT_MAP_TYPES;
-    this.currentMapTypeId = this.resolveCurrentMapTypeId(this.layersConfig);
+    this.toolbarMapTypes = withDefaultMapTypeThumbnails(
+      this.toolbarLayersMenuConfig.mapTypes
+        || baseMapRegistry.getMapTypes(this.baseMapConfig, this.mapAuthConfig),
+    );
+    this.currentMapTypeId = this.resolveCurrentMapTypeId();
     this.nonForcedPlaceNameVisible = this.toolbarLayersMenuConfig.defaultPlaceNameChecked
-      ?? this.resolvePlaceNameVisible(this.layersConfig);
+      ?? this.resolvePlaceNameVisible();
     this.placeNameVisible = this.getCurrentToolbarMapType()?.forcePlaceName
       ? true
       : this.nonForcedPlaceNameVisible;
@@ -237,10 +263,15 @@ export class MapPlugin {
   }
 
   private toInitialCenter(cameraConfig: CameraConfig): InitialCenter {
-    return {
+    const point = coordinateService.toWGS84({
       longitude: cameraConfig.center[0],
       latitude: cameraConfig.center[1],
       height: cameraConfig.center[2],
+    }, cameraConfig.coordSystem || 'WGS84');
+    return {
+      longitude: point.longitude,
+      latitude: point.latitude,
+      height: point.height ?? cameraConfig.center[2],
     };
   }
 
@@ -326,6 +357,8 @@ export class MapPlugin {
       type: providerType,
       tdt: config?.tdt,
       gaode: config?.gaode,
+      tencent: config?.tencent,
+      google: config?.google,
       baidu: config?.baidu,
       arcgis: config?.arcgis,
       osm: config?.osm,
@@ -345,34 +378,84 @@ export class MapPlugin {
     return result;
   }
 
-  private resolveCurrentMapTypeId(config: LayersConfig): string {
-    switch (config.type) {
-      case 'tdt':
-        return config.tdt?.mapTypeId || 'img';
+  private resolveBaseMapConfig(options: Partial<MapPluginOptions>): BaseMapConfig {
+    if (options.baseMap) {
+      const provider = normalizeProviderId(options.baseMap.provider);
+      return {
+        ...buildDefaultBaseMap(provider),
+        ...options.baseMap,
+        provider,
+      };
+    }
+
+    const layers = this.mergeLayersConfig(options.layers);
+    switch (layers.type) {
       case 'gaode':
-        return config.gaode?.mapTypeId || 'satellite';
+        return {
+          provider: 'gaode',
+          type: layers.gaode?.mapTypeId || 'satellite',
+          key: layers.gaode?.token,
+          sk: layers.gaode?.sk,
+          showLabel: layers.gaode?.showLabel ?? true,
+        };
+      case 'tencent':
+        return {
+          provider: 'tencent',
+          type: layers.tencent?.mapTypeId || 'satellite',
+          key: layers.tencent?.key || layers.tencent?.token,
+          showLabel: layers.tencent?.showLabel ?? true,
+        };
+      case 'google':
+        return {
+          provider: 'google',
+          type: layers.google?.mapTypeId || 'roadmap',
+          key: layers.google?.apiKey || layers.google?.key || layers.google?.token,
+          showLabel: layers.google?.showLabel ?? false,
+        };
       case 'baidu':
-        return config.baidu?.mapTypeId || 'satellite';
-      case 'osm':
-        return 'osm';
+        return {
+          provider: 'baidu',
+          type: layers.baidu?.mapTypeId || 'satellite',
+          ak: layers.baidu?.token,
+          sk: layers.baidu?.sk,
+          showLabel: layers.baidu?.showLabel ?? true,
+        };
       case 'custom':
-        return 'custom';
+        return {
+          provider: 'custom',
+          type: layers.custom?.type || 'imageryProviders',
+          mode: layers.custom?.mode || 'online',
+          providers: layers.custom?.providers,
+          customUrl: layers.custom?.customUrl,
+          urlTemplate: layers.custom?.urlTemplate,
+          rectangle: layers.custom?.rectangle,
+          minimumLevel: layers.custom?.minimumLevel,
+          maximumLevel: layers.custom?.maximumLevel,
+          credit: layers.custom?.credit,
+          cameraBounds: layers.custom?.cameraBounds,
+          wmtsLayer: layers.custom?.wmtsLayer,
+          wmtsStyle: layers.custom?.wmtsStyle,
+          wmtsFormat: layers.custom?.wmtsFormat,
+          tileMatrixSetId: layers.custom?.tileMatrixSetId,
+          showLabel: false,
+        };
       default:
-        return 'img';
+        return {
+          provider: 'tdt',
+          type: layers.tdt?.mapTypeId || 'img',
+          token: layers.tdt?.token,
+          sk: layers.tdt?.sk,
+          showLabel: layers.tdt?.showLabel ?? true,
+        };
     }
   }
 
-  private resolvePlaceNameVisible(config: LayersConfig): boolean {
-    switch (config.type) {
-      case 'tdt':
-        return config.tdt?.showLabel ?? true;
-      case 'gaode':
-        return config.gaode?.showLabel ?? true;
-      case 'baidu':
-        return config.baidu?.showLabel ?? true;
-      default:
-        return false;
-    }
+  private resolveCurrentMapTypeId(): string {
+    return resolveMapTypeId(this.baseMapConfig);
+  }
+
+  private resolvePlaceNameVisible(): boolean {
+    return this.baseMapConfig.showLabel ?? false;
   }
 
   private getToolbarMapTypes() {
@@ -384,29 +467,24 @@ export class MapPlugin {
   }
 
   private getLayerToken(): string {
-    switch (this.layersConfig.type) {
+    switch (this.baseMapConfig.provider) {
       case 'tdt':
-        return this.layersConfig.tdt?.token || '';
+        return this.baseMapConfig.token || this.mapAuthConfig?.tdt?.token || '';
       case 'gaode':
-        return this.layersConfig.gaode?.token || '';
+        return this.baseMapConfig.key || this.mapAuthConfig?.gaode?.key || '';
+      case 'tencent':
+        return this.baseMapConfig.key || this.mapAuthConfig?.tencent?.key || '';
       case 'baidu':
-        return this.layersConfig.baidu?.token || '';
+        return this.baseMapConfig.ak || this.mapAuthConfig?.baidu?.ak || '';
+      case 'google':
+        return this.baseMapConfig.key || this.mapAuthConfig?.google?.apiKey || '';
       default:
-        return '';
+        return this.baseMapConfig.token || this.baseMapConfig.key || '';
     }
   }
 
   private getLayerSk(): string {
-    switch (this.layersConfig.type) {
-      case 'tdt':
-        return this.layersConfig.tdt?.sk || '';
-      case 'gaode':
-        return this.layersConfig.gaode?.sk || '';
-      case 'baidu':
-        return this.layersConfig.baidu?.sk || '';
-      default:
-        return '';
-    }
+    return this.baseMapConfig.sk || this.mapAuthConfig?.tdt?.sk || '';
   }
 
   private resetTerrainProvider(): void {
@@ -417,12 +495,11 @@ export class MapPlugin {
     this.viewer.terrainProvider = new Cesium.EllipsoidTerrainProvider();
   }
 
-  private applyTerrainProvider(terrainProviderFactory?: (token: string, sk?: string) => Cesium.TerrainProvider | null): void {
+  private applyTerrainProvider(terrainProvider?: Cesium.TerrainProvider | null): void {
     if (!this.viewer) {
       return;
     }
 
-    const terrainProvider = terrainProviderFactory?.(this.getLayerToken(), this.getLayerSk()) || null;
     this.viewer.terrainProvider = terrainProvider ?? new Cesium.EllipsoidTerrainProvider();
   }
 
@@ -523,6 +600,79 @@ export class MapPlugin {
   private async refreshLayersAndGeoWTFS(): Promise<void> {
     await this.addLayers();
     await this.syncGeoWTFS();
+    this.syncCreditDisplay();
+  }
+
+  private syncCreditDisplay(): void {
+    if (!this.viewer) {
+      return;
+    }
+
+    setCesiumCreditVisible(this.viewer, this.creditsConfig.visible !== false);
+  }
+
+  private clearOfflineConstraints(): void {
+    this.offlineCleanup?.();
+    this.offlineCleanup = null;
+  }
+
+  private applyOfflineConstraints(): void {
+    this.clearOfflineConstraints();
+    if (!this.viewer || this.baseMapConfig.provider !== 'custom' || this.baseMapConfig.mode !== 'offline' || !this.baseMapConfig.rectangle) {
+      return;
+    }
+
+    const viewer = this.viewer;
+    const rectangle = Cesium.Rectangle.fromDegrees(
+      this.baseMapConfig.rectangle.west,
+      this.baseMapConfig.rectangle.south,
+      this.baseMapConfig.rectangle.east,
+      this.baseMapConfig.rectangle.north,
+    );
+    const cameraBounds = this.baseMapConfig.cameraBounds || {};
+    const controller = viewer.scene.screenSpaceCameraController;
+    const previousLimit = viewer.scene.globe.cartographicLimitRectangle;
+    const previousTilt = controller.enableTilt;
+    const previousMin = controller.minimumZoomDistance;
+    const previousMax = controller.maximumZoomDistance;
+
+    viewer.scene.globe.cartographicLimitRectangle = rectangle;
+    controller.enableTilt = cameraBounds.enableTilt ?? false;
+    controller.minimumZoomDistance = cameraBounds.minimumZoomDistance ?? 50;
+    controller.maximumZoomDistance = cameraBounds.maximumZoomDistance ?? 1000000;
+
+    const clampCamera = () => {
+      const position = viewer.camera.positionCartographic;
+      const longitude = Cesium.Math.clamp(position.longitude, rectangle.west, rectangle.east);
+      const latitude = Cesium.Math.clamp(position.latitude, rectangle.south, rectangle.north);
+      if (longitude !== position.longitude || latitude !== position.latitude) {
+        viewer.camera.setView({
+          destination: Cesium.Cartesian3.fromRadians(longitude, latitude, position.height),
+        });
+      }
+    };
+
+    const moveEndHandler = viewer.camera.moveEnd.addEventListener(clampCamera);
+    if (cameraBounds.initialFlyTo !== false) {
+      const centerLongitude = Cesium.Math.toDegrees((rectangle.west + rectangle.east) / 2);
+      const centerLatitude = Cesium.Math.toDegrees((rectangle.south + rectangle.north) / 2);
+      viewer.camera.flyTo({
+        destination: Cesium.Cartesian3.fromDegrees(
+          centerLongitude,
+          centerLatitude,
+          cameraBounds.initialHeight ?? this.initialCenter.height,
+        ),
+        duration: 0,
+      });
+    }
+
+    this.offlineCleanup = () => {
+      moveEndHandler();
+      viewer.scene.globe.cartographicLimitRectangle = previousLimit;
+      controller.enableTilt = previousTilt;
+      controller.minimumZoomDistance = previousMin;
+      controller.maximumZoomDistance = previousMax;
+    };
   }
 
   private updateToolbarLayerState(): void {
@@ -549,7 +699,7 @@ export class MapPlugin {
     });
   }
 
-  private createLayersServiceBridge() {
+  private createLayersServiceBridge(): LayersServiceBridge {
     return {
       setMapType: (mapTypeId: string) => {
         void this.setMapType(mapTypeId);
@@ -569,51 +719,41 @@ export class MapPlugin {
       toggleNoFlyZoneVisibility: () => {
         void this.toggleNoFlyZones();
       },
+      toggleNoFlyZones: async () => {
+        await this.toggleNoFlyZones();
+      },
+      getNoFlyZoneVisible: () => this.getNoFlyZoneVisible(),
     };
+  }
+
+  private syncOfflineToolbarState(): void {
+    if (!this.toolbarService) {
+      return;
+    }
+
+    const isOffline = this.baseMapConfig.provider === 'custom' && this.baseMapConfig.mode === 'offline';
+    if (isOffline) {
+      this.toolbarService.hideButton('search');
+      this.toolbarService.hideButton('layers');
+      return;
+    }
+
+    this.toolbarService.showButton('search');
+    this.toolbarService.showButton('layers');
   }
 
   private async setMapType(mapTypeId: string): Promise<void> {
     this.currentMapTypeId = mapTypeId;
-    const mapType = this.getCurrentToolbarMapType();
-    this.placeNameVisible = mapType?.forcePlaceName
-      ? true
-      : this.nonForcedPlaceNameVisible;
-
-    switch (this.layersConfig.type) {
-      case 'tdt':
-        this.updateLayers({
-          type: 'tdt',
-          tdt: {
-            ...(this.layersConfig.tdt || { token: '' }),
-            mapTypeId: mapTypeId as TDTLayerConfig['mapTypeId'],
-            token: this.layersConfig.tdt?.token || '',
-            showLabel: this.placeNameVisible,
-          },
-        });
-        break;
-      case 'gaode':
-        this.updateLayers({
-          type: 'gaode',
-          gaode: {
-            ...(this.layersConfig.gaode || {}),
-            mapTypeId: mapTypeId as 'vector' | 'satellite' | 'terrain',
-            showLabel: this.placeNameVisible,
-          },
-        });
-        break;
-      case 'baidu':
-        this.updateLayers({
-          type: 'baidu',
-          baidu: {
-            ...(this.layersConfig.baidu || {}),
-            mapTypeId: mapTypeId as 'normal' | 'satellite' | 'terrain',
-            showLabel: this.placeNameVisible,
-          },
-        });
-        break;
-      default:
-        break;
-    }
+    const nextBaseMap = mapTypeIdToBaseMapConfig(mapTypeId, this.baseMapConfig);
+    const mapType = this.toolbarMapTypes.find((item) => item.id === mapTypeId);
+    this.baseMapConfig = {
+      ...this.baseMapConfig,
+      ...nextBaseMap,
+      showLabel: mapType?.forcePlaceName ? true : this.nonForcedPlaceNameVisible,
+    };
+    this.placeNameVisible = this.baseMapConfig.showLabel ?? false;
+    await this.refreshLayersAndGeoWTFS();
+    this.updateToolbarLayerState();
   }
 
   private async setPlaceNameVisible(isChecked: boolean): Promise<void> {
@@ -624,52 +764,22 @@ export class MapPlugin {
       this.placeNameVisible = isChecked;
       this.nonForcedPlaceNameVisible = isChecked;
     }
-
-    switch (this.layersConfig.type) {
-      case 'tdt':
-        this.updateLayers({
-          type: 'tdt',
-          tdt: {
-            ...(this.layersConfig.tdt || { token: '' }),
-            mapTypeId: this.currentMapTypeId as TDTLayerConfig['mapTypeId'],
-            token: this.layersConfig.tdt?.token || '',
-            showLabel: this.placeNameVisible,
-          },
-        });
-        break;
-      case 'gaode':
-        this.updateLayers({
-          type: 'gaode',
-          gaode: {
-            ...(this.layersConfig.gaode || {}),
-            mapTypeId: (this.layersConfig.gaode?.mapTypeId || 'satellite') as 'vector' | 'satellite' | 'terrain',
-            showLabel: this.placeNameVisible,
-          },
-        });
-        break;
-      case 'baidu':
-        this.updateLayers({
-          type: 'baidu',
-          baidu: {
-            ...(this.layersConfig.baidu || {}),
-            mapTypeId: (this.layersConfig.baidu?.mapTypeId || 'satellite') as 'normal' | 'satellite' | 'terrain',
-            showLabel: this.placeNameVisible,
-          },
-        });
-        break;
-      default:
-        break;
-    }
+    this.baseMapConfig = {
+      ...this.baseMapConfig,
+      showLabel: this.placeNameVisible,
+    };
+    await this.refreshLayersAndGeoWTFS();
+    this.updateToolbarLayerState();
   }
 
-  private async showNoFlyZones(): Promise<void> {
+  public async showNoFlyZones(): Promise<void> {
     this.noFlyZoneVisible = true;
     const dataSource = await this.ensureNoFlyZoneDataSource();
     dataSource.show = true;
     this.updateToolbarLayerState();
   }
 
-  private hideNoFlyZones(): void {
+  public hideNoFlyZones(): void {
     this.noFlyZoneVisible = false;
     if (this.noFlyZoneDataSource) {
       this.noFlyZoneDataSource.show = false;
@@ -677,13 +787,21 @@ export class MapPlugin {
     this.updateToolbarLayerState();
   }
 
-  private async toggleNoFlyZones(): Promise<void> {
+  public async toggleNoFlyZones(): Promise<void> {
     if (this.noFlyZoneVisible) {
       this.hideNoFlyZones();
       return;
     }
 
     await this.showNoFlyZones();
+  }
+
+  public getNoFlyZoneVisible(): boolean {
+    return this.noFlyZoneVisible;
+  }
+
+  public getLayersServiceBridge(): LayersServiceBridge {
+    return this.createLayersServiceBridge();
   }
 
   /**
@@ -728,12 +846,10 @@ export class MapPlugin {
         void this.syncGeoWTFS();
       });
 
-      // 隐藏版权信息
-      (this.viewer.cesiumWidget.creditContainer as HTMLElement).style.display = 'none';
-
       // 添加地图图层
       await this.addLayers();
       await this.syncGeoWTFS();
+      this.syncCreditDisplay();
 
       // 设置相机视图
       this.setCameraView();
@@ -759,33 +875,45 @@ export class MapPlugin {
    */
   private async addLayers(): Promise<void> {
     if (!this.viewer) return;
+    const requestVersion = ++this.layerRequestVersion;
+    const mapType = baseMapRegistry.getMapTypeById(
+      this.currentMapTypeId,
+      this.baseMapConfig,
+      this.mapAuthConfig,
+      this.viewer,
+    ) || baseMapRegistry.getMapTypes(this.baseMapConfig, this.mapAuthConfig, this.viewer)[0];
 
-    const { type, tdt, gaode, baidu, osm, custom } = this.layersConfig;
-
-    // 清除默认图层
-    this.viewer.imageryLayers.removeAll();
-    this.resetTerrainProvider();
-
-    switch (type) {
-      case 'tdt':
-        await this.addTDTLayers(tdt);
-        break;
-      case 'gaode':
-        this.addGaodeLayers(gaode);
-        break;
-      case 'baidu':
-        this.addBaiduLayers(baidu);
-        break;
-      case 'osm':
-        this.addOSMLayers(osm);
-        break;
-      case 'custom':
-        this.addCustomLayers(custom);
-        break;
-      default:
-        // 默认添加天地图影像图层
-        await this.addTDTLayers(tdt);
+    if (!mapType) {
+      throw new Error(`未找到可用地图类型: ${this.currentMapTypeId}`);
     }
+
+    if (mapType.id === 'tdt3d') {
+      await ensureTDT3DExtensionLoaded();
+    }
+
+    const context = {
+      viewer: this.viewer,
+      baseMap: this.baseMapConfig,
+      auth: this.mapAuthConfig,
+    };
+    const providers = await Promise.resolve(mapType.provider(context));
+    const terrainProvider = mapType.terrainProvider
+      ? await Promise.resolve(mapType.terrainProvider(context))
+      : null;
+
+    if (requestVersion !== this.layerRequestVersion || !this.viewer) {
+      return;
+    }
+
+    this.viewer.imageryLayers.removeAll();
+    providers
+      .slice(0, this.placeNameVisible ? providers.length : 1)
+      .forEach((provider) => {
+        this.viewer!.imageryLayers.addImageryProvider(provider);
+      });
+    this.applyTerrainProvider(terrainProvider);
+    this.applyOfflineConstraints();
+    this.syncCreditDisplay();
   }
 
   /**
@@ -823,7 +951,19 @@ export class MapPlugin {
       await ensureTDT3DExtensionLoaded();
     }
 
-    this.applyTerrainProvider(mapTypeId === 'tdt3d' ? createTDT3DTerrainProvider : mapType?.terrainProvider);
+    const terrainProvider = mapTypeId === 'tdt3d'
+      ? createTDT3DTerrainProvider(token, sk)
+      : await Promise.resolve(
+        mapType?.terrainProvider
+          ? mapType.terrainProvider({
+            viewer: this.viewer,
+            baseMap: this.baseMapConfig,
+            auth: this.mapAuthConfig,
+          })
+          : null,
+      );
+
+    this.applyTerrainProvider(terrainProvider);
 
     if (mapTypeId === 'tdt3d' && this.viewer.scene.mode !== Cesium.SceneMode.SCENE3D) {
       this.viewer.scene.morphTo3D(0);
@@ -919,9 +1059,14 @@ export class MapPlugin {
 
     const { center, pitch, heading, roll } = this.cameraConfig;
     const [longitude, latitude, height] = center;
+    const point = coordinateService.toWGS84({
+      longitude,
+      latitude,
+      height,
+    }, this.cameraConfig.coordSystem || 'WGS84');
 
     this.viewer.camera.setView({
-      destination: Cesium.Cartesian3.fromDegrees(longitude, latitude, height),
+      destination: Cesium.Cartesian3.fromDegrees(point.longitude, point.latitude, point.height ?? height),
       orientation: {
         heading: Cesium.Math.toRadians(heading || 0),
         pitch: Cesium.Math.toRadians(pitch || -45),
@@ -944,6 +1089,10 @@ export class MapPlugin {
       viewerOptions: { ...this.viewerOptions },
       camera: { ...this.cameraConfig },
       layers: { ...this.layersConfig },
+      baseMap: { ...this.baseMapConfig },
+      mapAuth: this.mapAuthConfig ? { ...this.mapAuthConfig } : undefined,
+      providerSearch: { ...this.providerSearchConfig },
+      credits: { ...this.creditsConfig },
       cesiumToken: this.cesiumToken,
       noFlyZone: { ...this.noFlyZoneConfig },
       services: { ...this.servicesConfig },
@@ -967,10 +1116,14 @@ export class MapPlugin {
    */
   updateLayers(config: Partial<LayersConfig>): void {
     this.layersConfig = this.mergeLayersConfig(config);
-    this.currentMapTypeId = this.resolveCurrentMapTypeId(this.layersConfig);
+    this.baseMapConfig = this.resolveBaseMapConfig({
+      layers: this.layersConfig,
+      mapAuth: this.mapAuthConfig,
+    });
+    this.currentMapTypeId = this.resolveCurrentMapTypeId();
     const mapType = this.getCurrentToolbarMapType();
     const isForcedMapType = !!mapType?.forcePlaceName;
-    const resolvedPlaceNameVisible = this.resolvePlaceNameVisible(this.layersConfig);
+    const resolvedPlaceNameVisible = this.resolvePlaceNameVisible();
 
     if (!isForcedMapType) {
       this.nonForcedPlaceNameVisible = resolvedPlaceNameVisible;
@@ -984,6 +1137,54 @@ export class MapPlugin {
     }
 
     this.updateToolbarLayerState();
+    this.syncOfflineToolbarState();
+  }
+
+  updateBaseMap(baseMap: Partial<BaseMapConfig>): void {
+    this.baseMapConfig = {
+      ...this.baseMapConfig,
+      ...baseMap,
+      provider: normalizeProviderId(baseMap.provider || this.baseMapConfig.provider),
+    };
+    this.currentMapTypeId = this.resolveCurrentMapTypeId();
+    this.placeNameVisible = this.resolvePlaceNameVisible();
+    if (this.isInitialized) {
+      void this.refreshLayersAndGeoWTFS();
+    }
+    this.updateToolbarLayerState();
+    this.syncOfflineToolbarState();
+  }
+
+  updateMapAuth(mapAuth: MapAuthConfig): void {
+    const normalized = normalizeMapAuth(mapAuth) || {};
+    const nextAuth = { ...(this.mapAuthConfig || {}) };
+    (['tdt', 'gaode', 'tencent', 'baidu', 'google'] as const).forEach((provider) => {
+      if (normalized[provider] !== undefined) {
+        (nextAuth as any)[provider] = normalized[provider];
+      }
+    });
+    this.mapAuthConfig = nextAuth;
+
+    const currentProvider = this.baseMapConfig.provider;
+    const affectsCurrentProvider = currentProvider !== 'custom'
+      && normalized[currentProvider] !== undefined;
+    if (this.isInitialized && affectsCurrentProvider) {
+      void this.refreshLayersAndGeoWTFS();
+    }
+    this.updateToolbarLayerState();
+  }
+
+  /** 替换全部厂商鉴权，适合单一当前服务商配置。 */
+  setMapAuth(mapAuth: MapAuthConfig): void {
+    this.mapAuthConfig = normalizeMapAuth(mapAuth);
+    if (this.isInitialized) void this.refreshLayersAndGeoWTFS();
+    this.updateToolbarLayerState();
+  }
+
+  /** 运行时更新 Cesium credit/版权区域显示状态。 */
+  updateCredits(credits: CreditsOptions): void {
+    this.creditsConfig = { ...this.creditsConfig, ...credits };
+    this.syncCreditDisplay();
   }
 
   /**
@@ -995,6 +1196,11 @@ export class MapPlugin {
     }
 
     const viewer = this.ensureViewer();
+    const callbacks: ToolbarCallbacks = { ...(options.callbacks || {}) };
+    if (!callbacks.onSearch && this.providerSearchConfig.enabled) {
+      const providerSearchService = new ProviderSearchService(this.providerSearchConfig);
+      callbacks.onSearch = (query: string) => providerSearchService.search(query, this.baseMapConfig, this.mapAuthConfig);
+    }
     const toolbarOptions: ToolbarServiceOptions = {
       toolbarStyle: {
         ...DEFAULT_TOOLBAR_STYLE,
@@ -1031,20 +1237,21 @@ export class MapPlugin {
         noFlyZone: {
           isChecked: this.noFlyZoneVisible,
         },
-        callbacks: options.callbacks,
+        callbacks,
       },
       toolbarOptions,
     );
 
     this.getToolbarController().setCallbacks({
-      onZoomIn: options.callbacks?.onZoomIn,
-      onZoomOut: options.callbacks?.onZoomOut,
-      onFullscreenChange: options.callbacks?.onFullscreenChange,
-      onResetLocation: options.callbacks?.onResetLocation,
+      onZoomIn: callbacks.onZoomIn,
+      onZoomOut: callbacks.onZoomOut,
+      onFullscreenChange: callbacks.onFullscreenChange,
+      onResetLocation: callbacks.onResetLocation,
     });
     this.toolbarService.initialize();
     this.toolbarService.setMapController(this.getToolbarController());
     this.toolbarService.setLayersService(this.createLayersServiceBridge());
+    this.syncOfflineToolbarState();
     return this.toolbarService;
   }
 
@@ -1115,6 +1322,7 @@ export class MapPlugin {
     this.drawService = null;
 
     this.destroyGeoWTFS();
+    this.clearOfflineConstraints();
 
     if (this.sceneModeListenerDispose) {
       this.sceneModeListenerDispose();

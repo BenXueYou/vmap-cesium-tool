@@ -62,6 +62,11 @@ export class Label extends BaseOverlay {
   constructor(viewer: Viewer, options: LabelOptions) {
     super(viewer, options);
     this.labelOptions = options;
+
+    const position = this.toCartesian3(options.position);
+    if (position) {
+      this.entity.position = new Cesium.ConstantPositionProperty(position);
+    }
     
     // 设置标签属性
     this.entity.label = this.createLabelGraphics(options);

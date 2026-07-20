@@ -488,7 +488,7 @@ const addRingTest = () => {
 const addHeatMap = () => {
   if (!viewer.value) return;
 
-  // 数据格式参考 src/z.const.ts 中的 defaultHeatmapData：
+  // 数据格式参考 playground/z.const.ts 中的 defaultHeatmapData：
   // 既支持嵌套帧 [[{..},{..}], [...]]，也兼容扁平数组 [{..},{..}]。
   const rawItems: any = defaultHeatmapData as any;
 

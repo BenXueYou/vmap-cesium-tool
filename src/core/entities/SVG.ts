@@ -55,6 +55,11 @@ export class SVG extends BaseOverlay {
   constructor(viewer: Viewer, options: SvgOptions) {
     super(viewer, options);
     this.svgOptions = options;
+
+    const position = this.toCartesian3(options.position);
+    if (position) {
+      this.entity.position = new Cesium.ConstantPositionProperty(position);
+    }
     
     // 设置图标属性
     this.entity.billboard = this.createBillboardGraphics(options);

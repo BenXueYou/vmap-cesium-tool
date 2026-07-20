@@ -2,6 +2,15 @@ import * as Cesium from 'cesium';
 import type { Cartesian3, Cartographic, Color, MaterialProperty, Rectangle, Entity } from 'cesium';
 import type { I18nLike } from '../i18n';
 import type { ToolbarCallbacks } from './services/toolbar/types';
+import type {
+  BaseMapConfig,
+  BaseMapProviderId,
+  MapAuthConfig,
+  MapProviderContext,
+  OfflineCameraBoundsConfig,
+  BaseMapRectangle,
+} from './mapProviders/types';
+import type { CoordSystem, LngLat } from './mapProviders/coordinates/types';
 
 /**
  * 核心类型定义 - 整合所有地图插件相关的类型
@@ -31,6 +40,14 @@ export interface ToolbarConfig {
   buttons?: CustomButtonConfig[];
   useI18n?: boolean;
   i18n?: I18nLike;
+  /** @deprecated 兼容旧版 toolbar 认证字段 */
+  token?: string;
+  /** @deprecated 兼容旧版 toolbar 认证字段 */
+  sk?: string;
+  /** @deprecated 兼容旧版 toolbar 认证字段 */
+  TD_Token?: string;
+  /** @deprecated 兼容旧版 toolbar 认证字段 */
+  TD_SK?: string;
 }
 
 /**
@@ -50,7 +67,7 @@ export interface ButtonConfig {
   hoverColor?: string;
   activeColor?: string;
   backgroundColor?: string;
-  callback?: () => void;
+  callback?: (...args: any[]) => void;
   activeIcon?: string | HTMLElement;
 }
 
@@ -60,7 +77,7 @@ export interface ButtonConfig {
 export interface CustomButtonConfig {
   id: string;
   icon: string | HTMLElement | false;
-  title: string;
+  title?: string;
   titleKey?: string;
   enabled?: boolean;
   visible?: boolean;
@@ -75,7 +92,7 @@ export interface CustomButtonConfig {
   backgroundColor?: string;
   sort?: number; // 排序号
   activeIcon?: string | HTMLElement | false;
-  callback?: () => void;
+  callback?: (...args: any[]) => void;
   onClick?: (buttonId: string, buttonElement: HTMLElement) => void;
 }
 
@@ -108,6 +125,7 @@ export interface SearchResult {
   longitude: number;
   latitude: number;
   height?: number;
+  coordSystem?: CoordSystem;
 }
 
 // ==================== 测量相关类型 ====================
@@ -117,8 +135,8 @@ export interface SearchResult {
  */
 export interface MeasurementCallback {
   onMeasurementStart?: (positions?: Cartesian3[]) => void;
-  onDistanceComplete?: (positions: Cartesian3[], distance: number) => void;
-  onAreaComplete?: (positions: Cartesian3[], area: number) => void;
+  onDistanceComplete?: (positions: Array<Cartesian3 | LngLat>, distance: number) => void;
+  onAreaComplete?: (positions: Array<Cartesian3 | LngLat>, area: number) => void;
   onClear?: () => void;
 }
 
@@ -137,6 +155,7 @@ export interface ZoomCallback {
  */
 export interface MapType {
   id: string;
+  providerId?: BaseMapProviderId;
   name: string;
   nameKey?: string;
   /** 运行时依赖脚本列表，初始化时可按需加载 */
@@ -148,9 +167,15 @@ export interface MapType {
   /** 是否强制始终显示路网层（不受 placeName 开关影响） */
   forcePlaceName?: boolean;
   thumbnail: string;
-  provider: (token: string) => Cesium.ImageryProvider[];
+  provider: (
+    context: MapProviderContext | string,
+    legacySk?: string,
+  ) => Cesium.ImageryProvider[] | Promise<Cesium.ImageryProvider[]>;
   // 三维地图专用：地形提供者
-  terrainProvider?: (token: string, sk?: string) => Cesium.TerrainProvider | null;
+  terrainProvider?: (
+    context: MapProviderContext | string,
+    legacySk?: string,
+  ) => Cesium.TerrainProvider | null | Promise<Cesium.TerrainProvider | null>;
   // 三维地图专用：路网服务配置
   geoWTFS?: (token: string, viewer: Cesium.Viewer, sk?: string) => any | null;
 }
@@ -216,7 +241,7 @@ export interface NoFlyZonePluginOptions {
 /**
  * 地图提供商类型
  */
-export type ProviderType = 'tdt' | 'gaode' | 'baidu' | 'arcgis' | 'osm' | 'custom';
+export type ProviderType = BaseMapProviderId | 'arcgis' | 'osm';
 
 export type TDTMapTypeId = 'vec' | 'img' | 'ter' | 'tdt3d';
 
@@ -234,6 +259,8 @@ export interface CameraConfig {
   heading?: number;
   /** 翻滚角（度），默认 0 */
   roll?: number;
+  /** 输入中心点坐标系，默认 WGS84 */
+  coordSystem?: CoordSystem;
 }
 
 /**
@@ -301,6 +328,42 @@ export interface OSMLayerConfig {
 export interface CustomLayerConfig {
   /** 自定义影像图层提供者数组 */
   providers: Cesium.ImageryProvider[];
+  type?: 'xyz' | 'wmts' | 'imageryProviders';
+  mode?: 'online' | 'offline';
+  customUrl?: string;
+  urlTemplate?: string;
+  rectangle?: BaseMapRectangle;
+  minimumLevel?: number;
+  maximumLevel?: number;
+  credit?: string;
+  cameraBounds?: OfflineCameraBoundsConfig;
+  wmtsLayer?: string;
+  wmtsStyle?: string;
+  wmtsFormat?: string;
+  tileMatrixSetId?: string;
+}
+
+/**
+ * 腾讯地图图层配置（兼容旧版 layers 配置入口）
+ */
+export interface TencentLayerConfig {
+  /** 腾讯地图 Key */
+  key?: string;
+  /** @deprecated 兼容旧版以 token 传入腾讯 Key */
+  token?: string;
+  /** 地图类型 */
+  mapTypeId?: 'vector' | 'satellite';
+  /** 是否显示注记 */
+  showLabel?: boolean;
+}
+
+/** Google 地图图层配置（兼容旧版 layers 配置入口） */
+export interface GoogleLayerConfig {
+  apiKey?: string;
+  key?: string;
+  token?: string;
+  mapTypeId?: 'roadmap' | 'satellite';
+  showLabel?: boolean;
 }
 
 /**
@@ -313,6 +376,10 @@ export interface LayersConfig {
   tdt?: TDTLayerConfig;
   /** 高德地图配置 */
   gaode?: GaodeLayerConfig;
+  /** 腾讯地图配置 */
+  tencent?: TencentLayerConfig;
+  /** 谷歌地图配置 */
+  google?: GoogleLayerConfig;
   /** 百度地图配置 */
   baidu?: BaiduLayerConfig;
   /** ArcGIS 配置 */
@@ -333,6 +400,14 @@ export interface MapPluginOptions {
   camera?: CameraConfig;
   /** 图层配置 */
   layers?: LayersConfig;
+  /** 新版底图配置 */
+  baseMap?: BaseMapConfig;
+  /** 多厂商鉴权配置 */
+  mapAuth?: MapAuthConfig;
+  /** 内置多厂商搜索；默认关闭，自定义 onSearch 优先 */
+  providerSearch?: ProviderSearchOptions;
+  /** Cesium credit/版权区域；默认显示 */
+  credits?: CreditsOptions;
   /** Cesium Ion Token */
   cesiumToken?: string;
   /** 禁飞区初始化配置 */
@@ -499,6 +574,25 @@ export interface OverlayOptions {
   };
 }
 
+export interface CreditsOptions {
+  visible?: boolean;
+}
+
+export interface ProviderSearchOptions {
+  enabled?: boolean;
+  defaultRegion?: string;
+  endpoints?: Partial<Record<BaseMapProviderId, string>>;
+  request?: (provider: BaseMapProviderId, url: string, init?: RequestInit) => Promise<Response>;
+}
+
+export interface CoordinateAwareInput {
+  coordSystem?: CoordSystem;
+}
+
+export interface CoordinateAwareOutput {
+  outputCoordSystem?: CoordSystem;
+}
+
 // ==================== 覆盖物相关类型 ====================
 
 /**
@@ -662,5 +756,13 @@ export interface ComponentStyleConfig {
 // ==================== 导出所有类型 ====================
 
 export type {
-  Cesium
+  Cesium,
+  BaseMapConfig,
+  BaseMapProviderId,
+  MapAuthConfig,
+  MapProviderContext,
+  OfflineCameraBoundsConfig,
+  BaseMapRectangle,
+  CoordSystem,
+  LngLat,
 };

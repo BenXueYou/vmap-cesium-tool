@@ -22,7 +22,7 @@ export class Toolbar extends BaseComponent {
     const direction = mergedConfig.direction ?? 'column';
     
     super('div', {
-      className: 'vmap-toolbar',
+      className: 'vmap-toolbar cesium-map-toolbar',
       style: {
         position: 'absolute',
         background: mergedConfig.backgroundColor,

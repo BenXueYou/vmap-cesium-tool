@@ -25,5 +25,8 @@
     "playground/**/*.tsx",
     "playground/**/*.vue",
     "examples/vue3-usage/src/common copy.ts"
+  ],
+  "exclude": [
+    "playground/App copy.vue"
   ]
 }

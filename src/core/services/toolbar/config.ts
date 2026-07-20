@@ -5,7 +5,6 @@ import locationIcon from './assets/toolbar/location@3x.png';
 import zoomInIcon from './assets/toolbar/zoom-in@3x.png';
 import zoomOutIcon from './assets/toolbar/zoom-out@3x.png';
 import fullscreenIcon from './assets/toolbar/fullscreen@3x.png';
-import view2DIcon from './assets/toolbar/view_2d@3x.png';
 import areaIcon from './assets/measure/area.svg';
 import distanceIcon from './assets/measure/distance.svg';
 import clearIcon from './assets/measure/clear.svg';
@@ -14,17 +13,9 @@ import imgThumbnail from './assets/layers/img_c.png';
 import terThumbnail from './assets/layers/ter_c.png';
 import threeDThumbnail from './assets/layers/ele_c.jpg';
 
-import {
-  createTDT3DGeoWTFS,
-  createTDT3DImageryConfig,
-  createTDT3DTerrainProvider,
-  createTDTImageryConfig,
-  createTDTTerrainConfig,
-  createTDTVectorConfig,
-} from '../../layers/TDTMapLayer';
-
 import type { CustomButtonConfig, MapType, ToolbarConfig } from '../../types';
 import type { DefaultButtonConfig, MeasureMenuItem } from './types';
+import { baseMapRegistry, buildDefaultBaseMap } from '../../mapProviders/registry';
 
 export const DEFAULT_BUTTON_SORTS: Record<string, number> = {
   search: 0,
@@ -65,7 +56,7 @@ export const DEFAULT_BUTTON_CONFIGS: CustomButtonConfig[] = [
   {
     size: 40,
     id: 'view2d3d',
-    icon: view2DIcon,
+    icon: '3D',
     title: '2D 或 3D',
     titleKey: 'toolbar.view2d3d',
     color: '#007BFF',
@@ -162,38 +153,27 @@ export const DEFAULT_TOOLBAR_STYLE: ToolbarConfig = {
   offsetLeft: 10,
 };
 
-export const DEFAULT_MAP_TYPES: MapType[] = [
-  {
-    id: 'vec',
-    name: '矢量地图',
-    nameKey: 'map.types.vec',
-    thumbnail: vecThumbnail,
-    provider: createTDTVectorConfig,
-    forcePlaceName: true,
-  },
-  {
-    id: 'img',
-    name: '影像地图',
-    nameKey: 'map.types.img',
-    thumbnail: imgThumbnail,
-    provider: createTDTImageryConfig,
-  },
-  {
-    id: 'ter',
-    name: '地形地图',
-    nameKey: 'map.types.ter',
-    thumbnail: terThumbnail,
-    provider: createTDTTerrainConfig,
-    terrainProvider: () => null,
-  },
-  {
-    id: 'tdt3d',
-    name: '三维地图',
-    nameKey: 'map.types.tdt3d',
-    thumbnail: threeDThumbnail,
-    provider: createTDT3DImageryConfig,
-    terrainProvider: createTDT3DTerrainProvider,
-    geoWTFS: createTDT3DGeoWTFS,
-    forcePlaceName: false,
-  },
-];
+function resolveDefaultThumbnail(mapType: MapType): string {
+  if (mapType.id.includes('3d')) {
+    return threeDThumbnail;
+  }
+  if (mapType.id.includes('vec') || mapType.id.includes('vector') || mapType.id.includes('roadmap') || mapType.id.includes('normal')) {
+    return vecThumbnail;
+  }
+  if (mapType.id.includes('ter')) {
+    return terThumbnail;
+  }
+  return imgThumbnail;
+}
+
+export function withDefaultMapTypeThumbnails(mapTypes: MapType[]): MapType[] {
+  return mapTypes.map((mapType) => ({
+    ...mapType,
+    thumbnail: mapType.thumbnail || resolveDefaultThumbnail(mapType),
+  }));
+}
+
+// 默认仅展示天地图基础图层；业务方可通过配置显式覆盖为其他厂商。
+export const DEFAULT_MAP_TYPES: MapType[] = withDefaultMapTypeThumbnails(
+  baseMapRegistry.getMapTypes(buildDefaultBaseMap('tdt')),
+);

@@ -6,11 +6,51 @@ import {
   MapPlugin,
   ToolbarService,
   type DrawOptions,
+  type MapPluginOptions,
   type SearchResult,
+  type ToolbarCallbacks,
 } from '../src/index';
 import { i18n } from '../src/i18n';
-import { toolbarLayersMenu, toolbarSearchMenu, toolbarButtonConfigs } from '../src/z.const';
+import { toolbarLayersMenu, toolbarSearchMenu, toolbarButtonConfigs } from './z.const';
 import { chinaMapExtent, getTdMapSearchUrl } from './useMap';
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (Object.prototype.toString.call(value) !== '[object Object]') {
+    return false;
+  }
+
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function mergeOptions<T>(base: T, overrides?: Partial<T>): T {
+  if (!overrides) {
+    return base;
+  }
+
+  const result: any = Array.isArray(base) ? [...(base as unknown[])] : { ...(base as Record<string, unknown>) };
+
+  Object.entries(overrides as Record<string, unknown>).forEach(([key, overrideValue]) => {
+    if (overrideValue === undefined) {
+      return;
+    }
+
+    const baseValue = result[key];
+    if (Array.isArray(overrideValue)) {
+      result[key] = [...overrideValue];
+      return;
+    }
+
+    if (isPlainObject(baseValue) && isPlainObject(overrideValue)) {
+      result[key] = mergeOptions(baseValue, overrideValue);
+      return;
+    }
+
+    result[key] = overrideValue;
+  });
+
+  return result as T;
+}
 
 const distanceDrawOptions: DrawOptions = {
   measurementTheme: {
@@ -97,119 +137,133 @@ function mapSearchResults(query: string, pois: any[]): SearchResult[] {
   });
 }
 
+function createDefaultToolbarCallbacks(viewerRef: { value: Cesium.Viewer | null }): ToolbarCallbacks {
+  return {
+    onSearch: async (query: string): Promise<SearchResult[]> => {
+      try {
+        const url = getTdMapSearchUrl(query, chinaMapExtent);
+        const response = await fetch(url, {
+          method: 'GET',
+          mode: 'cors',
+          credentials: 'omit',
+          headers: {
+            Accept: 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        const pois = data?.data?.pois || data?.pois || [];
+        console.log('搜索结果:', pois);
+        return mapSearchResults(query, pois);
+      } catch (error) {
+        console.error('搜索失败:', error);
+        return [];
+      }
+    },
+    onSelect: (result: SearchResult) => {
+      viewerRef.value?.camera.flyTo({
+        destination: Cesium.Cartesian3.fromDegrees(result.longitude, result.latitude, result.height || 1000),
+        duration: 1.2,
+      });
+    },
+    onMeasurementStart: () => {
+      console.log('开始测量');
+    },
+    onMeasurementComplete: (result: unknown) => {
+      console.log('测量结果:', result);
+    },
+    getDistanceDrawOptions: () => distanceDrawOptions,
+    getAreaDrawOptions: () => areaDrawOptions,
+    onClear: () => {
+      console.log('清除测量数据');
+    },
+  };
+}
+
+function createDefaultOptions(
+  viewerRef: { value: Cesium.Viewer | null },
+  toolbarCallbacks?: ToolbarCallbacks,
+): Partial<MapPluginOptions> {
+  const cesiumTokenValue = getViteCesiumToken();
+  const tdTokenValue = getViteTdToken();
+
+  return {
+    cesiumToken: cesiumTokenValue,
+    viewerOptions: {
+      animation: false,
+      timeline: false,
+      navigationHelpButton: false,
+    },
+    camera: {
+      center: [116.3974, 39.9093, 1000] as [number, number, number],
+      pitch: -45,
+      heading: 0,
+      roll: 0,
+    },
+    layers: {
+      type: 'tdt',
+      tdt: {
+        mapTypeId: 'img',
+        token: tdTokenValue,
+        showLabel: true,
+      },
+    },
+    noFlyZone: {
+      autoLoad: true,
+      visible: true,
+      extrudedHeight: 10,
+    },
+    services: {
+      overlay: true,
+      draw: {
+        enabled: true,
+        i18n,
+        useI18n: true,
+      },
+      toolbar: {
+        enabled: true,
+        config: {
+          position: 'bottom-right',
+          buttonSize: 36,
+          buttonSpacing: 8,
+          backgroundColor: 'transparent',
+          borderColor: 'transparent',
+          zIndex: 1100,
+          useI18n: true,
+          i18n,
+        },
+        searchMenu: toolbarSearchMenu,
+        layersMenu: toolbarLayersMenu,
+        buttonConfigs: toolbarButtonConfigs,
+        callbacks: toolbarCallbacks ?? createDefaultToolbarCallbacks(viewerRef),
+      },
+    },
+  };
+}
+
 export function useMapInit(containerId = 'cesiumContainer') {
   const mapPlugin = shallowRef<MapPlugin | null>(null);
   const toolbarService = shallowRef<ToolbarService | null>(null);
   const viewer = shallowRef<Cesium.Viewer | null>(null);
+  const lastOverrides = shallowRef<Partial<MapPluginOptions>>({});
 
-  const initMap = async (): Promise<Cesium.Viewer | null> => {
+  const initMap = async (overrides: Partial<MapPluginOptions> = {}): Promise<Cesium.Viewer | null> => {
     if (viewer.value) {
       return viewer.value;
     }
 
     try {
-      const cesiumTokenValue = getViteCesiumToken();
-      const tdTokenValue = getViteTdToken();
+      lastOverrides.value = overrides;
+      const defaultCallbacks =
+        typeof overrides.services?.toolbar === 'object' ? overrides.services.toolbar.callbacks : undefined;
+      const baseOptions = createDefaultOptions(viewer, defaultCallbacks);
+      const pluginOptions = mergeOptions(baseOptions, overrides);
 
-      mapPlugin.value = createMapPlugin(containerId, {
-        cesiumToken: cesiumTokenValue,
-        viewerOptions: {
-          animation: false,
-          timeline: false,
-          navigationHelpButton: false,
-        },
-        camera: {
-          center: [116.3974, 39.9093, 1000] as [number, number, number],
-          pitch: -45,
-          heading: 0,
-          roll: 0,
-        },
-        layers: {
-          type: 'tdt',
-          tdt: {
-            mapTypeId: 'img',
-            // token: '49029bae45b2cb33eac3f656ef968cb3',
-            // sk: '0f82c6e6e2b543ce401c193e0ed0d3b2', // 带加密
-            token: '29436d01dac7b0ce1193efae89f0e440', // 不带加密
-            showLabel: true,
-          },
-        },
-        noFlyZone: {
-          autoLoad: true,
-          visible: true,
-          extrudedHeight: 10,
-        },
-        services: {
-          overlay: true,
-          draw: {
-            enabled: true,
-            i18n,
-            useI18n: true,
-          },
-          toolbar: {
-            enabled: true,
-            config: {
-              position: 'bottom-right',
-              buttonSize: 36,
-              buttonSpacing: 8,
-              backgroundColor: 'transparent',
-              borderColor: 'transparent',
-              zIndex: 1100,
-              useI18n: true,
-              i18n,
-            },
-            searchMenu: toolbarSearchMenu,
-            layersMenu: toolbarLayersMenu,
-            buttonConfigs: toolbarButtonConfigs,
-            callbacks: {
-              onSearch: async (query: string): Promise<SearchResult[]> => {
-                try {
-                  const url = getTdMapSearchUrl(query, chinaMapExtent);
-                  const response = await fetch(url, {
-                    method: 'GET',
-                    mode: 'cors',
-                    credentials: 'omit',
-                    headers: {
-                      Accept: 'application/json',
-                    },
-                  });
-
-                  if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                  }
-
-                  const data = await response.json();
-                  const pois = data?.data?.pois || data?.pois || [];
-                  console.log('搜索结果:', pois);
-
-                  return mapSearchResults(query, pois);
-                } catch (error) {
-                  console.error('搜索失败:', error);
-                  return [];
-                }
-              },
-              onSelect: (result: SearchResult) => {
-                viewer.value?.camera.flyTo({
-                  destination: Cesium.Cartesian3.fromDegrees(result.longitude, result.latitude, result.height || 1000),
-                  duration: 1.2,
-                });
-              },
-              onMeasurementStart: () => {
-                console.log('开始测量');
-              },
-              onMeasurementComplete: (result: unknown) => {
-                console.log('测量结果:', result);
-              },
-              getDistanceDrawOptions: () => distanceDrawOptions,
-              getAreaDrawOptions: () => areaDrawOptions,
-              onClear: () => {
-                console.log('清除测量数据');
-              },
-            },
-          },
-        },
-      });
-
+      mapPlugin.value = createMapPlugin(containerId, pluginOptions);
       viewer.value = await mapPlugin.value.initialize();
       toolbarService.value = mapPlugin.value.getToolbarService();
 
@@ -227,11 +281,17 @@ export function useMapInit(containerId = 'cesiumContainer') {
     viewer.value = null;
   };
 
+  const rebuildMap = async (overrides: Partial<MapPluginOptions> = lastOverrides.value): Promise<Cesium.Viewer | null> => {
+    destroyMap();
+    return initMap(overrides);
+  };
+
   return {
     mapPlugin,
     toolbarService,
     viewer,
     initMap,
+    rebuildMap,
     destroyMap,
   };
 }

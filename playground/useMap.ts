@@ -11,7 +11,11 @@ export const chinaMapExtent = {
   north: 53.5609,
 };
 
-export function getTdMapSearchUrl(keywords: string, mapConfig: { defaultZoomLevel?: number }, token = tdMapToken) {
+export function getTdMapSearchUrl(
+  keywords: string,
+  mapConfig: { defaultZoomLevel?: number; west?: number; south?: number; east?: number; north?: number },
+  token = tdMapToken,
+) {
   const payload = {
     start: 0,
     count: 10,

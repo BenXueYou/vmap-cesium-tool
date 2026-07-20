@@ -194,7 +194,7 @@ export class LayersButtonHandler extends BaseMenu {
     const thumbnail = document.createElement('div');
     Object.assign(thumbnail.style, styles.mapTypeThumbnail);
     if (mapType.thumbnail) {
-      thumbnail.style.backgroundImage = `url(${mapType.thumbnail})`;
+      thumbnail.style.backgroundImage = `url("${mapType.thumbnail}")`;
     }
 
     if (isSelected && forcePlaceName) {
@@ -327,9 +327,9 @@ export class LayersButtonHandler extends BaseMenu {
 
   private selectMapType(mapTypeId: string): void {
     this.options.currentMapType = mapTypeId;
-    this.options.onMapTypeChange?.(mapTypeId);
-
-    if (this.options.layersService && typeof this.options.layersService.setMapType === 'function') {
+    if (this.options.onMapTypeChange) {
+      this.options.onMapTypeChange(mapTypeId);
+    } else if (this.options.layersService && typeof this.options.layersService.setMapType === 'function') {
       this.options.layersService.setMapType(mapTypeId);
     }
 
@@ -365,9 +365,13 @@ export class LayersButtonHandler extends BaseMenu {
   }
 
   private getPanelStyles(): ResolvedPanelStyles {
+    const columnCount = Math.max(1, Math.min(this.options.mapTypes?.length || 1, 4));
+
     return {
       container: {
-        minWidth: '438px',
+        width: 'max-content',
+        minWidth: '0',
+        maxWidth: 'calc(100vw - 24px)',
         padding: '10px 12px 12px',
         background: 'rgba(4, 39, 73, 0.96)',
         border: '1px solid rgba(24, 124, 255, 0.85)',
@@ -390,7 +394,7 @@ export class LayersButtonHandler extends BaseMenu {
       },
       mapTypesGrid: {
         display: 'grid',
-        gridTemplateColumns: 'repeat(4, minmax(88px, 1fr))',
+        gridTemplateColumns: `repeat(${columnCount}, minmax(88px, 100px))`,
         gap: '12px',
         ...this.panelStyle.mapTypesGridStyle,
       },

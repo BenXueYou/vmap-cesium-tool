@@ -12,6 +12,8 @@ export interface PolylineOptions extends BaseOverlayOptions {
   width?: number;
   /** 材质（颜色、字符串或 MaterialProperty） */
   material?: MaterialProperty | Color | string;
+  /** 兼容旧版颜色字段 */
+  color?: Color | string;
   /** 是否贴地（默认 false） */
   clampToGround?: boolean;
   /** 贴地抬高量（米，clampToGround=true 时生效） */
@@ -60,7 +62,7 @@ export class Polyline extends BaseOverlay {
     return new Cesium.PolylineGraphics({
       positions,
       width: options.width ?? 2,
-      material: this.resolveMaterial(options.material),
+      material: this.resolveMaterial(options.material ?? options.color),
       clampToGround: options.clampToGround ?? false,
     });
   }
@@ -136,6 +138,8 @@ export class Polyline extends BaseOverlay {
     }
     if (options.material !== undefined) {
       this.entity.polyline.material = this.resolveMaterial(options.material);
+    } else if (options.color !== undefined) {
+      this.entity.polyline.material = this.resolveMaterial(options.color);
     }
     if (options.clampToGround !== undefined) {
       this.entity.polyline.clampToGround = new Cesium.ConstantProperty(options.clampToGround);

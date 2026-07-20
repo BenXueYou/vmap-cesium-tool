@@ -1,6 +1,7 @@
 import * as Cesium from 'cesium';
 import type { Cartesian3, Entity } from 'cesium';
 import type { I18nLike } from '../../../../i18n';
+import type { CoordSystem, LngLat } from '../../../mapProviders/coordinates/types';
 
 export type DrawMode = 'point' | 'line' | 'polygon' | 'rectangle' | 'circle' | null;
 
@@ -51,6 +52,10 @@ export interface DrawOptions {
   lineColor?: Cesium.Color | string;
   lineWidth?: number;
   fillColor?: Cesium.Color | string;
+  strokeColor?: Cesium.Color | string;
+  strokeWidth?: number;
+  outlineColor?: Cesium.Color | string;
+  outlineWidth?: number;
   clampToGround?: boolean;
   segmentDistanceLabelStyle?: MeasurementSummaryLabelStyle;
   totalDistanceLabelStyle?: MeasurementSummaryLabelStyle;
@@ -58,6 +63,10 @@ export interface DrawOptions {
   totalAreaLabelStyle?: MeasurementSummaryLabelStyle;
   hintBubbleStyle?: MeasurementSummaryLabelStyle;
   onClick?: (entity: Entity, positions?: Cartesian3[]) => void;
+  selfIntersectionEnabled?: boolean;
+  selfIntersectionAllowTouch?: boolean;
+  selfIntersectionAllowContinue?: boolean;
+  outputCoordSystem?: CoordSystem;
 }
 
 export interface DrawServiceOptions {
@@ -67,7 +76,13 @@ export interface DrawServiceOptions {
 
 export interface DrawResult {
   entity: Entity;
+  type: Exclude<DrawMode, null>;
   positions: Cartesian3[];
+  geographicPositions: LngLat[];
+  outputCoordSystem: CoordSystem;
+  distance?: number;
+  area?: number;
+  radius?: number;
 }
 
 export interface DrawArtifacts {

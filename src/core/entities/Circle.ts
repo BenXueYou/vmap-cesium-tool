@@ -1,6 +1,8 @@
 import * as Cesium from 'cesium';
 import type { Viewer, Entity, Color, MaterialProperty, HeightReference } from 'cesium';
 import { BaseOverlay, type BaseOverlayOptions, type OverlayPosition } from './BaseOverlay';
+import { CirclePrimitiveBatch } from './primitives/CirclePrimitiveBatch';
+import { CirclePrimitiveLayerStack } from './primitives/CirclePrimitiveLayerStack';
 
 /**
  * Circle 配置选项
@@ -32,6 +34,81 @@ export interface CircleOptions extends BaseOverlayOptions {
   segments?: number;
 }
 
+class CirclePrimitiveManager {
+  private readonly defaultBatch: CirclePrimitiveBatch;
+  private readonly batchesByLayer = new Map<string, CirclePrimitiveBatch>();
+  private layerStack: CirclePrimitiveLayerStack | null = null;
+
+  constructor(private readonly viewer: Viewer) {
+    this.defaultBatch = new CirclePrimitiveBatch(viewer);
+  }
+
+  private getBatchByLayerKey(layerKey?: string): CirclePrimitiveBatch {
+    if (!layerKey) {
+      return this.defaultBatch;
+    }
+
+    const key = String(layerKey);
+    const existing = this.batchesByLayer.get(key);
+    if (existing) {
+      return existing;
+    }
+
+    if (!this.layerStack) {
+      this.layerStack = new CirclePrimitiveLayerStack(this.viewer);
+    }
+
+    const { fillCollection, ringCollection } = this.layerStack.getLayerCollections(key);
+    const batch = new CirclePrimitiveBatch(this.viewer, { fillCollection, ringCollection });
+    this.batchesByLayer.set(key, batch);
+    return batch;
+  }
+
+  private getBatchForOverlay(overlay: any): CirclePrimitiveBatch {
+    return this.getBatchByLayerKey(overlay?._primitiveLayerKey);
+  }
+
+  public upsertGeometry(
+    root: any,
+    parts: { outer: Entity; inner: Entity },
+    ringPositions: Cesium.Cartesian3[],
+    fillPositions: Cesium.Cartesian3[],
+    ringColor: Cesium.Color,
+    fillColor: Cesium.Color,
+    visible: boolean,
+  ): void {
+    this.getBatchForOverlay(root).upsertGeometry({
+      circleId: String(root.id),
+      parts,
+      ringPositions,
+      fillPositions,
+      ringColor,
+      fillColor,
+      visible,
+    });
+  }
+
+  public setVisible(root: any, visible: boolean): void {
+    this.getBatchForOverlay(root).setVisible(String(root.id), visible);
+  }
+
+  public setColors(root: any, ringColor: Cesium.Color, fillColor: Cesium.Color): void {
+    this.getBatchForOverlay(root).setColors(String(root.id), ringColor, fillColor);
+  }
+
+  public remove(root: any): void {
+    this.getBatchForOverlay(root).remove(String(root.id));
+  }
+
+  public destroy(): void {
+    this.defaultBatch.destroy();
+    this.batchesByLayer.forEach((batch) => batch.destroy());
+    this.batchesByLayer.clear();
+    this.layerStack?.destroy();
+    this.layerStack = null;
+  }
+}
+
 /**
  * Circle 圆形类
  * 
@@ -51,17 +128,22 @@ export interface CircleOptions extends BaseOverlayOptions {
  * ```
  */
 export class Circle extends BaseOverlay {
+  private static primitiveManagers = new WeakMap<Viewer, CirclePrimitiveManager>();
+
   private circleOptions: CircleOptions;
   private innerEntity?: Entity;
+  private primitiveMode = false;
+  private primitiveManager: CirclePrimitiveManager | null = null;
 
   constructor(viewer: Viewer, options: CircleOptions) {
     super(viewer, options);
     this.circleOptions = options;
-    
-    // 检查是否需要创建粗边框（环形）效果
     const ringThickness = (options.outlineWidth && options.outlineWidth > 1) ? options.outlineWidth : 0;
-    
-    if (ringThickness && ringThickness > 1) {
+    const renderMode = options.renderMode ?? 'auto';
+
+    if ((renderMode === 'primitive' || renderMode === 'auto') && this.canUsePrimitive(options)) {
+      this.initPrimitiveCircle(options, ringThickness);
+    } else if (ringThickness && ringThickness > 1) {
       // 创建粗边框圆形（使用双层椭圆方式）
       this.createThickCircle(options, ringThickness);
     } else {
@@ -70,7 +152,189 @@ export class Circle extends BaseOverlay {
     }
     
     // 设置覆盖物类型标识
-    (this.entity as any)._overlayType = 'circle';
+    if (!this.primitiveMode) {
+      (this.entity as any)._overlayType = 'circle';
+    }
+  }
+
+  private static getPrimitiveManager(viewer: Viewer): CirclePrimitiveManager {
+    const existing = Circle.primitiveManagers.get(viewer);
+    if (existing) {
+      return existing;
+    }
+
+    const manager = new CirclePrimitiveManager(viewer);
+    Circle.primitiveManagers.set(viewer, manager);
+    return manager;
+  }
+
+  private canUsePrimitive(options: CircleOptions): boolean {
+    const ringThickness = (options.outlineWidth && options.outlineWidth > 1) ? options.outlineWidth : 0;
+    if (!(ringThickness > 0)) return false;
+    if ((options.clampToGround ?? true) !== true) return false;
+    if (options.extrudedHeight !== undefined) return false;
+    return this.resolveMaterialColor(options.material) !== null;
+  }
+
+  private resolveMaterialColor(material?: MaterialProperty | Color | string): Cesium.Color | null {
+    if (!material) return Cesium.Color.BLUE.withAlpha(0.5);
+    if (typeof material === 'string') return this.resolveColor(material, Cesium.Color.BLUE.withAlpha(0.5));
+    if (material instanceof Cesium.Color) return material;
+    if (material instanceof Cesium.ColorMaterialProperty) {
+      try {
+        const c: any = (material as any).color;
+        const v = c && typeof c.getValue === 'function' ? c.getValue(Cesium.JulianDate.now()) : c;
+        if (v instanceof Cesium.Color) return v;
+        if (typeof v === 'string') return this.resolveColor(String(v), Cesium.Color.BLUE.withAlpha(0.5));
+      } catch {
+        // ignore
+      }
+    }
+    return null;
+  }
+
+  private getDefaultSegmentsForRadius(radiusMeters: number): number {
+    const r = Math.max(0, Number(radiusMeters));
+    if (!Number.isFinite(r)) return 96;
+    if (r <= 200) return 48;
+    if (r <= 1000) return 64;
+    if (r <= 5000) return 96;
+    return 128;
+  }
+
+  private initPrimitiveCircle(options: CircleOptions, ringThickness: number): void {
+    this.primitiveMode = true;
+    this.primitiveManager = Circle.getPrimitiveManager(this.viewer);
+
+    const id = String(this.getId());
+    const position = this.toCartesian3(options.position)!;
+    const carto = Cesium.Cartographic.fromCartesian(position);
+    const clampToGround = options.clampToGround ?? true;
+    const groundHeightEpsilon = clampToGround ? Math.max(0, Number(options.groundHeightEpsilon ?? 0)) : 0;
+    const baseCarto = new Cesium.Cartographic(carto.longitude, carto.latitude, groundHeightEpsilon);
+    const baseHeight = clampToGround ? 0 : (carto.height ?? 0);
+    const outerRadius = options.radius;
+    const innerRadius = Math.max(0, options.radius - ringThickness);
+    const ringSegments = Math.max(16, Math.floor(options.segments ?? this.getDefaultSegmentsForRadius(outerRadius)));
+
+    const outerPositions = this.generateCirclePositions(baseCarto, outerRadius, groundHeightEpsilon, ringSegments);
+    const innerPositions = this.generateCirclePositions(baseCarto, innerRadius, groundHeightEpsilon, ringSegments);
+    const ringClosed = outerPositions.slice();
+    if (ringClosed.length >= 2) {
+      ringClosed.push(ringClosed[0]);
+    }
+
+    const ringColor = options.outlineColor
+      ? this.resolveColor(options.outlineColor, Cesium.Color.BLACK)
+      : Cesium.Color.BLACK;
+    const fillColor = this.resolveMaterialColor(options.material) ?? Cesium.Color.BLUE.withAlpha(0.5);
+
+    const root: any = this.entity as any;
+    const inner = new Cesium.Entity({ id: `${id}__fill` });
+    const innerAny: any = inner as any;
+    this.innerEntity = inner;
+
+    root._overlayType = 'circle-primitive';
+    root._primitiveLayerKey = options.layerKey;
+    root._innerEntity = inner;
+    root._isRing = true;
+    root._ringThickness = ringThickness;
+    root._outerRadius = outerRadius;
+    root._innerRadius = innerRadius;
+    root._ringSegments = ringSegments;
+    root._fillMaterial = fillColor;
+    root._primitiveRingBaseColor = ringColor;
+    root._primitiveFillBaseColor = fillColor;
+    root._clampToGround = true;
+    root._baseHeight = baseHeight;
+    root._groundHeightEpsilon = groundHeightEpsilon;
+    root._centerCartographic = new Cesium.Cartographic(carto.longitude, carto.latitude, baseHeight);
+    root._primitiveOutlinePositions = ringClosed;
+    innerAny._overlayType = 'circle-primitive';
+    innerAny._primitiveLayerKey = options.layerKey;
+    innerAny._primitiveRingBaseColor = ringColor;
+    innerAny._primitiveFillBaseColor = fillColor;
+    innerAny._groundHeightEpsilon = groundHeightEpsilon;
+    innerAny._primitiveOutlinePositions = ringClosed;
+
+    const group = [this.entity, inner];
+    const clickHighlight = options.clickHighlight ?? false;
+    const hoverHighlight = options.hoverHighlight ?? false;
+    root._clickHighlight = clickHighlight;
+    root._hoverHighlight = hoverHighlight;
+    root._highlightEntities = group;
+    innerAny._clickHighlight = clickHighlight;
+    innerAny._hoverHighlight = hoverHighlight;
+    innerAny._highlightEntities = group;
+    if (options.onClick) {
+      root._onClick = options.onClick;
+      innerAny._onClick = options.onClick;
+    }
+
+    this.primitiveManager.upsertGeometry(
+      root,
+      { outer: this.entity, inner },
+      outerPositions,
+      innerPositions,
+      ringColor,
+      fillColor,
+      this.entity.show !== false,
+    );
+  }
+
+  private updatePrimitiveGeometry(): void {
+    if (!this.primitiveManager || !this.primitiveMode) {
+      return;
+    }
+
+    const root = this.entity as any;
+    const id = String(this.getId());
+    const position = this.toCartesian3(this.circleOptions.position)!;
+    const carto = Cesium.Cartographic.fromCartesian(position);
+    const groundHeightEpsilon = Math.max(0, Number(this.circleOptions.groundHeightEpsilon ?? 0));
+    const outerRadius = this.circleOptions.radius;
+    const ringThickness = Math.max(0, Number(root._ringThickness ?? this.circleOptions.outlineWidth ?? 0));
+    const innerRadius = Math.max(0, outerRadius - ringThickness);
+    const segments = Math.max(16, Math.floor(this.circleOptions.segments ?? root._ringSegments ?? this.getDefaultSegmentsForRadius(outerRadius)));
+    const baseCarto = new Cesium.Cartographic(carto.longitude, carto.latitude, groundHeightEpsilon);
+
+    root._outerRadius = outerRadius;
+    root._innerRadius = innerRadius;
+    root._ringSegments = segments;
+    root._centerCartographic = new Cesium.Cartographic(carto.longitude, carto.latitude, groundHeightEpsilon);
+    root._baseHeight = carto.height ?? 0;
+    root._groundHeightEpsilon = groundHeightEpsilon;
+
+    const outerPositions = this.generateCirclePositions(baseCarto, outerRadius, groundHeightEpsilon, segments);
+    const innerPositions = this.generateCirclePositions(baseCarto, innerRadius, groundHeightEpsilon, segments);
+    const ringClosed = outerPositions.slice();
+    if (ringClosed.length >= 2) {
+      ringClosed.push(ringClosed[0]);
+    }
+    const ringColor = root._primitiveRingBaseColor ?? Cesium.Color.BLACK;
+    const fillColor = root._primitiveFillBaseColor ?? (this.resolveMaterialColor(this.circleOptions.material) ?? Cesium.Color.BLUE.withAlpha(0.5));
+    root._primitiveOutlinePositions = ringClosed;
+    if (this.innerEntity) {
+      (this.innerEntity as any)._primitiveOutlinePositions = ringClosed;
+    }
+
+    this.primitiveManager.upsertGeometry(
+      root,
+      { outer: this.entity, inner: this.innerEntity as Entity },
+      outerPositions,
+      innerPositions,
+      ringColor,
+      fillColor,
+      this.entity.show !== false,
+    );
+  }
+
+  private getPrimitiveRoot(): any {
+    return this.entity as any;
+  }
+
+  private getPrimitiveBatchColorFallback(): Cesium.Color {
+    return this.resolveMaterialColor(this.circleOptions.material) ?? Cesium.Color.BLUE.withAlpha(0.5);
   }
 
   /**
@@ -217,6 +481,43 @@ export class Circle extends BaseOverlay {
     if (this.destroyed) return;
     
     this.circleOptions = { ...this.circleOptions, ...options };
+
+    if (this.primitiveMode) {
+      const root = this.getPrimitiveRoot();
+      const nextRingThickness = (this.circleOptions.outlineWidth && this.circleOptions.outlineWidth > 1)
+        ? this.circleOptions.outlineWidth
+        : 0;
+
+      if (options.material !== undefined) {
+        const fillColor = this.resolveMaterialColor(options.material) ?? this.getPrimitiveBatchColorFallback();
+        root._primitiveFillBaseColor = fillColor;
+        root._fillMaterial = fillColor;
+      }
+      if (options.outlineColor !== undefined) {
+        root._primitiveRingBaseColor = this.resolveColor(options.outlineColor, Cesium.Color.BLACK);
+      }
+      if (options.outlineWidth !== undefined) {
+        root._ringThickness = nextRingThickness;
+      }
+      if (options.material !== undefined || options.outlineColor !== undefined || options.outlineWidth !== undefined) {
+        const ringColor = root._primitiveRingBaseColor ?? Cesium.Color.BLACK;
+        const fillColor = root._primitiveFillBaseColor ?? this.getPrimitiveBatchColorFallback();
+        this.primitiveManager?.setColors(root, ringColor, fillColor);
+      }
+      if (options.position !== undefined || options.radius !== undefined || options.outlineWidth !== undefined) {
+        this.updatePrimitiveGeometry();
+      }
+      if (options.show !== undefined) {
+        this.entity.show = options.show;
+        if (this.innerEntity) {
+          this.innerEntity.show = options.show;
+        }
+        this.primitiveManager?.setVisible(root, options.show);
+      } else {
+        this.primitiveManager?.setVisible(root, this.entity.show !== false);
+      }
+      return;
+    }
     
     const ringThickness = (options.outlineWidth && options.outlineWidth > 1) ? options.outlineWidth : 0;
     const wasThick = !!(this.entity as any)._isRing;
@@ -355,6 +656,14 @@ export class Circle extends BaseOverlay {
    * 获取位置（经纬度）
    */
   getPosition(): [number, number] | null {
+    if (this.primitiveMode) {
+      const pos = this.circleOptions.position;
+      const cartesian = this.toCartesian3(pos);
+      if (cartesian) {
+        return this.toLngLat(cartesian);
+      }
+      return null;
+    }
     const pos = this.entity.position?.getValue(Cesium.JulianDate.now());
     if (pos) {
       return this.toLngLat(pos);
@@ -369,11 +678,62 @@ export class Circle extends BaseOverlay {
     return this.circleOptions.radius;
   }
 
+  setPrimitiveVisible(entity: Entity, visible: boolean): void {
+    if (!this.primitiveMode || !this.primitiveManager) return;
+    this.primitiveManager.setVisible(entity as any, visible);
+  }
+
+  applyPrimitiveHighlight(entity: Entity, hlColor: Cesium.Color, _fillAlpha: number): void {
+    if (!this.primitiveMode || !this.primitiveManager) return;
+    const root = this.getPrimitiveRoot();
+    const ringColor = hlColor.withAlpha(1.0);
+    const fillColor = root._primitiveFillBaseColor ?? this.getPrimitiveBatchColorFallback();
+    this.primitiveManager.setColors(root, ringColor, fillColor);
+    (entity as any)._isHighlighted = true;
+  }
+
+  restorePrimitiveHighlight(entity: Entity): void {
+    if (!this.primitiveMode || !this.primitiveManager) return;
+    const root = this.getPrimitiveRoot();
+    const ringColor = root._primitiveRingBaseColor ?? Cesium.Color.BLACK;
+    const fillColor = root._primitiveFillBaseColor ?? this.getPrimitiveBatchColorFallback();
+    this.primitiveManager.setColors(root, ringColor, fillColor);
+    (entity as any)._isHighlighted = false;
+  }
+
+  setVisible(show: boolean): void {
+    if (this.destroyed) return;
+    if (this.primitiveMode) {
+      this.entity.show = show;
+      if (this.innerEntity) {
+        this.innerEntity.show = show;
+      }
+      if (this.primitiveManager) {
+        this.primitiveManager.setVisible(this.getPrimitiveRoot(), show);
+      }
+      return;
+    }
+
+    super.setVisible(show);
+  }
+
   /**
    * 从场景中移除圆形
    */
   remove(): void {
     if (this.destroyed) return;
+
+    if (this.primitiveMode) {
+      try {
+        this.primitiveManager?.remove(this.getPrimitiveRoot());
+      } catch {
+        // ignore
+      }
+
+      this.innerEntity = undefined;
+      this.destroyed = true;
+      return;
+    }
     
     // 移除内层实体
     if (this.innerEntity) {

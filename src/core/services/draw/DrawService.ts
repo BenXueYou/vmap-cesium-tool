@@ -1,8 +1,16 @@
+import * as Cesium from 'cesium';
 import type { Cartesian3, Entity, Viewer } from 'cesium';
 
 import { DrawEntityFactory } from './entities/drawEntityFactory';
 import { DrawEntityRegistry } from './entities/drawEntityRegistry';
-import { calculatePolygonArea, getMinimumPointCount } from './geometry/drawGeometry';
+import {
+  calculateDistance,
+  calculatePolygonArea,
+  calculateRectangleArea,
+  calculateTotalDistance,
+  getMinimumPointCount,
+  getRectangleCornerPositions,
+} from './geometry/drawGeometry';
 import { isValidCartesian3 } from './geometry/drawPosition';
 import { DrawInteractionController } from './DrawInteractionController';
 import { buildHintText, DrawHintController } from './labels/drawHint';
@@ -12,7 +20,11 @@ import { resolveLabelStyle, resolveMeasurementTheme } from './measurementThemeRe
 import type { DrawCallbacks } from './types/drawState';
 import type { DrawMode, DrawOptions, DrawResult, DrawServiceOptions } from './types/drawTypes';
 import { i18n as defaultI18n } from '../../../i18n';
-import { isClosedPolygonSelfIntersecting } from '../../../utils/selfIntersection';
+import {
+  isClosedPolygonSelfIntersecting,
+  wouldCreatePolygonSelfIntersection,
+} from '../../../utils/selfIntersection';
+import { positionsToLngLats } from '../../mapProviders/coordinates/cesium';
 
 export type {
   DrawArtifacts,
@@ -110,6 +122,22 @@ export class DrawService {
       onLeftClick: (position) => {
         if (!this.store.isDrawing()) {
           return;
+        }
+
+        const currentMode = this.store.getMode();
+        const currentOptions = this.store.getOptions();
+        if (currentMode === 'polygon' && currentOptions?.selfIntersectionEnabled) {
+          const existing = this.store.getTempPositions();
+          if (existing.length >= 2) {
+            const allowTouch = !!currentOptions.selfIntersectionAllowTouch;
+            const allowContinue = !!currentOptions.selfIntersectionAllowContinue;
+            const willSelfIntersect = wouldCreatePolygonSelfIntersection(existing, position, {
+              allowTouch,
+            });
+            if (willSelfIntersect && !allowContinue) {
+              return;
+            }
+          }
         }
 
         this.store.setPreviewPosition(position);
@@ -236,10 +264,23 @@ export class DrawService {
     }
 
     if (mode === 'polygon') {
-      const isSelfIntersecting = isClosedPolygonSelfIntersecting(positions, { allowTouch: false });
+      const currentOptions = this.store.getOptions();
+      const selfIntersectionEnabled = !!currentOptions?.selfIntersectionEnabled;
+      const allowTouch = !!currentOptions?.selfIntersectionAllowTouch;
+      const allowContinue = !!currentOptions?.selfIntersectionAllowContinue;
+
+      if (selfIntersectionEnabled && !allowContinue) {
+        const isSelfIntersecting = isClosedPolygonSelfIntersecting(positions, { allowTouch });
+        if (isSelfIntersecting) {
+          this.endDrawing();
+          this.emitDrawEnd(null);
+          return;
+        }
+      }
+
       const area = calculatePolygonArea(positions);
       const hasValidArea = Number.isFinite(area) && area > 1e-6;
-      if (isSelfIntersecting || !hasValidArea) {
+      if (!hasValidArea) {
         this.endDrawing();
         this.emitDrawEnd(null);
         return;
@@ -251,7 +292,20 @@ export class DrawService {
     if (artifacts) {
       this.entityRegistry.bindAuxiliary(artifacts.primary, artifacts.auxiliary);
       this.store.registerFinished(artifacts.primary, artifacts.auxiliary);
-      result = { entity: artifacts.primary, positions };
+      const outputPositions = this.getOutputPositions(mode, positions);
+      const geographicPositions = positionsToLngLats(outputPositions, this.store.getOptions()?.outputCoordSystem || 'WGS84');
+      const outputCoordSystem = this.store.getOptions()?.outputCoordSystem || 'WGS84';
+      result = {
+        type: mode,
+        entity: artifacts.primary,
+        positions: outputPositions,
+        geographicPositions,
+        outputCoordSystem,
+        ...(mode === 'line' ? { distance: calculateTotalDistance(outputPositions) } : {}),
+        ...(mode === 'polygon' ? { area: calculatePolygonArea(outputPositions) } : {}),
+        ...(mode === 'rectangle' ? { area: calculateRectangleArea(outputPositions) } : {}),
+        ...(mode === 'circle' ? this.resolveCircleMetrics(positions) : {}),
+      };
     }
 
     this.endDrawing();
@@ -285,5 +339,37 @@ export class DrawService {
 
   private emitDrawEnd(result: DrawResult | null): void {
     this.callbacks.onDrawEnd?.(result);
+  }
+
+  private getOutputPositions(mode: Exclude<DrawMode, null>, positions: Cartesian3[]): Cartesian3[] {
+    if (mode === 'rectangle' && positions.length >= 2) {
+      return getRectangleCornerPositions(positions[0], positions[1]);
+    }
+
+    return positions.map((position) => position.clone());
+  }
+
+  private resolveCircleMetrics(positions: Cartesian3[]): Pick<DrawResult, 'radius' | 'area'> {
+    if (positions.length < 2) {
+      return {};
+    }
+
+    const center = positions[0];
+    const edge = positions[1];
+    const centerCarto = Cesium.Cartographic.fromCartesian(center);
+    const edgeCarto = Cesium.Cartographic.fromCartesian(edge);
+    if (!centerCarto || !edgeCarto) {
+      return {};
+    }
+
+    const radius = calculateDistance(centerCarto, edgeCarto);
+    if (!Number.isFinite(radius) || radius <= 0) {
+      return {};
+    }
+
+    return {
+      radius,
+      area: Math.PI * radius * radius,
+    };
   }
 }

@@ -5,6 +5,7 @@
 
 import { BaseButtonHandler } from './BaseButtonHandler';
 import type { ToolbarButton } from '../../../../components/ToolbarButton';
+import * as Cesium from 'cesium';
 
 /**
  * 简单按钮配置
@@ -51,6 +52,7 @@ export class SimpleButtonHandler extends BaseButtonHandler {
   
   private config: SimpleButtonConfig;
   private mapController?: MapControllerLike;
+  private sceneModeListenerDispose: (() => void) | null = null;
 
   /**
    * 构造函数
@@ -84,6 +86,11 @@ export class SimpleButtonHandler extends BaseButtonHandler {
       this.i18n.bindElement(button.getElement(), this.config.titleKey, 'title');
     } else {
       button.setAttribute('title', this.config.title);
+    }
+
+    if (this.config.id === 'view2d3d') {
+      this.syncView2D3DButton();
+      this.attachSceneModeListener();
     }
   }
 
@@ -123,6 +130,8 @@ export class SimpleButtonHandler extends BaseButtonHandler {
    * 销毁处理器
    */
   destroy(): void {
+    this.sceneModeListenerDispose?.();
+    this.sceneModeListenerDispose = null;
     this.button = null;
   }
 
@@ -132,6 +141,31 @@ export class SimpleButtonHandler extends BaseButtonHandler {
    */
   setMapController(controller: MapControllerLike): void {
     this.mapController = controller;
+  }
+
+  private attachSceneModeListener(): void {
+    if (!this.viewer?.scene?.morphComplete || this.sceneModeListenerDispose) {
+      return;
+    }
+
+    this.sceneModeListenerDispose = this.viewer.scene.morphComplete.addEventListener(() => {
+      this.syncView2D3DButton();
+    });
+  }
+
+  private syncView2D3DButton(): void {
+    if (this.config.id !== 'view2d3d' || !this.button || !this.viewer?.scene) {
+      return;
+    }
+
+    const is2D = this.viewer.scene.mode === Cesium.SceneMode.SCENE2D;
+    const label = is2D ? '2D' : '3D';
+    const element = this.button.getElement();
+    element.textContent = label;
+    element.setAttribute('data-scene-mode', is2D ? '2d' : '3d');
+    this.button.updateConfig({
+      icon: label,
+    });
   }
 
   /**

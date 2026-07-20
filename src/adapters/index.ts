@@ -18,9 +18,22 @@ export type { LegacyInitOptions, LegacyInitResult, LegacyMapCenter } from './Map
 export { DrawHelperAdapter, createDrawHelperAdapter } from './DrawHelperAdapter';
 export type { LegacyDrawCallbacks, LegacyDrawOptions, LegacyDrawEntity } from './DrawHelperAdapter';
 
+// 导出热力图兼容适配器
+export { HeatmapLayer } from './HeatmapLayerAdapter';
+export type {
+  HeatPoint,
+  HeatmapAutoUpdateOptions,
+  HeatmapGradient,
+  HeatmapOptions,
+} from './HeatmapLayerAdapter';
+
 // 导出覆盖物服务适配器
 export { OverlayServiceAdapter, createOverlayServiceAdapter } from './OverlayServiceAdapter';
 export type { LegacyCesiumOverlayServiceOptions } from './OverlayServiceAdapter';
+
+// 导出标绘兼容适配器
+export { MapMarkAdapter } from './MapMarkAdapter';
+export type { CesiumMapMarkOptions } from './MapMarkAdapter';
 
 /**
  * 适配器模块版本信息

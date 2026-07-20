@@ -4,6 +4,7 @@ import type { MeasurementCallback } from '../CesiumMapModel';
 import { calculatePolygonArea } from '../../utils/calc';
 import { calculateTotalDistance } from '../../core/services/draw/geometry/drawGeometry';
 import type { MeasurementCompleteEvent } from '../../core/services/toolbar/types';
+import type { CoordSystem, LngLat } from '../../core/types';
 
 export type MeasureMode = 'none' | 'distance' | 'area';
 
@@ -34,7 +35,7 @@ export class MeasurementService {
 
   setupDrawHelperCallbacks(): void {
     if (typeof this.drawHelper?.onMeasureComplete === 'function') {
-      this.drawHelper.onMeasureComplete((result: { type?: 'line' | 'polygon' | 'rectangle' | 'circle'; positions?: Cesium.Cartesian3[] } | null) => {
+      this.drawHelper.onMeasureComplete((result: { type?: 'line' | 'polygon' | 'rectangle' | 'circle'; positions?: Cesium.Cartesian3[]; geographicPositions?: LngLat[]; outputCoordSystem?: CoordSystem } | null) => {
         if (!result || !Array.isArray(result.positions)) {
           return;
         }
@@ -43,6 +44,7 @@ export class MeasurementService {
           this.emitMeasurementComplete({
             type: 'distance',
             positions: result.positions,
+            geographicPositions: result.geographicPositions,
             value: calculateTotalDistance(result.positions),
           });
           return;
@@ -52,6 +54,7 @@ export class MeasurementService {
           this.emitMeasurementComplete({
             type: 'area',
             positions: result.positions,
+            geographicPositions: result.geographicPositions,
             value: calculatePolygonArea(result.positions),
           });
         }
@@ -60,7 +63,7 @@ export class MeasurementService {
     }
 
     if (typeof this.drawHelper?.onDrawEnd === 'function') {
-      this.drawHelper.onDrawEnd((result: { positions?: Cesium.Cartesian3[] } | null) => {
+      this.drawHelper.onDrawEnd((result: { positions?: Cesium.Cartesian3[]; geographicPositions?: LngLat[] } | null) => {
         if (!result || !Array.isArray(result.positions) || this.currentMode === 'none') {
           return;
         }
@@ -69,6 +72,7 @@ export class MeasurementService {
           this.emitMeasurementComplete({
             type: 'distance',
             positions: result.positions,
+            geographicPositions: result.geographicPositions,
             value: calculateTotalDistance(result.positions),
           });
           return;
@@ -77,6 +81,7 @@ export class MeasurementService {
         this.emitMeasurementComplete({
           type: 'area',
           positions: result.positions,
+          geographicPositions: result.geographicPositions,
           value: calculatePolygonArea(result.positions),
         });
       });
@@ -96,11 +101,11 @@ export class MeasurementService {
     this.measurementCallback?.onMeasurementStart?.();
 
     if (typeof this.drawHelper?.startDrawingLine === 'function') {
-      this.drawHelper.startDrawingLine();
+      this.drawHelper.startDrawingLine(_drawOptions);
       return;
     }
 
-    this.drawHelper?.startDrawing?.('line');
+    this.drawHelper?.startDrawing?.('line', _drawOptions);
   }
 
   startAreaMeasurement(_drawOptions?: any): void {
@@ -108,11 +113,11 @@ export class MeasurementService {
     this.measurementCallback?.onMeasurementStart?.();
 
     if (typeof this.drawHelper?.startDrawingPolygon === 'function') {
-      this.drawHelper.startDrawingPolygon();
+      this.drawHelper.startDrawingPolygon(_drawOptions);
       return;
     }
 
-    this.drawHelper?.startDrawing?.('polygon');
+    this.drawHelper?.startDrawing?.('polygon', _drawOptions);
   }
 
   clearMeasurements(): void {
