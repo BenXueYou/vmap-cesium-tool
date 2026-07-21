@@ -259,11 +259,18 @@ export class Circle extends BaseOverlay {
 
     const group = [this.entity, inner];
     const clickHighlight = options.clickHighlight ?? false;
+    const selectionHighlight = options.selectionHighlight;
     const hoverHighlight = options.hoverHighlight ?? false;
     root._clickHighlight = clickHighlight;
+    if (selectionHighlight !== undefined) {
+      root._selectionHighlight = selectionHighlight;
+    }
     root._hoverHighlight = hoverHighlight;
     root._highlightEntities = group;
     innerAny._clickHighlight = clickHighlight;
+    if (selectionHighlight !== undefined) {
+      innerAny._selectionHighlight = selectionHighlight;
+    }
     innerAny._hoverHighlight = hoverHighlight;
     innerAny._highlightEntities = group;
     if (options.onClick) {
@@ -387,11 +394,32 @@ export class Circle extends BaseOverlay {
       },
     });
 
-    (this.entity as any)._innerEntity = this.innerEntity;
-    (this.entity as any)._isRing = true;
-    (this.entity as any)._ringThickness = ringThickness;
-    (this.entity as any)._outerRadius = outerRadius;
-    (this.entity as any)._innerRadius = innerRadius;
+    const root: any = this.entity as any;
+    const innerAny: any = this.innerEntity as any;
+    const group = [this.entity, this.innerEntity];
+    root._innerEntity = this.innerEntity;
+    root._isRing = true;
+    root._ringThickness = ringThickness;
+    root._outerRadius = outerRadius;
+    root._innerRadius = innerRadius;
+    root._highlightEntities = group;
+    innerAny._highlightEntities = group;
+    if (this.circleOptions.onClick) {
+      root._onClick = this.circleOptions.onClick;
+      innerAny._onClick = this.circleOptions.onClick;
+    }
+    if (this.circleOptions.clickHighlight) {
+      root._clickHighlight = this.circleOptions.clickHighlight;
+      innerAny._clickHighlight = this.circleOptions.clickHighlight;
+    }
+    if (this.circleOptions.selectionHighlight !== undefined) {
+      root._selectionHighlight = this.circleOptions.selectionHighlight;
+      innerAny._selectionHighlight = this.circleOptions.selectionHighlight;
+    }
+    if (this.circleOptions.hoverHighlight) {
+      root._hoverHighlight = this.circleOptions.hoverHighlight;
+      innerAny._hoverHighlight = this.circleOptions.hoverHighlight;
+    }
   }
 
   /**

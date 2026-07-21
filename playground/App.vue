@@ -316,6 +316,37 @@
           </div>
         </section>
 
+        <details class="section-block validation-block">
+          <summary class="section-title collapsible-title">Overlay Selection 验证</summary>
+
+          <div class="action-row wrap validation-actions">
+            <button class="primary" @click="addOverlaySelectionBaseObjects">添加基础验证对象</button>
+            <button @click="addOverlaySelectionOverlapObjects">添加重叠验证对象</button>
+            <button @click="clearOverlaySelectionObjects">清空对象</button>
+            <button @click="clearOverlaySelectionState">清空选中</button>
+            <button @click="selectOverlaySelectionBaseMarker">程序化选中基础 Marker</button>
+          </div>
+
+          <div class="validation-state">
+            <div class="validation-state-item">
+              <span>Current</span>
+              <strong>{{ selectionValidationSnapshot.current ?? "-" }}</strong>
+            </div>
+            <div class="validation-state-item">
+              <span>Previous</span>
+              <strong>{{ selectionValidationSnapshot.previous ?? "-" }}</strong>
+            </div>
+            <div class="validation-state-item">
+              <span>Reason</span>
+              <strong>{{ selectionValidationSnapshot.reason ?? "-" }}</strong>
+            </div>
+            <div class="validation-state-item">
+              <span>Last Click Callback</span>
+              <strong>{{ selectionValidationSnapshot.lastClickCallback ?? "-" }}</strong>
+            </div>
+          </div>
+        </details>
+
         <section class="section-block inventory-block">
           <div class="section-title">当前覆盖物</div>
 
@@ -372,6 +403,7 @@ import * as Cesium from "cesium";
 import type { CustomButtonConfig, MapPluginOptions, SearchResult, ToolbarCallbacks, ToolbarConfig } from "../src/index";
 import { i18n } from "../src/i18n";
 import { getViteTdToken } from "../src/utils/common";
+import { useOverlaySelectionValidation } from "./hooks/useOverlaySelectionValidation";
 import { useMapInit } from "./useMapInit";
 import { chinaMapExtent, getTdMapSearchUrl } from "./useMap";
 import { toolbarButtonConfigs, toolbarLayersMenu, toolbarSearchMenu } from "./z.const";
@@ -519,6 +551,18 @@ function showMessage(text: string, timeout = 1800) {
     }
   }, timeout);
 }
+
+const {
+  snapshot: selectionValidationSnapshot,
+  addBaseObjects: addOverlaySelectionBaseObjects,
+  addOverlapObjects: addOverlaySelectionOverlapObjects,
+  clearObjects: clearOverlaySelectionObjects,
+  clearSelected: clearOverlaySelectionState,
+  selectBaseMarker: selectOverlaySelectionBaseMarker,
+} = useOverlaySelectionValidation(mapPlugin, viewer, {
+  onLog: pushLog,
+  onMessage: showMessage,
+});
 
 function getViewerCenter() {
   const currentViewer = viewer.value;
@@ -1355,6 +1399,20 @@ onBeforeUnmount(() => {
   color: #e2e8f0;
 }
 
+.collapsible-title {
+  margin-bottom: 0;
+  cursor: pointer;
+  list-style: none;
+}
+
+.collapsible-title::-webkit-details-marker {
+  display: none;
+}
+
+.validation-block[open] .collapsible-title {
+  margin-bottom: 12px;
+}
+
 .field-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1436,6 +1494,41 @@ select option {
 
 .action-row.compact {
   margin-top: 0;
+}
+
+.validation-actions {
+  margin-top: 12px;
+}
+
+.validation-state {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.validation-state-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgba(51, 65, 85, 0.68);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.48);
+}
+
+.validation-state-item span {
+  font-size: 11px;
+  color: rgba(148, 163, 184, 0.92);
+}
+
+.validation-state-item strong {
+  min-width: 0;
+  color: #f8fafc;
+  font-size: 12px;
+  line-height: 1.4;
+  word-break: break-word;
 }
 
 button {
@@ -1550,7 +1643,8 @@ button.primary {
 
 @media (max-width: 720px) {
   .field-grid,
-  .toggle-grid {
+  .toggle-grid,
+  .validation-state {
     grid-template-columns: minmax(0, 1fr);
   }
 

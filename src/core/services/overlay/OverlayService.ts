@@ -83,6 +83,23 @@ export interface OverlayPickingOptions {
   governorProfiles?: PickGovernorOptions['profiles'];
 }
 
+export type OverlaySelectionChangeReason =
+  | 'pointer-select'
+  | 'pointer-toggle-off'
+  | 'empty-click'
+  | 'api-select'
+  | 'api-clear';
+
+export interface OverlaySelectionChangeEvent {
+  current: OverlayEntity | null;
+  previous: OverlayEntity | null;
+  currentId: string | null;
+  previousId: string | null;
+  reason: OverlaySelectionChangeReason;
+}
+
+type OverlaySelectionChangeListener = (event: OverlaySelectionChangeEvent) => void;
+
 interface ResolvedOverlayPickingOptions {
   enabled: boolean;
   hover: boolean;
@@ -167,6 +184,8 @@ export class OverlayService {
   private hoverHandler: Cesium.ScreenSpaceEventHandler | null = null;
   private clickHighlightTargets: Entity[] = [];
   private hoverHighlightTargets: Entity[] = [];
+  private selectedOverlayId: string | null = null;
+  private readonly selectionListeners = new Set<OverlaySelectionChangeListener>();
   private lastClickPickAt = 0;
   private pendingHoverRaf: number | null = null;
   private pendingHoverPosition: Cesium.Cartesian2 | null = null;
@@ -280,6 +299,63 @@ export class OverlayService {
   }
 
   /**
+   * 获取当前选中的覆盖物根实体。
+   */
+  getSelectedOverlay(): OverlayEntity | null {
+    if (!this.selectedOverlayId) {
+      return null;
+    }
+
+    return this.getOverlay(this.selectedOverlayId)?.getEntity() as OverlayEntity | null;
+  }
+
+  /**
+   * 获取当前选中的覆盖物 ID。
+   */
+  getSelectedOverlayId(): string | null {
+    return this.selectedOverlayId;
+  }
+
+  /**
+   * 订阅选中态变化。
+   */
+  onSelectionChange(listener: OverlaySelectionChangeListener): () => void {
+    this.selectionListeners.add(listener);
+    return () => {
+      this.selectionListeners.delete(listener);
+    };
+  }
+
+  /**
+   * 通过实体或 ID 选中覆盖物。
+   */
+  selectOverlay(entityOrId: OverlayEntity | Entity | string): boolean {
+    const entity = this.resolveSelectionEntity(entityOrId);
+    if (!entity) {
+      return false;
+    }
+
+    if (this.selectedOverlayId === String(entity.id)) {
+      return true;
+    }
+
+    this.commitSelection(entity, 'api-select');
+    return true;
+  }
+
+  /**
+   * 清空当前选中态。
+   */
+  clearSelection(): boolean {
+    if (!this.selectedOverlayId) {
+      return false;
+    }
+
+    this.commitSelection(null, 'api-clear');
+    return true;
+  }
+
+  /**
    * 添加 Marker
    */
   addMarker(options: MarkerOptions): Marker {
@@ -356,6 +432,7 @@ export class OverlayService {
     const overlay = this.overlays.get(id);
     if (!overlay) return false;
 
+    this.clearSelectionForOverlay(id);
     this.clearOverlayHighlightState(overlay);
     this.unbindOverlayEntities(overlay);
     overlay.remove();
@@ -388,6 +465,7 @@ export class OverlayService {
     }
 
     if (!visible) {
+      this.clearSelectionForOverlay(id);
       this.clearOverlayHighlightState(overlay);
     }
 
@@ -587,6 +665,108 @@ export class OverlayService {
     this.emitOverlayEditEnd(entity);
     this.viewer.scene.requestRender();
     return entity;
+  }
+
+  private resolveSelectionEntity(entityOrId: OverlayEntity | Entity | string): OverlayEntity | null {
+    const entity = this.resolveOverlayEntity(entityOrId);
+    if (!entity || entity.show === false || typeof entity.id !== 'string') {
+      return null;
+    }
+
+    const overlay = this.overlays.get(entity.id);
+    if (!overlay) {
+      return null;
+    }
+
+    return overlay.getEntity() as OverlayEntity;
+  }
+
+  private commitSelection(next: OverlayEntity | null, reason: OverlaySelectionChangeReason): void {
+    const previous = this.getSelectedOverlay();
+    const previousId = previous?.id ? String(previous.id) : null;
+    const currentId = next?.id ? String(next.id) : null;
+
+    if (previousId === currentId) {
+      return;
+    }
+
+    if (this.clickHighlightTargets.length > 0) {
+      this.setHighlightTargets(this.clickHighlightTargets, 'click', false);
+    }
+    this.clickHighlightTargets = [];
+    this.selectedOverlayId = currentId;
+
+    if (next) {
+      const targets = this.getHighlightTargets(next, 'click');
+      this.clickHighlightTargets = targets;
+      if (targets.length > 0) {
+        this.setHighlightTargets(targets, 'click', true);
+      }
+    }
+
+    this.emitSelectionChange({
+      current: next,
+      previous,
+      currentId,
+      previousId,
+      reason,
+    });
+  }
+
+  private clearSelectionForOverlay(id: string): void {
+    if (this.selectedOverlayId !== id) {
+      return;
+    }
+
+    if (this.clickHighlightTargets.length > 0) {
+      this.setHighlightTargets(this.clickHighlightTargets, 'click', false);
+    }
+    this.clickHighlightTargets = [];
+    this.selectedOverlayId = null;
+  }
+
+  private emitSelectionChange(event: OverlaySelectionChangeEvent): void {
+    this.selectionListeners.forEach((listener) => {
+      try {
+        listener(event);
+      } catch (error) {
+        console.warn('[OverlayService] selection listener failed:', error);
+      }
+    });
+  }
+
+  private invokeOverlayClickCallback(entity: OverlayEntity): void {
+    if (!entity._onClick) {
+      return;
+    }
+
+    try {
+      entity._onClick(entity);
+    } catch (error) {
+      console.warn('[OverlayService] overlay click callback failed:', error);
+    }
+  }
+
+  private handlePointerSelectionClick(overlayEntity: OverlayEntity | null): void {
+    if (!overlayEntity) {
+      if (this.selectedOverlayId) {
+        this.commitSelection(null, 'empty-click');
+      } else if (this.clickHighlightTargets.length > 0) {
+        this.setHighlightTargets(this.clickHighlightTargets, 'click', false);
+        this.clickHighlightTargets = [];
+      }
+      return;
+    }
+
+    const overlayId = String(overlayEntity.id);
+    if (this.selectedOverlayId === overlayId) {
+      this.commitSelection(null, 'pointer-toggle-off');
+      this.invokeOverlayClickCallback(overlayEntity);
+      return;
+    }
+
+    this.commitSelection(overlayEntity, 'pointer-select');
+    this.invokeOverlayClickCallback(overlayEntity);
   }
 
   private suspendCameraControls(): OverlayEditCameraState {
@@ -1207,25 +1387,7 @@ export class OverlayService {
 
       this.lastClickPickAt = now;
       const overlayEntity = this.pickOverlayEntity(click.position, 'click');
-      if (!overlayEntity) {
-        this.setHighlightTargets(this.clickHighlightTargets, 'click', false);
-        this.clickHighlightTargets = [];
-        return;
-      }
-
-      const targets = this.getHighlightTargets(overlayEntity, 'click');
-      const shouldEnable = !this.isHighlightActive(overlayEntity, 'click');
-
-      if (this.clickHighlightTargets.length > 0) {
-        this.setHighlightTargets(this.clickHighlightTargets, 'click', false);
-      }
-
-      this.clickHighlightTargets = shouldEnable ? targets : [];
-      if (targets.length > 0) {
-        this.setHighlightTargets(targets, 'click', shouldEnable);
-      }
-
-      overlayEntity._onClick?.(overlayEntity);
+      this.handlePointerSelectionClick(overlayEntity);
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
   }
 
@@ -1275,7 +1437,7 @@ export class OverlayService {
           return !!root._hoverHighlight;
         }
 
-        return !!root._clickHighlight || !!root._onClick;
+        return true;
       },
     });
 
@@ -1393,19 +1555,21 @@ export class OverlayService {
   }
 
   private setEntityHighlight(entity: OverlayEntity, reason: 'click' | 'hover', enabled: boolean): void {
-    const highlightConfig = (reason === 'click' ? entity._clickHighlight : entity._hoverHighlight) || true;
     const state = entity._highlightState || {};
     state[reason] = enabled;
     entity._highlightState = state;
 
-    const shouldRemainHighlighted = !!state.click || !!state.hover;
-    if (!shouldRemainHighlighted) {
+    const activeReason = state.click ? 'click' : state.hover ? 'hover' : null;
+    if (!activeReason) {
       this.restoreEntityStyle(entity);
       entity._isHighlighted = false;
       return;
     }
 
-    this.applyEntityHighlight(entity, this.normalizeHighlightOptions(highlightConfig, reason));
+    const highlightConfig = activeReason === 'click'
+      ? entity._selectionHighlight ?? entity._clickHighlight ?? true
+      : entity._hoverHighlight || true;
+    this.applyEntityHighlight(entity, this.normalizeHighlightOptions(highlightConfig, activeReason));
     entity._isHighlighted = true;
   }
 
@@ -1425,9 +1589,7 @@ export class OverlayService {
     options: boolean | OverlayClickHighlightOptions,
     reason: 'click' | 'hover',
   ): Required<OverlayClickHighlightOptions> {
-    const defaultColor = reason === 'click'
-      ? Cesium.Color.YELLOW
-      : Cesium.Color.CYAN;
+    const defaultColor = Cesium.Color.YELLOW;
 
     if (options === true || options === false) {
       return {
@@ -1667,6 +1829,8 @@ export class OverlayService {
     this.setHighlightTargets(this.hoverHighlightTargets, 'hover', false);
     this.clickHighlightTargets = [];
     this.hoverHighlightTargets = [];
+    this.selectedOverlayId = null;
+    this.selectionListeners.clear();
 
     if (this.pendingHoverRaf !== null) {
       window.cancelAnimationFrame(this.pendingHoverRaf);

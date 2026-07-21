@@ -111,10 +111,31 @@ export class Rectangle extends BaseOverlay {
       },
     });
 
-    (this.entity as any)._innerEntity = this.innerEntity;
-    (this.entity as any)._isRing = true;
-    (this.entity as any)._ringThickness = ringThickness;
-    (this.entity as any)._outerRectangle = options.coordinates;
+    const root: any = this.entity as any;
+    const innerOverlay: any = this.innerEntity as any;
+    const group = [this.entity, this.innerEntity];
+    root._innerEntity = this.innerEntity;
+    root._isRing = true;
+    root._ringThickness = ringThickness;
+    root._outerRectangle = options.coordinates;
+    root._highlightEntities = group;
+    innerOverlay._highlightEntities = group;
+    if (options.onClick) {
+      root._onClick = options.onClick;
+      innerOverlay._onClick = options.onClick;
+    }
+    if (options.clickHighlight) {
+      root._clickHighlight = options.clickHighlight;
+      innerOverlay._clickHighlight = options.clickHighlight;
+    }
+    if (options.selectionHighlight !== undefined) {
+      root._selectionHighlight = options.selectionHighlight;
+      innerOverlay._selectionHighlight = options.selectionHighlight;
+    }
+    if (options.hoverHighlight) {
+      root._hoverHighlight = options.hoverHighlight;
+      innerOverlay._hoverHighlight = options.hoverHighlight;
+    }
   }
 
   /**

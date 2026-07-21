@@ -244,6 +244,31 @@ export class OverlayServiceAdapter {
     return this.overlayService.getAllOverlayIds();
   }
 
+  getSelectedOverlay(): Entity | null {
+    return this.overlayService.getSelectedOverlay() as Entity | null;
+  }
+
+  getSelectedOverlayId(): string | null {
+    return this.overlayService.getSelectedOverlayId();
+  }
+
+  selectOverlay(entityOrId: OverlayEntity | Entity | string | number): boolean {
+    const target = this.resolveOverlayEntity(entityOrId);
+    if (!target) {
+      return false;
+    }
+
+    return this.overlayService.selectOverlay(target);
+  }
+
+  clearSelection(): boolean {
+    return this.overlayService.clearSelection();
+  }
+
+  onSelectionChange(listener: (event: any) => void): () => void {
+    return this.overlayService.onSelectionChange(listener);
+  }
+
   toggleOverlayHighlight(
     entityOrId: OverlayEntity | Entity | string | number,
     reason: 'click' | 'hover' = 'click'

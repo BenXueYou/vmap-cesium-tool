@@ -100,6 +100,8 @@ export {
 export type {
   OverlayServiceOptions,
   OverlayPickingOptions,
+  OverlaySelectionChangeEvent,
+  OverlaySelectionChangeReason,
   OverlayPickCandidate,
   OverlayPickReason,
   OverlayPickResolverOptions,

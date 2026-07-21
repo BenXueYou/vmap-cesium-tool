@@ -22,6 +22,8 @@ export interface BaseOverlayOptions {
   onClick?: (entity: Entity) => void;
   /** 点击高亮配置 */
   clickHighlight?: boolean | OverlayClickHighlightOptions;
+  /** 选中高亮配置 */
+  selectionHighlight?: boolean | OverlayClickHighlightOptions;
   /** Hover 高亮配置 */
   hoverHighlight?: boolean | OverlayHoverHighlightOptions;
   /** 屏幕拾取业务优先级，数值越大越优先（默认 0） */
@@ -54,6 +56,8 @@ export interface OverlayEntity extends Entity {
   _onClick?: (entity: Entity) => void;
   /** 点击高亮配置 */
   _clickHighlight?: boolean | OverlayClickHighlightOptions;
+  /** 选中高亮配置 */
+  _selectionHighlight?: boolean | OverlayClickHighlightOptions;
   /** Hover 高亮配置 */
   _hoverHighlight?: boolean | OverlayHoverHighlightOptions;
   /** 屏幕拾取业务优先级 */
@@ -154,6 +158,9 @@ export abstract class BaseOverlay {
     // 设置高亮配置
     if (options.clickHighlight) {
       (this.entity as OverlayEntity)._clickHighlight = options.clickHighlight;
+    }
+    if (options.selectionHighlight !== undefined) {
+      (this.entity as OverlayEntity)._selectionHighlight = options.selectionHighlight;
     }
     if (options.hoverHighlight) {
       (this.entity as OverlayEntity)._hoverHighlight = options.hoverHighlight;

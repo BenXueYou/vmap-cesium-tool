@@ -6,7 +6,12 @@
 
 // 导出覆盖物服务
 export { OverlayService } from './OverlayService';
-export type { OverlayServiceOptions, OverlayPickingOptions } from './OverlayService';
+export type {
+  OverlayServiceOptions,
+  OverlayPickingOptions,
+  OverlaySelectionChangeEvent,
+  OverlaySelectionChangeReason,
+} from './OverlayService';
 
 export {
   resolveOverlayPickCandidates,

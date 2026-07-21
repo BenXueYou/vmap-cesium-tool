@@ -13,6 +13,8 @@ export type {
   OverlayPickRoot,
   OverlayServiceOptions,
   OverlayPickingOptions,
+  OverlaySelectionChangeEvent,
+  OverlaySelectionChangeReason,
 } from './overlay';
 
 // 导出绘制服务

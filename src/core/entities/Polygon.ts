@@ -113,8 +113,29 @@ export class Polygon extends BaseOverlay {
 
     if (options.outlineWidth && options.outlineWidth > 1) {
       this.borderEntity = this.createBorderPolyline(options);
-      (this.entity as any)._borderEntity = this.borderEntity;
-      (this.entity as any)._isThickOutline = true;
+      const root: any = this.entity as any;
+      const borderOverlay: any = this.borderEntity as any;
+      const group = [this.entity, this.borderEntity];
+      root._borderEntity = this.borderEntity;
+      root._isThickOutline = true;
+      root._highlightEntities = group;
+      borderOverlay._highlightEntities = group;
+      if (options.onClick) {
+        root._onClick = options.onClick;
+        borderOverlay._onClick = options.onClick;
+      }
+      if (options.clickHighlight) {
+        root._clickHighlight = options.clickHighlight;
+        borderOverlay._clickHighlight = options.clickHighlight;
+      }
+      if (options.selectionHighlight !== undefined) {
+        root._selectionHighlight = options.selectionHighlight;
+        borderOverlay._selectionHighlight = options.selectionHighlight;
+      }
+      if (options.hoverHighlight) {
+        root._hoverHighlight = options.hoverHighlight;
+        borderOverlay._hoverHighlight = options.hoverHighlight;
+      }
     }
 
     (this.entity as any)._overlayType = 'polygon';
@@ -190,6 +211,10 @@ export class Polygon extends BaseOverlay {
     if (options.clickHighlight) {
       root._clickHighlight = options.clickHighlight;
       borderOverlay._clickHighlight = options.clickHighlight;
+    }
+    if (options.selectionHighlight !== undefined) {
+      root._selectionHighlight = options.selectionHighlight;
+      borderOverlay._selectionHighlight = options.selectionHighlight;
     }
     if (options.hoverHighlight) {
       root._hoverHighlight = options.hoverHighlight;
