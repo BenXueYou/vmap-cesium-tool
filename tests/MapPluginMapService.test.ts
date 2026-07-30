@@ -213,4 +213,112 @@ describe('MapPlugin mapService contract', () => {
 
     fromDegreesSpy.mockRestore();
   });
+
+  it('uses component-owned tencent search in mapService mode', async () => {
+    const request = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        status: 0,
+        data: [
+          {
+            title: '滨江公园',
+            address: '杭州',
+            location: {
+              lng: 120.210792,
+              lat: 30.206992,
+            },
+          },
+        ],
+      }),
+    })) as any;
+    const plugin = new MapPlugin('map', {
+      mapService: {
+        provider: 'tencent',
+        serviceKey: 'tencent-key',
+      },
+      providerSearch: {
+        request,
+      },
+    });
+
+    const callbacks = (plugin as any).buildToolbarCallbacks({});
+    const results = await callbacks.onSearch('滨江公园');
+
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(results).toEqual([
+      expect.objectContaining({
+        name: '滨江公园',
+        address: '杭州',
+        coordSystem: 'WGS84',
+      }),
+    ]);
+  });
+
+  it('uses component-owned baidu search selection to preserve camera height and emit WGS-84 results', () => {
+    const onSearchResultSelected = vi.fn();
+    const plugin = new MapPlugin('map', {
+      mapService: {
+        provider: 'baidu',
+        serviceKey: 'baidu-ak',
+      },
+      onSearchResultSelected,
+    });
+
+    const flyTo = vi.fn();
+    (plugin as any).viewer = {
+      camera: {
+        positionCartographic: {
+          height: 3600,
+        },
+        heading: 0.1,
+        pitch: -0.5,
+        roll: 0.02,
+        flyTo,
+      },
+    };
+
+    const fromDegreesSpy = vi.spyOn(Cesium.Cartesian3, 'fromDegrees').mockReturnValue({} as Cesium.Cartesian3);
+    const selected = (plugin as any).handleMapServiceSearchSelection({
+      name: '东方明珠',
+      address: '上海',
+      longitude: 121.499809,
+      latitude: 31.239666,
+      coordSystem: 'BD09',
+    });
+
+    const expectedPoint = coordinateService.toWGS84(
+      {
+        longitude: 121.499809,
+        latitude: 31.239666,
+      },
+      'BD09',
+    );
+
+    expect(fromDegreesSpy).toHaveBeenCalledWith(
+      expect.closeTo(expectedPoint.longitude, 6),
+      expect.closeTo(expectedPoint.latitude, 6),
+      3600,
+    );
+    expect(flyTo).toHaveBeenCalledTimes(1);
+    expect(selected).toEqual({
+      provider: 'baidu',
+      name: '东方明珠',
+      address: '上海',
+      longitude: expect.closeTo(expectedPoint.longitude, 6),
+      latitude: expect.closeTo(expectedPoint.latitude, 6),
+      height: 3600,
+      coordSystem: 'WGS84',
+    });
+    expect(onSearchResultSelected).toHaveBeenCalledWith({
+      provider: 'baidu',
+      name: '东方明珠',
+      address: '上海',
+      longitude: expect.closeTo(expectedPoint.longitude, 6),
+      latitude: expect.closeTo(expectedPoint.latitude, 6),
+      height: 3600,
+      coordSystem: 'WGS84',
+    });
+
+    fromDegreesSpy.mockRestore();
+  });
 });

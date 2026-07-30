@@ -154,7 +154,12 @@ export {
 } from './core/layers';
 export { HeatmapLayer } from './adapters/HeatmapLayerAdapter';
 export { baseMapRegistry } from './core/mapProviders/registry';
-export { ProviderSearchService, createAmapSignature, normalizeMapAuth } from './core/mapProviders/ProviderSearchService';
+export {
+  ProviderSearchError,
+  ProviderSearchService,
+  createAmapSignature,
+  normalizeMapAuth,
+} from './core/mapProviders/ProviderSearchService';
 export { validateMapService } from './core/mapProviders/validation';
 export type {
   ClusterPoint,

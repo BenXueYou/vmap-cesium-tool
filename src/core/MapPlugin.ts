@@ -633,7 +633,12 @@ export class MapPlugin {
   private supportsMapServiceToolbarSearch(): boolean {
     return this.mapConfigMode === 'mapService'
       && !this.mapService.isOffline
-      && (this.mapService.provider === 'tdt' || this.mapService.provider === 'gaode');
+      && (
+        this.mapService.provider === 'tdt'
+        || this.mapService.provider === 'gaode'
+        || this.mapService.provider === 'baidu'
+        || this.mapService.provider === 'tencent'
+      );
   }
 
   private createToolbarSearchService(): ProviderSearchService | null {
@@ -712,7 +717,12 @@ export class MapPlugin {
       duration: 1.2,
     });
 
-    if (this.mapService.provider === 'tdt' || this.mapService.provider === 'gaode') {
+    if (
+      this.mapService.provider === 'tdt'
+      || this.mapService.provider === 'gaode'
+      || this.mapService.provider === 'baidu'
+      || this.mapService.provider === 'tencent'
+    ) {
       const selectedResult: MapSearchResult = {
         provider: this.mapService.provider,
         name: result.name,

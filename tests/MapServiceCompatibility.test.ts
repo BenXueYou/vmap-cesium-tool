@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { coordinateService } from '../src/core/mapProviders/coordinates/CoordinateService';
 import {
   createAmapSignature,
+  ProviderSearchError,
   ProviderSearchService,
 } from '../src/core/mapProviders/ProviderSearchService';
 import { baseMapRegistry } from '../src/core/mapProviders/registry';
@@ -263,5 +264,178 @@ describe('ProviderSearchService legacy compatibility', () => {
         coordSystem: 'WGS84',
       },
     ]);
+  });
+
+  it('normalizes baidu search results through injected proxy endpoints into WGS-84', async () => {
+    const request = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        status: 0,
+        results: [
+          {
+            name: '东方明珠',
+            address: '上海',
+            location: {
+              lng: 121.499809,
+              lat: 31.239666,
+            },
+          },
+        ],
+      }),
+    })) as any;
+    const searchService = new ProviderSearchService({
+      endpoints: {
+        baidu: 'https://proxy.example.com/baidu-search',
+      },
+      request,
+    });
+
+    const results = await searchService.search('东方明珠', resolveConfiguredMapService({
+      provider: 'baidu',
+      serviceKey: ' baidu-ak ',
+    }));
+
+    expect(request).toHaveBeenCalledTimes(1);
+    const [provider, url] = request.mock.calls[0];
+    const parsedUrl = new URL(url);
+    expect(provider).toBe('baidu');
+    expect(`${parsedUrl.origin}${parsedUrl.pathname}`).toBe('https://proxy.example.com/baidu-search');
+    expect(parsedUrl.searchParams.get('ak')).toBe('baidu-ak');
+    expect(parsedUrl.searchParams.get('query')).toBe('东方明珠');
+
+    const expectedPoint = coordinateService.toWGS84(
+      {
+        longitude: 121.499809,
+        latitude: 31.239666,
+      },
+      'BD09',
+    );
+    expect(results).toEqual([
+      expect.objectContaining({
+        name: '东方明珠',
+        address: '上海',
+        coordSystem: 'WGS84',
+      }),
+    ]);
+    expect(results[0]?.longitude).toBeCloseTo(expectedPoint.longitude, 5);
+    expect(results[0]?.latitude).toBeCloseTo(expectedPoint.latitude, 5);
+  });
+
+  it('normalizes tencent search results through injected proxy endpoints into WGS-84', async () => {
+    const request = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        status: 0,
+        data: [
+          {
+            title: '滨江公园',
+            address: '杭州',
+            location: {
+              lng: 120.210792,
+              lat: 30.206992,
+            },
+          },
+        ],
+      }),
+    })) as any;
+    const searchService = new ProviderSearchService({
+      endpoints: {
+        tencent: 'https://proxy.example.com/tencent-search',
+      },
+      request,
+    });
+
+    const results = await searchService.search('滨江公园', resolveConfiguredMapService({
+      provider: 'tencent',
+      serviceKey: ' tencent-key ',
+    }));
+
+    expect(request).toHaveBeenCalledTimes(1);
+    const [provider, url] = request.mock.calls[0];
+    const parsedUrl = new URL(url);
+    expect(provider).toBe('tencent');
+    expect(`${parsedUrl.origin}${parsedUrl.pathname}`).toBe('https://proxy.example.com/tencent-search');
+    expect(parsedUrl.searchParams.get('key')).toBe('tencent-key');
+    expect(parsedUrl.searchParams.get('keyword')).toBe('滨江公园');
+
+    const expectedPoint = coordinateService.toWGS84(
+      {
+        longitude: 120.210792,
+        latitude: 30.206992,
+      },
+      'GCJ02',
+    );
+    expect(results).toEqual([
+      expect.objectContaining({
+        name: '滨江公园',
+        address: '杭州',
+        coordSystem: 'WGS84',
+      }),
+    ]);
+    expect(results[0]?.longitude).toBeCloseTo(expectedPoint.longitude, 5);
+    expect(results[0]?.latitude).toBeCloseTo(expectedPoint.latitude, 5);
+  });
+
+  it('maps baidu permission failures to invalid credentials errors', async () => {
+    const searchService = new ProviderSearchService({
+      request: vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          status: 302,
+          message: 'AK有误请检查再重试',
+        }),
+      })) as any,
+    });
+
+    await expect(searchService.search('西湖', resolveConfiguredMapService({
+      provider: 'baidu',
+      serviceKey: 'ak',
+    }))).rejects.toMatchObject<Partial<ProviderSearchError>>({
+      name: 'ProviderSearchError',
+      provider: 'baidu',
+      code: 'INVALID_CREDENTIALS',
+      retryable: false,
+    });
+  });
+
+  it('maps tencent network failures to retryable network errors', async () => {
+    const searchService = new ProviderSearchService({
+      request: vi.fn(async () => {
+        throw new Error('network timeout while requesting provider');
+      }) as any,
+    });
+
+    await expect(searchService.search('西湖', resolveConfiguredMapService({
+      provider: 'tencent',
+      serviceKey: 'key',
+    }))).rejects.toMatchObject<Partial<ProviderSearchError>>({
+      name: 'ProviderSearchError',
+      provider: 'tencent',
+      code: 'NETWORK_ERROR',
+      retryable: true,
+    });
+  });
+
+  it('maps tencent proxy endpoint failures to proxy-required errors', async () => {
+    const searchService = new ProviderSearchService({
+      endpoints: {
+        tencent: 'https://proxy.example.com/tencent-search',
+      },
+      request: vi.fn(async () => ({
+        ok: false,
+        status: 502,
+      })) as any,
+    });
+
+    await expect(searchService.search('西湖', resolveConfiguredMapService({
+      provider: 'tencent',
+      serviceKey: 'key',
+    }))).rejects.toMatchObject<Partial<ProviderSearchError>>({
+      name: 'ProviderSearchError',
+      provider: 'tencent',
+      code: 'PROXY_REQUIRED',
+      status: 502,
+      retryable: true,
+    });
   });
 });

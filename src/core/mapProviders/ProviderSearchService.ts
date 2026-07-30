@@ -1,6 +1,11 @@
 import CryptoJS from 'crypto-js';
 import { coordinateService } from './coordinates/CoordinateService';
-import type { BaseMapConfig, BaseMapProviderId, MapAuthConfig } from './types';
+import type {
+  BaseMapConfig,
+  BaseMapProviderId,
+  MapAuthConfig,
+  MapServiceValidationCode,
+} from './types';
 import type { ProviderSearchOptions, SearchResult } from '../types';
 import {
   normalizeMapAuth,
@@ -18,6 +23,88 @@ const DEFAULT_ENDPOINTS: Partial<Record<BaseMapProviderId, string>> = {
 
 const clean = (value?: string) => (value || '').trim();
 
+const PROXY_HTTP_STATUSES = new Set([404, 407, 502, 503, 504]);
+const CLIENT_RESTRICTION_PATTERNS = [
+  'referer',
+  'referrer',
+  'domain',
+  'ip',
+  'white list',
+  'whitelist',
+  'not allowed',
+  'forbidden',
+  'blocked',
+  '限制',
+  '白名单',
+];
+const INVALID_CREDENTIAL_PATTERNS = [
+  'invalid key',
+  'invalid ak',
+  'ak有误',
+  'ak不存在',
+  'key有误',
+  'key invalid',
+  'key error',
+  'invalid credential',
+  'auth failed',
+  'permission denied',
+  'signature',
+  'sig',
+  'sn',
+  'token',
+  '鉴权',
+  '密钥',
+];
+const PROXY_PATTERNS = [
+  'proxy',
+  'gateway',
+  'upstream',
+  'bad gateway',
+  'nginx',
+  '代理',
+];
+const NETWORK_PATTERNS = [
+  'network',
+  'timeout',
+  'timed out',
+  'failed to fetch',
+  'fetch failed',
+  'econn',
+  'socket',
+  'connection',
+  'aborted',
+  '超时',
+  '网络',
+];
+
+export class ProviderSearchError extends Error {
+  readonly provider: BaseMapProviderId;
+  readonly code: MapServiceValidationCode;
+  readonly status?: number;
+  readonly retryable: boolean;
+
+  constructor(
+    provider: BaseMapProviderId,
+    code: MapServiceValidationCode,
+    message: string,
+    options: {
+      status?: number;
+      retryable?: boolean;
+      cause?: unknown;
+    } = {},
+  ) {
+    super(message);
+    this.name = 'ProviderSearchError';
+    this.provider = provider;
+    this.code = code;
+    this.status = options.status;
+    this.retryable = options.retryable ?? (code === 'NETWORK_ERROR' || code === 'SERVICE_UNAVAILABLE');
+    if ('cause' in options) {
+      (this as Error & { cause?: unknown }).cause = options.cause;
+    }
+  }
+}
+
 export function createAmapSignature(params: Record<string, string>, securityKey: string): string {
   const source = Object.keys(params).sort().map((name) => `${name}=${params[name]}`).join('&');
   return CryptoJS.MD5(CryptoJS.enc.Utf8.parse(source + clean(securityKey))).toString();
@@ -27,6 +114,72 @@ function point(longitude: number, latitude: number, source: 'WGS84' | 'GCJ02' | 
   return source === 'WGS84'
     ? { longitude, latitude }
     : coordinateService.toWGS84({ longitude, latitude }, source);
+}
+
+function includesPattern(message: string, patterns: string[]): boolean {
+  const normalized = message.toLowerCase();
+  return patterns.some((pattern) => normalized.includes(pattern));
+}
+
+function mapMessageToCode(message: string): MapServiceValidationCode {
+  if (includesPattern(message, PROXY_PATTERNS)) {
+    return 'PROXY_REQUIRED';
+  }
+  if (includesPattern(message, CLIENT_RESTRICTION_PATTERNS)) {
+    return 'CLIENT_RESTRICTION';
+  }
+  if (includesPattern(message, INVALID_CREDENTIAL_PATTERNS)) {
+    return 'INVALID_CREDENTIALS';
+  }
+  if (includesPattern(message, NETWORK_PATTERNS)) {
+    return 'NETWORK_ERROR';
+  }
+  return 'SERVICE_UNAVAILABLE';
+}
+
+function mapHttpStatusToCode(
+  status: number,
+  usedCustomEndpoint: boolean,
+): MapServiceValidationCode {
+  if (status === 401 || status === 403) {
+    return 'INVALID_CREDENTIALS';
+  }
+  if (status === 429) {
+    return 'CLIENT_RESTRICTION';
+  }
+  if (usedCustomEndpoint && PROXY_HTTP_STATUSES.has(status)) {
+    return 'PROXY_REQUIRED';
+  }
+  if (status === 407) {
+    return 'PROXY_REQUIRED';
+  }
+  return 'SERVICE_UNAVAILABLE';
+}
+
+function normalizeThrownError(
+  provider: BaseMapProviderId,
+  error: unknown,
+): ProviderSearchError {
+  if (error instanceof ProviderSearchError) {
+    return error;
+  }
+
+  const message = error instanceof Error ? error.message : String(error);
+  const code = mapMessageToCode(message);
+  return new ProviderSearchError(provider, code, message, {
+    cause: error,
+    retryable: code === 'NETWORK_ERROR' || code === 'SERVICE_UNAVAILABLE' || code === 'PROXY_REQUIRED',
+  });
+}
+
+function providerError(
+  provider: BaseMapProviderId,
+  message: string,
+): ProviderSearchError {
+  const code = mapMessageToCode(message);
+  return new ProviderSearchError(provider, code, message, {
+    retryable: code === 'NETWORK_ERROR' || code === 'SERVICE_UNAVAILABLE' || code === 'PROXY_REQUIRED',
+  });
 }
 
 export class ProviderSearchService {
@@ -48,10 +201,27 @@ export class ProviderSearchService {
     const region = this.options.defaultRegion || '全国';
     const url = this.buildUrl(endpoint, keyword, region, service);
     const requester = this.options.request || ((_provider, input, init) => fetch(input, init));
-    const response = await requester(provider, url, { mode: 'cors', credentials: 'omit' });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const data = await response.json();
-    return this.normalizeResults(provider, keyword, data);
+    const usedCustomEndpoint = clean(endpoint) !== clean(DEFAULT_ENDPOINTS[provider]);
+
+    try {
+      const response = await requester(provider, url, { mode: 'cors', credentials: 'omit' });
+      if (!response.ok) {
+        throw new ProviderSearchError(
+          provider,
+          mapHttpStatusToCode(response.status, usedCustomEndpoint),
+          `HTTP ${response.status}`,
+          {
+            status: response.status,
+            retryable: response.status >= 500 || response.status === 404 || response.status === 407,
+          },
+        );
+      }
+
+      const data = await response.json();
+      return this.normalizeResults(provider, keyword, data);
+    } catch (error) {
+      throw normalizeThrownError(provider, error);
+    }
   }
 
   private resolveService(
@@ -96,21 +266,21 @@ export class ProviderSearchService {
       return { name: item.name || query, address: item.address || '', longitude, latitude, height: 1000, coordSystem: 'WGS84' as const };
     }).filter(valid);
     if (provider === 'gaode') {
-      if (String(data?.status) !== '1') throw new Error(data?.info || 'Gaode search failed');
+      if (String(data?.status) !== '1') throw providerError(provider, data?.info || 'Gaode search failed');
       return (data.pois || []).map((item: any) => {
         const [longitude, latitude] = String(item.location || '').split(',').map(Number);
         return { name: item.name || query, address: item.address || '', ...point(longitude, latitude, 'GCJ02'), height: 1000, coordSystem: 'WGS84' as const };
       }).filter(valid);
     }
     if (provider === 'baidu') {
-      if (Number(data?.status) !== 0) throw new Error(data?.message || 'Baidu search failed');
+      if (Number(data?.status) !== 0) throw providerError(provider, data?.message || 'Baidu search failed');
       return (data.results || []).map((item: any) => ({ name: item.name || query, address: item.address || '', ...point(Number(item.location?.lng), Number(item.location?.lat), 'BD09'), height: 1000, coordSystem: 'WGS84' as const })).filter(valid);
     }
     if (provider === 'tencent') {
-      if (Number(data?.status) !== 0) throw new Error(data?.message || 'Tencent search failed');
+      if (Number(data?.status) !== 0) throw providerError(provider, data?.message || 'Tencent search failed');
       return (data.data || []).map((item: any) => ({ name: item.title || query, address: item.address || '', ...point(Number(item.location?.lng), Number(item.location?.lat), 'GCJ02'), height: 1000, coordSystem: 'WGS84' as const })).filter(valid);
     }
-    if (data?.status !== 'OK') throw new Error(data?.error_message || 'Google search failed');
+    if (data?.status !== 'OK') throw providerError(provider, data?.error_message || 'Google search failed');
     return (data.results || []).map((item: any) => ({ name: item.formatted_address || query, address: item.formatted_address || '', longitude: Number(item.geometry?.location?.lng), latitude: Number(item.geometry?.location?.lat), height: 1000, coordSystem: 'WGS84' as const })).filter(valid);
   }
 }
