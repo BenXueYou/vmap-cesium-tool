@@ -265,6 +265,19 @@ export class OverlayServiceAdapter {
     return this.overlayService.clearSelection();
   }
 
+  setOverlaySelectable(entityOrId: OverlayEntity | Entity | string | number, selectable: boolean): boolean {
+    const target = this.resolveOverlayEntity(entityOrId);
+    if (!target) {
+      return false;
+    }
+
+    return this.overlayService.setOverlaySelectable(target, selectable);
+  }
+
+  setSelectionEnabled(enabled: boolean): void {
+    this.overlayService.setSelectionEnabled(enabled);
+  }
+
   onSelectionChange(listener: (event: any) => void): () => void {
     return this.overlayService.onSelectionChange(listener);
   }

@@ -44,6 +44,15 @@ export interface OverlayPickingOptions {
     clickDebounceMs?: number;
     governorProfiles?: PickGovernorOptions['profiles'];
 }
+export type OverlaySelectionChangeReason = 'pointer-select' | 'pointer-toggle-off' | 'empty-click' | 'api-select' | 'api-clear' | 'disabled';
+export interface OverlaySelectionChangeEvent {
+    current: OverlayEntity | null;
+    previous: OverlayEntity | null;
+    currentId: string | null;
+    previousId: string | null;
+    reason: OverlaySelectionChangeReason;
+}
+type OverlaySelectionChangeListener = (event: OverlaySelectionChangeEvent) => void;
 /**
  * 覆盖物服务类
  *
@@ -82,6 +91,7 @@ export declare class OverlayService {
     private readonly picking;
     private readonly pickGovernor;
     private hoverEnabled;
+    private selectionEnabled;
     private readonly creationOrderById;
     private nextCreationOrder;
     private nextId;
@@ -89,6 +99,8 @@ export declare class OverlayService {
     private hoverHandler;
     private clickHighlightTargets;
     private hoverHighlightTargets;
+    private selectedOverlayId;
+    private readonly selectionListeners;
     private lastClickPickAt;
     private pendingHoverRaf;
     private pendingHoverPosition;
@@ -127,6 +139,34 @@ export declare class OverlayService {
      * 获取所有覆盖物 ID
      */
     getAllOverlayIds(): string[];
+    /**
+     * 获取当前选中的覆盖物根实体。
+     */
+    getSelectedOverlay(): OverlayEntity | null;
+    /**
+     * 获取当前选中的覆盖物 ID。
+     */
+    getSelectedOverlayId(): string | null;
+    /**
+     * 订阅选中态变化。
+     */
+    onSelectionChange(listener: OverlaySelectionChangeListener): () => void;
+    /**
+     * 通过实体或 ID 选中覆盖物。
+     */
+    selectOverlay(entityOrId: OverlayEntity | Entity | string): boolean;
+    /**
+     * 清空当前选中态。
+     */
+    clearSelection(): boolean;
+    /**
+     * 设置覆盖物是否允许参与 pointer / API 选中。
+     */
+    setOverlaySelectable(entityOrId: OverlayEntity | Entity | string, selectable: boolean): boolean;
+    /**
+     * 动态开启/关闭 pointer selection。
+     */
+    setSelectionEnabled(enabled: boolean): void;
     /**
      * 添加 Marker
      */
@@ -200,6 +240,12 @@ export declare class OverlayService {
     getOverlayEditModeEnabled(): boolean;
     startOverlayEdit(entityOrId: OverlayEntity | Entity | string | number, overlayEditOptions?: Record<string, any>): boolean;
     stopOverlayEdit(): Entity | null;
+    private resolveSelectionEntity;
+    private commitSelection;
+    private clearSelectionForOverlay;
+    private emitSelectionChange;
+    private invokeOverlayClickCallback;
+    private handlePointerSelectionClick;
     private suspendCameraControls;
     private restoreCameraControls;
     private releaseEditDrag;
@@ -250,6 +296,8 @@ export declare class OverlayService {
     private resolvePickedOverlayEntity;
     private resolveOverlayByPickId;
     private resolveOverlayEntity;
+    private isOverlaySelectable;
+    private isSelectionOwnedByEditTarget;
     private getHighlightTargets;
     private setHighlightTargets;
     private setEntityHighlight;

@@ -19,8 +19,12 @@ export interface BaseOverlayOptions {
     onClick?: (entity: Entity) => void;
     /** 点击高亮配置 */
     clickHighlight?: boolean | OverlayClickHighlightOptions;
+    /** 选中高亮配置 */
+    selectionHighlight?: boolean | OverlayClickHighlightOptions;
     /** Hover 高亮配置 */
     hoverHighlight?: boolean | OverlayHoverHighlightOptions;
+    /** 是否允许参与 pointer / API 选中 */
+    selectable?: boolean;
     /** 屏幕拾取业务优先级，数值越大越优先（默认 0） */
     pickPriority?: number;
     /** 自定义元数据 */
@@ -48,8 +52,14 @@ export interface OverlayEntity extends Entity {
     _onClick?: (entity: Entity) => void;
     /** 点击高亮配置 */
     _clickHighlight?: boolean | OverlayClickHighlightOptions;
+    /** 选中高亮配置 */
+    _selectionHighlight?: boolean | OverlayClickHighlightOptions;
     /** Hover 高亮配置 */
     _hoverHighlight?: boolean | OverlayHoverHighlightOptions;
+    /** 是否允许参与 pointer / API 选中 */
+    _selectable?: boolean;
+    /** 基于 legacy click 行为推导出的可选中提示 */
+    _selectableInferred?: boolean;
     /** 屏幕拾取业务优先级 */
     _pickPriority?: number;
     /** 高亮联动的实体集合 */

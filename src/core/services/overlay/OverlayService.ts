@@ -88,7 +88,8 @@ export type OverlaySelectionChangeReason =
   | 'pointer-toggle-off'
   | 'empty-click'
   | 'api-select'
-  | 'api-clear';
+  | 'api-clear'
+  | 'disabled';
 
 export interface OverlaySelectionChangeEvent {
   current: OverlayEntity | null;
@@ -177,6 +178,7 @@ export class OverlayService {
   private readonly picking: ResolvedOverlayPickingOptions;
   private readonly pickGovernor: PickGovernor;
   private hoverEnabled: boolean;
+  private selectionEnabled: boolean;
   private readonly creationOrderById = new Map<string, number>();
   private nextCreationOrder = 1;
   private nextId = 1;
@@ -230,6 +232,7 @@ export class OverlayService {
     };
     this.pickGovernor = new PickGovernor({ profiles: grouped.governorProfiles });
     this.hoverEnabled = this.picking.enabled && this.picking.hover;
+    this.selectionEnabled = true;
 
     // 初始化各个工厂
     this.markerFactory = new MarkerFactory(viewer, this);
@@ -353,6 +356,37 @@ export class OverlayService {
 
     this.commitSelection(null, 'api-clear');
     return true;
+  }
+
+  /**
+   * 设置覆盖物是否允许参与 pointer / API 选中。
+   */
+  setOverlaySelectable(entityOrId: OverlayEntity | Entity | string, selectable: boolean): boolean {
+    const entity = this.resolveOverlayEntity(entityOrId);
+    if (!entity || typeof entity.id !== 'string') {
+      return false;
+    }
+
+    const overlay = this.overlays.get(String(entity.id));
+    if (!overlay) {
+      return false;
+    }
+
+    const root = overlay.getEntity() as OverlayEntity;
+    root._selectable = !!selectable;
+
+    if (!selectable && this.selectedOverlayId === String(root.id) && !this.isSelectionOwnedByEditTarget(root)) {
+      this.commitSelection(null, 'disabled');
+    }
+
+    return true;
+  }
+
+  /**
+   * 动态开启/关闭 pointer selection。
+   */
+  setSelectionEnabled(enabled: boolean): void {
+    this.selectionEnabled = !!enabled;
   }
 
   /**
@@ -678,7 +712,12 @@ export class OverlayService {
       return null;
     }
 
-    return overlay.getEntity() as OverlayEntity;
+    const root = overlay.getEntity() as OverlayEntity;
+    if (!this.isOverlaySelectable(root)) {
+      return null;
+    }
+
+    return root;
   }
 
   private commitSelection(next: OverlayEntity | null, reason: OverlaySelectionChangeReason): void {
@@ -748,6 +787,10 @@ export class OverlayService {
   }
 
   private handlePointerSelectionClick(overlayEntity: OverlayEntity | null): void {
+    if (overlayEntity && !this.isOverlaySelectable(overlayEntity)) {
+      overlayEntity = null;
+    }
+
     if (!overlayEntity) {
       if (this.selectedOverlayId) {
         this.commitSelection(null, 'empty-click');
@@ -1376,7 +1419,7 @@ export class OverlayService {
   private setupClickHandler(): void {
     this.clickHandler = new Cesium.ScreenSpaceEventHandler(this.viewer.scene.canvas);
     this.clickHandler.setInputAction((click: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
-      if (!this.picking.enabled || !this.picking.selection) {
+      if (!this.picking.enabled || !this.picking.selection || !this.selectionEnabled) {
         return;
       }
 
@@ -1437,7 +1480,7 @@ export class OverlayService {
           return !!root._hoverHighlight;
         }
 
-        return true;
+        return this.isOverlaySelectable(root);
       },
     });
 
@@ -1536,7 +1579,39 @@ export class OverlayService {
       return this.getOverlay(entityOrId)?.getEntity() as OverlayEntity | null;
     }
 
+    const mappedOverlay = this.entityOverlayMap.get(entityOrId as Entity);
+    if (mappedOverlay) {
+      return mappedOverlay.getEntity() as OverlayEntity;
+    }
+
+    const overlayId = (entityOrId as OverlayEntity)._overlayId;
+    if (typeof overlayId === 'string') {
+      const rootOverlay = this.overlays.get(overlayId);
+      if (rootOverlay) {
+        return rootOverlay.getEntity() as OverlayEntity;
+      }
+    }
+
+    if (typeof entityOrId.id === 'string') {
+      const rootOverlay = this.overlays.get(String(entityOrId.id));
+      if (rootOverlay) {
+        return rootOverlay.getEntity() as OverlayEntity;
+      }
+    }
+
     return entityOrId as OverlayEntity;
+  }
+
+  private isOverlaySelectable(entity: OverlayEntity): boolean {
+    if (entity._selectable !== undefined) {
+      return entity._selectable;
+    }
+
+    return !!entity._selectableInferred;
+  }
+
+  private isSelectionOwnedByEditTarget(entity: OverlayEntity): boolean {
+    return !!this.overlayEditState && String(this.overlayEditState.entity.id) === String(entity.id);
   }
 
   private getHighlightTargets(entity: OverlayEntity, reason: 'click' | 'hover'): Entity[] {

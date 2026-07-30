@@ -13,6 +13,7 @@ function createRoot(id: string): FakeRoot {
     show: true,
   };
   root._highlightEntities = [root];
+  root._selectable = true;
   return root;
 }
 
@@ -34,6 +35,16 @@ function createService(roots: FakeRoot[]) {
   service.creationOrderById = new Map(roots.map((root, index) => [root.id, index + 1]));
   service.clickHighlightTargets = [];
   service.hoverHighlightTargets = [];
+  service.picking = {
+    enabled: true,
+    hover: true,
+    selection: true,
+    pickWidth: 3,
+    pickHeight: 3,
+    drillLimit: 16,
+    clickDebounceMs: 250,
+  };
+  service.selectionEnabled = true;
   service.selectedOverlayId = null;
   service.selectionListeners = new Set();
   service.highlightCache = new WeakMap();

@@ -108,6 +108,13 @@ export declare class OverlayServiceAdapter {
      * 获取所有覆盖物 ID
      */
     getAllOverlayIds(): string[];
+    getSelectedOverlay(): Entity | null;
+    getSelectedOverlayId(): string | null;
+    selectOverlay(entityOrId: OverlayEntity | Entity | string | number): boolean;
+    clearSelection(): boolean;
+    setOverlaySelectable(entityOrId: OverlayEntity | Entity | string | number, selectable: boolean): boolean;
+    setSelectionEnabled(enabled: boolean): void;
+    onSelectionChange(listener: (event: any) => void): () => void;
     toggleOverlayHighlight(entityOrId: OverlayEntity | Entity | string | number, reason?: 'click' | 'hover'): boolean;
     setOverlayHighlight(entityOrId: OverlayEntity | Entity | string | number, enabled: boolean, reason?: 'click' | 'hover'): boolean;
     /**

@@ -26,6 +26,8 @@ export interface BaseOverlayOptions {
   selectionHighlight?: boolean | OverlayClickHighlightOptions;
   /** Hover 高亮配置 */
   hoverHighlight?: boolean | OverlayHoverHighlightOptions;
+  /** 是否允许参与 pointer / API 选中 */
+  selectable?: boolean;
   /** 屏幕拾取业务优先级，数值越大越优先（默认 0） */
   pickPriority?: number;
   /** 自定义元数据 */
@@ -60,6 +62,10 @@ export interface OverlayEntity extends Entity {
   _selectionHighlight?: boolean | OverlayClickHighlightOptions;
   /** Hover 高亮配置 */
   _hoverHighlight?: boolean | OverlayHoverHighlightOptions;
+  /** 是否允许参与 pointer / API 选中 */
+  _selectable?: boolean;
+  /** 基于 legacy click 行为推导出的可选中提示 */
+  _selectableInferred?: boolean;
   /** 屏幕拾取业务优先级 */
   _pickPriority?: number;
   /** 高亮联动的实体集合 */
@@ -156,15 +162,20 @@ export abstract class BaseOverlay {
     }
     
     // 设置高亮配置
-    if (options.clickHighlight) {
+    if (options.clickHighlight !== undefined) {
       (this.entity as OverlayEntity)._clickHighlight = options.clickHighlight;
     }
     if (options.selectionHighlight !== undefined) {
       (this.entity as OverlayEntity)._selectionHighlight = options.selectionHighlight;
     }
-    if (options.hoverHighlight) {
+    if (options.hoverHighlight !== undefined) {
       (this.entity as OverlayEntity)._hoverHighlight = options.hoverHighlight;
     }
+    if (options.selectable !== undefined) {
+      (this.entity as OverlayEntity)._selectable = !!options.selectable;
+    }
+    (this.entity as OverlayEntity)._selectableInferred =
+      options.onClick !== undefined || options.clickHighlight !== undefined;
     (this.entity as OverlayEntity)._pickPriority = Number.isFinite(options.pickPriority)
       ? options.pickPriority
       : 0;
