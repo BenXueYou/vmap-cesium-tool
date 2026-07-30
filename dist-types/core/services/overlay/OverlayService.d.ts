@@ -44,7 +44,7 @@ export interface OverlayPickingOptions {
     clickDebounceMs?: number;
     governorProfiles?: PickGovernorOptions['profiles'];
 }
-export type OverlaySelectionChangeReason = 'pointer-select' | 'pointer-toggle-off' | 'empty-click' | 'api-select' | 'api-clear' | 'hidden' | 'removed' | 'disabled';
+export type OverlaySelectionChangeReason = 'pointer-select' | 'pointer-toggle-off' | 'empty-click' | 'api-select' | 'api-clear' | 'hidden' | 'removed' | 'disabled' | 'edit-start';
 export interface OverlaySelectionChangeEvent {
     current: OverlayEntity | null;
     previous: OverlayEntity | null;
@@ -106,6 +106,10 @@ export declare class OverlayService {
     private pendingHoverPosition;
     private lastHoverPosition;
     private readonly highlightCache;
+    private drawInteractionActive;
+    private cameraHoverSuspended;
+    private removeCameraMoveStartListener;
+    private removeCameraMoveEndListener;
     private overlayEditEnabled;
     private overlayEditOptions;
     private overlayEditState;
@@ -168,6 +172,10 @@ export declare class OverlayService {
      * 动态开启/关闭 pointer selection。
      */
     setSelectionEnabled(enabled: boolean): void;
+    /**
+     * 获取当前 pointer selection 开关状态。
+     */
+    isSelectionEnabled(): boolean;
     /**
      * 运行时更新覆盖物的拾取优先级。
      */
@@ -245,6 +253,11 @@ export declare class OverlayService {
      * 获取当前 hover 高亮开关状态。
      */
     isHoverEnabled(): boolean;
+    /**
+     * 标记绘制交互是否进行中。
+     * 绘制进行时暂停 hover 与 pointer selection，结束后按最近位置恢复 hover。
+     */
+    setDrawInteractionActive(active: boolean): void;
     setOverlayEditMode(enabled: boolean, overlayEditOptions?: Record<string, any>): void;
     getOverlayEditModeEnabled(): boolean;
     startOverlayEdit(entityOrId: OverlayEntity | Entity | string | number, overlayEditOptions?: Record<string, any>): boolean;
@@ -307,10 +320,18 @@ export declare class OverlayService {
     private resolveOverlayEntity;
     private isOverlaySelectable;
     private isSelectionOwnedByEditTarget;
+    private isHoverInteractionAvailable;
+    private isPointerSelectionInteractionAvailable;
     private cancelPendingHoverFrame;
     private cloneWindowPosition;
     private getLatestHoverPosition;
     private clearHoverTargets;
+    private resumeHoverAfterInteractionPause;
+    private activateSelectionForOverlayEdit;
+    private setupCameraHoverLifecycle;
+    private handleCameraMoveStart;
+    private handleCameraMoveEnd;
+    private handleCanvasPointerLeave;
     private updateHoverAtPosition;
     private getHighlightTargets;
     private setHighlightTargets;

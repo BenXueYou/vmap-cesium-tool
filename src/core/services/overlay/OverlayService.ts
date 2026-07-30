@@ -91,7 +91,8 @@ export type OverlaySelectionChangeReason =
   | 'api-clear'
   | 'hidden'
   | 'removed'
-  | 'disabled';
+  | 'disabled'
+  | 'edit-start';
 
 export interface OverlaySelectionChangeEvent {
   current: OverlayEntity | null;
@@ -195,6 +196,10 @@ export class OverlayService {
   private pendingHoverPosition: Cesium.Cartesian2 | null = null;
   private lastHoverPosition: Cesium.Cartesian2 | null = null;
   private readonly highlightCache = new WeakMap<Entity, OverlayGraphicsSnapshot>();
+  private drawInteractionActive = false;
+  private cameraHoverSuspended = false;
+  private removeCameraMoveStartListener: (() => void) | null = null;
+  private removeCameraMoveEndListener: (() => void) | null = null;
   private overlayEditEnabled = false;
   private overlayEditOptions: Record<string, any> = {};
   private overlayEditState: OverlayEditState | null = null;
@@ -254,6 +259,7 @@ export class OverlayService {
       this.setupHoverHandler();
     }
     this.setupClickHandler();
+    this.setupCameraHoverLifecycle();
   }
 
   /**
@@ -340,6 +346,10 @@ export class OverlayService {
    * 通过实体或 ID 选中覆盖物。
    */
   selectOverlay(entityOrId: OverlayEntity | Entity | string): boolean {
+    if (this.overlayEditState) {
+      this.stopOverlayEdit();
+    }
+
     const entity = this.resolveSelectionEntity(entityOrId);
     if (!entity) {
       return false;
@@ -357,6 +367,10 @@ export class OverlayService {
    * 清空当前选中态。
    */
   clearSelection(): boolean {
+    if (this.overlayEditState) {
+      this.stopOverlayEdit();
+    }
+
     if (!this.selectedOverlayId) {
       return false;
     }
@@ -397,6 +411,13 @@ export class OverlayService {
   }
 
   /**
+   * 获取当前 pointer selection 开关状态。
+   */
+  isSelectionEnabled(): boolean {
+    return this.selectionEnabled;
+  }
+
+  /**
    * 运行时更新覆盖物的拾取优先级。
    */
   setOverlayPickPriority(entityOrId: OverlayEntity | Entity | string, pickPriority: number): boolean {
@@ -420,7 +441,7 @@ export class OverlayService {
     }
 
     root._pickPriority = pickPriority;
-    if (this.hoverEnabled) {
+    if (this.isHoverInteractionAvailable()) {
       this.refreshHover();
     }
 
@@ -431,7 +452,7 @@ export class OverlayService {
    * 基于最近一次有效鼠标位置立即重算 hover。
    */
   refreshHover(): boolean {
-    if (!this.hoverEnabled) {
+    if (!this.isHoverInteractionAvailable()) {
       return false;
     }
 
@@ -616,6 +637,7 @@ export class OverlayService {
     this.hoverEnabled = this.picking.enabled && this.picking.hover && next;
 
     if (!next) {
+      this.cancelPendingHoverFrame();
       this.setHighlightTargets(this.hoverHighlightTargets, 'hover', false);
       this.hoverHighlightTargets = [];
       return;
@@ -624,6 +646,8 @@ export class OverlayService {
     if (this.hoverEnabled && this.hoverHandler === null) {
       this.setupHoverHandler();
     }
+
+    this.resumeHoverAfterInteractionPause();
   }
 
   /**
@@ -631,6 +655,26 @@ export class OverlayService {
    */
   isHoverEnabled(): boolean {
     return this.hoverEnabled;
+  }
+
+  /**
+   * 标记绘制交互是否进行中。
+   * 绘制进行时暂停 hover 与 pointer selection，结束后按最近位置恢复 hover。
+   */
+  setDrawInteractionActive(active: boolean): void {
+    const next = !!active;
+    if (this.drawInteractionActive === next) {
+      return;
+    }
+
+    this.drawInteractionActive = next;
+    if (next) {
+      this.cancelPendingHoverFrame();
+      this.clearHoverTargets();
+      return;
+    }
+
+    this.resumeHoverAfterInteractionPause();
   }
 
   setOverlayEditMode(enabled: boolean, overlayEditOptions?: Record<string, any>): void {
@@ -693,6 +737,7 @@ export class OverlayService {
 
     state.handles = this.createEditHandles(state);
     this.overlayEditState = state;
+    this.activateSelectionForOverlayEdit(target);
 
     handler.setInputAction((click: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
       const picked = this.viewer.scene.pick(click.position);
@@ -753,6 +798,7 @@ export class OverlayService {
     this.overlayEditState = null;
     this.overlayEditEnabled = false;
     this.emitOverlayEditEnd(entity);
+    this.resumeHoverAfterInteractionPause();
     this.viewer.scene.requestRender();
     return entity;
   }
@@ -1406,17 +1452,20 @@ export class OverlayService {
     this.hoverHandler = new Cesium.ScreenSpaceEventHandler(this.viewer.scene.canvas);
 
     this.hoverHandler.setInputAction((movement: Cesium.ScreenSpaceEventHandler.MotionEvent) => {
-      if (!this.hoverEnabled) {
+      if (!movement.endPosition) {
+        this.handleCanvasPointerLeave();
+        return;
+      }
+
+      const nextPosition = this.cloneWindowPosition(movement.endPosition);
+      if (!this.isHoverInteractionAvailable()) {
+        this.lastHoverPosition = nextPosition;
+        this.pendingHoverPosition = null;
         this.clearHoverTargets();
         return;
       }
 
-      if (!movement.endPosition) {
-        this.clearHoverTargets(true);
-        return;
-      }
-
-      this.pendingHoverPosition = this.cloneWindowPosition(movement.endPosition);
+      this.pendingHoverPosition = nextPosition;
       if (this.pendingHoverRaf !== null) {
         return;
       }
@@ -1426,7 +1475,7 @@ export class OverlayService {
 
         const pickPosition = this.pendingHoverPosition;
         this.pendingHoverPosition = null;
-        if (!this.hoverEnabled) {
+        if (!this.isHoverInteractionAvailable()) {
           this.clearHoverTargets();
           return;
         }
@@ -1439,8 +1488,7 @@ export class OverlayService {
     }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
 
     this.viewer.scene.canvas.addEventListener('mouseleave', () => {
-      this.cancelPendingHoverFrame();
-      this.clearHoverTargets(true);
+      this.handleCanvasPointerLeave();
     });
   }
 
@@ -1450,7 +1498,7 @@ export class OverlayService {
   private setupClickHandler(): void {
     this.clickHandler = new Cesium.ScreenSpaceEventHandler(this.viewer.scene.canvas);
     this.clickHandler.setInputAction((click: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
-      if (!this.picking.enabled || !this.picking.selection || !this.selectionEnabled) {
+      if (!this.isPointerSelectionInteractionAvailable()) {
         return;
       }
 
@@ -1645,6 +1693,20 @@ export class OverlayService {
     return !!this.overlayEditState && String(this.overlayEditState.entity.id) === String(entity.id);
   }
 
+  private isHoverInteractionAvailable(): boolean {
+    return this.hoverEnabled && !this.drawInteractionActive && !this.cameraHoverSuspended && !this.overlayEditState;
+  }
+
+  private isPointerSelectionInteractionAvailable(): boolean {
+    return (
+      this.picking.enabled &&
+      this.picking.selection &&
+      this.selectionEnabled &&
+      !this.drawInteractionActive &&
+      !this.overlayEditState
+    );
+  }
+
   private cancelPendingHoverFrame(): void {
     if (this.pendingHoverRaf !== null) {
       globalThis.cancelAnimationFrame?.(this.pendingHoverRaf);
@@ -1679,6 +1741,56 @@ export class OverlayService {
       this.pendingHoverPosition = null;
       this.lastHoverPosition = null;
     }
+  }
+
+  private resumeHoverAfterInteractionPause(): void {
+    if (!this.isHoverInteractionAvailable()) {
+      return;
+    }
+
+    this.refreshHover();
+  }
+
+  private activateSelectionForOverlayEdit(entity: OverlayEntity): void {
+    this.cancelPendingHoverFrame();
+    this.clearHoverTargets();
+    this.commitSelection(entity, 'edit-start');
+  }
+
+  private setupCameraHoverLifecycle(): void {
+    const moveStart = (this.viewer.camera?.moveStart as { addEventListener?: (listener: () => void) => (() => void) | void })?.addEventListener;
+    if (typeof moveStart === 'function') {
+      this.removeCameraMoveStartListener = moveStart.call(this.viewer.camera.moveStart, () => {
+        this.handleCameraMoveStart();
+      }) ?? null;
+    }
+
+    const moveEnd = (this.viewer.camera?.moveEnd as { addEventListener?: (listener: () => void) => (() => void) | void })?.addEventListener;
+    if (typeof moveEnd === 'function') {
+      this.removeCameraMoveEndListener = moveEnd.call(this.viewer.camera.moveEnd, () => {
+        this.handleCameraMoveEnd();
+      }) ?? null;
+    }
+  }
+
+  private handleCameraMoveStart(): void {
+    this.cameraHoverSuspended = true;
+    this.cancelPendingHoverFrame();
+    this.clearHoverTargets();
+  }
+
+  private handleCameraMoveEnd(): void {
+    if (!this.cameraHoverSuspended) {
+      return;
+    }
+
+    this.cameraHoverSuspended = false;
+    this.resumeHoverAfterInteractionPause();
+  }
+
+  private handleCanvasPointerLeave(): void {
+    this.cancelPendingHoverFrame();
+    this.clearHoverTargets(true);
   }
 
   private updateHoverAtPosition(
@@ -2009,6 +2121,11 @@ export class OverlayService {
       globalThis.cancelAnimationFrame?.(this.pendingHoverRaf);
       this.pendingHoverRaf = null;
     }
+
+    this.removeCameraMoveStartListener?.();
+    this.removeCameraMoveStartListener = null;
+    this.removeCameraMoveEndListener?.();
+    this.removeCameraMoveEndListener = null;
 
     this.clickHandler?.destroy();
     this.clickHandler = null;

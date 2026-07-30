@@ -15,6 +15,8 @@ export declare class MarkService {
     private editEnabled;
     private editState;
     private readonly continuous;
+    private drawSuspendedOverlayHover;
+    private drawSuspendedOverlaySelection;
     constructor(viewer: Cesium.Viewer, options?: MarkServiceOptions, drawService?: DrawService, overlayService?: OverlayService);
     startDrawing(type: MarkDrawType, options?: MarkDrawOptions): void;
     drawPoint(options?: MarkDrawOptions): void;
@@ -36,6 +38,8 @@ export declare class MarkService {
     getEntities(): Cesium.Entity[];
     exportData(outputCoordSystem?: 'WGS84' | 'GCJ02' | 'BD09'): MarkExportItem[];
     destroy(): void;
+    private suspendOverlayInteractionsForDraw;
+    private resumeOverlayInteractionsAfterDraw;
     private stripAuxiliary;
     private attachMetadata;
     private getMetadata;

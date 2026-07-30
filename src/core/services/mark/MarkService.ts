@@ -45,6 +45,8 @@ export class MarkService {
   private editEnabled = false;
   private editState: EditState | null = null;
   private readonly continuous: boolean;
+  private drawSuspendedOverlayHover: boolean | null = null;
+  private drawSuspendedOverlaySelection: boolean | null = null;
 
   constructor(
     private readonly viewer: Cesium.Viewer,
@@ -77,6 +79,7 @@ export class MarkService {
 
       const context = this.activeDrawContext;
       this.activeDrawContext = null;
+      this.resumeOverlayInteractionsAfterDraw();
       if (!result) {
         options.callbacks?.onDrawEnd?.(null);
         context.options.onComplete?.(null);
@@ -114,6 +117,7 @@ export class MarkService {
       return;
     }
 
+    this.suspendOverlayInteractionsForDraw();
     this.activeDrawContext = { type, options };
     const drawOptions = {
       lineColor: options.color || this.colors[type],
@@ -135,6 +139,7 @@ export class MarkService {
 
   drawPoint(options: MarkDrawOptions = {}): void {
     this.stopDraw();
+    this.suspendOverlayInteractionsForDraw();
     this.activeDrawContext = { type: 'point', options };
     this.callbacks?.onDrawStart?.('point');
     this.pointController.activate({
@@ -157,6 +162,7 @@ export class MarkService {
         this.entities.set(String(entity.id), entity);
         const result = buildMarkDrawResult(entity, options.outputCoordSystem || 'WGS84');
         this.activeDrawContext = null;
+        this.resumeOverlayInteractionsAfterDraw();
         this.callbacks?.onDrawEnd?.(result);
         options.onComplete?.(result);
       },
@@ -179,6 +185,7 @@ export class MarkService {
     this.pointController.deactivate();
     this.drawService.cancelDrawing();
     this.activeDrawContext = null;
+    this.resumeOverlayInteractionsAfterDraw();
   }
 
   cancelDrawing(): void {
@@ -329,6 +336,32 @@ export class MarkService {
     this.stopDraw();
     this.stopEdit();
     this.toolbar?.destroy();
+  }
+
+  private suspendOverlayInteractionsForDraw(): void {
+    if (this.drawSuspendedOverlayHover !== null) {
+      return;
+    }
+
+    this.drawSuspendedOverlayHover = this.overlayService.isHoverEnabled();
+    this.drawSuspendedOverlaySelection = this.overlayService.isSelectionEnabled();
+    this.overlayService.setDrawInteractionActive(true);
+  }
+
+  private resumeOverlayInteractionsAfterDraw(): void {
+    if (this.drawSuspendedOverlayHover === null || this.drawSuspendedOverlaySelection === null) {
+      return;
+    }
+
+    this.overlayService.setDrawInteractionActive(false);
+    if (!this.drawSuspendedOverlayHover) {
+      this.overlayService.setHoverEnabled(false);
+    }
+    if (!this.drawSuspendedOverlaySelection) {
+      this.overlayService.setSelectionEnabled(false);
+    }
+    this.drawSuspendedOverlayHover = null;
+    this.drawSuspendedOverlaySelection = null;
   }
 
   private stripAuxiliary(entity: Cesium.Entity): void {
