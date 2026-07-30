@@ -18,8 +18,14 @@ const DEFAULT_ENDPOINTS: Partial<Record<BaseMapProviderId, string>> = {
   gaode: 'https://restapi.amap.com/v3/place/text',
   tencent: 'https://apis.map.qq.com/ws/place/v1/search',
   baidu: 'https://api.map.baidu.com/place/v2/search',
-  google: 'https://maps.googleapis.com/maps/api/geocode/json',
+  google: 'https://places.googleapis.com/v1/places:searchText',
 };
+
+const GOOGLE_PLACES_FIELD_MASK = [
+  'places.displayName',
+  'places.formattedAddress',
+  'places.location',
+].join(',');
 
 const clean = (value?: string) => (value || '').trim();
 
@@ -27,6 +33,8 @@ const PROXY_HTTP_STATUSES = new Set([404, 407, 502, 503, 504]);
 const CLIENT_RESTRICTION_PATTERNS = [
   'referer',
   'referrer',
+  'referer restrictions',
+  'referrer restrictions',
   'domain',
   'ip',
   'white list',
@@ -34,17 +42,25 @@ const CLIENT_RESTRICTION_PATTERNS = [
   'not allowed',
   'forbidden',
   'blocked',
+  'billing',
+  'api has not been used',
+  'has not been used in project',
+  'is not enabled',
   '限制',
   '白名单',
 ];
 const INVALID_CREDENTIAL_PATTERNS = [
   'invalid key',
+  'invalid api key',
   'invalid ak',
   'ak有误',
   'ak不存在',
   'key有误',
   'key invalid',
   'key error',
+  'api key not valid',
+  'unregistered callers',
+  'request denied',
   'invalid credential',
   'auth failed',
   'permission denied',
@@ -140,8 +156,13 @@ function mapMessageToCode(message: string): MapServiceValidationCode {
 function mapHttpStatusToCode(
   status: number,
   usedCustomEndpoint: boolean,
+  message = '',
 ): MapServiceValidationCode {
   if (status === 401 || status === 403) {
+    const messageCode = message ? mapMessageToCode(message) : null;
+    if (messageCode && messageCode !== 'SERVICE_UNAVAILABLE') {
+      return messageCode;
+    }
     return 'INVALID_CREDENTIALS';
   }
   if (status === 429) {
@@ -182,6 +203,51 @@ function providerError(
   });
 }
 
+function parseJsonText(text: string): any {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}
+
+function extractErrorMessage(payload: any, fallback: string): string {
+  if (typeof payload === 'string' && payload.trim()) {
+    return payload.trim();
+  }
+  if (payload && typeof payload === 'object') {
+    const nested = [
+      payload.error?.message,
+      payload.error_message,
+      payload.message,
+      payload.info,
+      payload.statusMessage,
+    ].find((value) => typeof value === 'string' && value.trim());
+    if (nested) {
+      return nested.trim();
+    }
+  }
+  return fallback;
+}
+
+async function readErrorMessage(response: Response, fallback: string): Promise<string> {
+  if (typeof response.text !== 'function') {
+    return fallback;
+  }
+  const text = await response.text();
+  if (!text.trim()) {
+    return fallback;
+  }
+
+  const payload = parseJsonText(text);
+  return extractErrorMessage(payload ?? text, fallback);
+}
+
+interface RequestDescriptor {
+  input: string;
+  init: RequestInit;
+}
+
 export class ProviderSearchService {
   constructor(private options: ProviderSearchOptions = {}) {}
 
@@ -199,17 +265,18 @@ export class ProviderSearchService {
     const endpoint = this.options.endpoints?.[provider] || DEFAULT_ENDPOINTS[provider];
     if (!endpoint) return [];
     const region = this.options.defaultRegion || '全国';
-    const url = this.buildUrl(endpoint, keyword, region, service);
+    const requestDescriptor = this.buildRequest(endpoint, keyword, region, service);
     const requester = this.options.request || ((_provider, input, init) => fetch(input, init));
     const usedCustomEndpoint = clean(endpoint) !== clean(DEFAULT_ENDPOINTS[provider]);
 
     try {
-      const response = await requester(provider, url, { mode: 'cors', credentials: 'omit' });
+      const response = await requester(provider, requestDescriptor.input, requestDescriptor.init);
       if (!response.ok) {
+        const message = await readErrorMessage(response, `HTTP ${response.status}`);
         throw new ProviderSearchError(
           provider,
-          mapHttpStatusToCode(response.status, usedCustomEndpoint),
-          `HTTP ${response.status}`,
+          mapHttpStatusToCode(response.status, usedCustomEndpoint, message),
+          message,
           {
             status: response.status,
             retryable: response.status >= 500 || response.status === 404 || response.status === 407,
@@ -238,7 +305,12 @@ export class ProviderSearchService {
     });
   }
 
-  private buildUrl(endpoint: string, query: string, region: string, service: ResolvedMapService) {
+  private buildRequest(
+    endpoint: string,
+    query: string,
+    region: string,
+    service: ResolvedMapService,
+  ): RequestDescriptor {
     const provider = service.provider;
     let params: Record<string, string>;
     if (provider === 'tdt') {
@@ -255,9 +327,34 @@ export class ProviderSearchService {
     } else if (provider === 'tencent') {
       params = { boundary: `region(${region},0)`, keyword: query, key: service.credentials.serviceKey };
     } else {
-      params = { address: query, key: service.credentials.serviceKey };
+      return {
+        input: endpoint,
+        init: {
+          method: 'POST',
+          mode: 'cors',
+          credentials: 'omit',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Goog-Api-Key': service.credentials.serviceKey,
+            'X-Goog-FieldMask': GOOGLE_PLACES_FIELD_MASK,
+          },
+          body: JSON.stringify({
+            textQuery: query,
+            languageCode: 'zh-CN',
+            regionCode: 'CN',
+            maxResultCount: 10,
+          }),
+        },
+      };
     }
-    return `${endpoint}?${new URLSearchParams(params).toString()}`;
+    return {
+      input: `${endpoint}?${new URLSearchParams(params).toString()}`,
+      init: {
+        method: 'GET',
+        mode: 'cors',
+        credentials: 'omit',
+      },
+    };
   }
 
   private normalizeResults(provider: BaseMapProviderId, query: string, data: any): SearchResult[] {
@@ -280,8 +377,15 @@ export class ProviderSearchService {
       if (Number(data?.status) !== 0) throw providerError(provider, data?.message || 'Tencent search failed');
       return (data.data || []).map((item: any) => ({ name: item.title || query, address: item.address || '', ...point(Number(item.location?.lng), Number(item.location?.lat), 'GCJ02'), height: 1000, coordSystem: 'WGS84' as const })).filter(valid);
     }
-    if (data?.status !== 'OK') throw providerError(provider, data?.error_message || 'Google search failed');
-    return (data.results || []).map((item: any) => ({ name: item.formatted_address || query, address: item.formatted_address || '', longitude: Number(item.geometry?.location?.lng), latitude: Number(item.geometry?.location?.lat), height: 1000, coordSystem: 'WGS84' as const })).filter(valid);
+    if (data?.error) throw providerError(provider, extractErrorMessage(data, 'Google search failed'));
+    return (data?.places || []).map((item: any) => ({
+      name: item.displayName?.text || query,
+      address: item.formattedAddress || '',
+      longitude: Number(item.location?.longitude),
+      latitude: Number(item.location?.latitude),
+      height: 1000,
+      coordSystem: 'WGS84' as const,
+    })).filter(valid);
   }
 }
 

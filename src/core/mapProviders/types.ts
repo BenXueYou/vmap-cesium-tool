@@ -49,6 +49,7 @@ export interface MapServiceValidationResult {
 export interface MapServiceValidationOptions {
   request?: (provider: MapServiceProvider, url: string, init?: RequestInit) => Promise<Response>;
   tdtValidationUrl?: string;
+  googleValidationUrl?: string;
   privateProbeCoordinates?: {
     z: number;
     x: number;

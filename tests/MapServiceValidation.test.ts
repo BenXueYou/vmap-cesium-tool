@@ -146,4 +146,101 @@ describe('validateMapService', () => {
       },
     });
   });
+
+  it('validates google basemap reachability through createSession and keeps search in notChecked state', async () => {
+    const request = vi.fn(async () => new Response(JSON.stringify({
+      session: 'google-session-token',
+    }), {
+      status: 200,
+      headers: {
+        'content-type': 'application/json',
+      },
+    }));
+
+    const result = await validateMapService(
+      {
+        provider: 'google',
+        serviceKey: ' google-key ',
+      },
+      {
+        request,
+      },
+    );
+
+    expect(request).toHaveBeenCalledTimes(1);
+    const [provider, url, init] = request.mock.calls[0];
+    expect(provider).toBe('google');
+    expect(url).toBe('https://tile.googleapis.com/v1/createSession?key=google-key');
+    expect(init).toMatchObject({
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    expect(JSON.parse(init.body)).toEqual({
+      mapType: 'satellite',
+      language: 'zh-CN',
+      region: 'CN',
+    });
+    expect(result).toEqual({
+      ok: true,
+      provider: 'google',
+      capabilities: {
+        basemap: {
+          status: 'available',
+          credentialVerified: true,
+        },
+        search: {
+          status: 'notChecked',
+          requiresEnablement: true,
+          requiredProduct: 'Google Places API (New) / Text Search',
+          setupUrl: 'https://developers.google.com/maps/documentation/places/web-service/text-search',
+          message: '底图校验不包含地点搜索；使用工具栏搜索前请确认已启用 Google Places API (New)。',
+        },
+      },
+    });
+  });
+
+  it('maps google createSession restriction failures to client restriction status', async () => {
+    const request = vi.fn(async () => new Response(JSON.stringify({
+      error: {
+        message: 'API keys with referer restrictions cannot be used with this API.',
+      },
+    }), {
+      status: 403,
+      headers: {
+        'content-type': 'application/json',
+      },
+    }));
+
+    const result = await validateMapService(
+      {
+        provider: 'google',
+        serviceKey: 'google-key',
+      },
+      {
+        request,
+      },
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      provider: 'google',
+      code: 'CLIENT_RESTRICTION',
+      capabilities: {
+        basemap: {
+          status: 'unavailable',
+          credentialVerified: true,
+          message: 'API keys with referer restrictions cannot be used with this API.',
+        },
+        search: {
+          status: 'notChecked',
+          requiresEnablement: true,
+          requiredProduct: 'Google Places API (New) / Text Search',
+          setupUrl: 'https://developers.google.com/maps/documentation/places/web-service/text-search',
+          message: '底图校验不包含地点搜索；使用工具栏搜索前请确认已启用 Google Places API (New)。',
+        },
+      },
+    });
+  });
 });

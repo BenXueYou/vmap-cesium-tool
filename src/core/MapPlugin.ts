@@ -638,6 +638,7 @@ export class MapPlugin {
         || this.mapService.provider === 'gaode'
         || this.mapService.provider === 'baidu'
         || this.mapService.provider === 'tencent'
+        || this.mapService.provider === 'google'
       );
   }
 
@@ -722,6 +723,7 @@ export class MapPlugin {
       || this.mapService.provider === 'gaode'
       || this.mapService.provider === 'baidu'
       || this.mapService.provider === 'tencent'
+      || this.mapService.provider === 'google'
     ) {
       const selectedResult: MapSearchResult = {
         provider: this.mapService.provider,

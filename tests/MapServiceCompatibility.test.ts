@@ -376,6 +376,90 @@ describe('ProviderSearchService legacy compatibility', () => {
     expect(results[0]?.latitude).toBeCloseTo(expectedPoint.latitude, 5);
   });
 
+  it('uses Google Places Text Search with POST and normalizes WGS-84 results', async () => {
+    const request = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        places: [
+          {
+            displayName: {
+              text: '杭州西湖',
+            },
+            formattedAddress: '中国浙江省杭州市西湖区',
+            location: {
+              longitude: 120.153576,
+              latitude: 30.243382,
+            },
+          },
+        ],
+      }),
+    })) as any;
+    const searchService = new ProviderSearchService({
+      endpoints: {
+        google: 'https://proxy.example.com/google-places',
+      },
+      request,
+    });
+
+    const results = await searchService.search('杭州西湖', resolveConfiguredMapService({
+      provider: 'google',
+      serviceKey: ' google-key ',
+    }));
+
+    expect(request).toHaveBeenCalledTimes(1);
+    const [provider, url, init] = request.mock.calls[0];
+    expect(provider).toBe('google');
+    expect(url).toBe('https://proxy.example.com/google-places');
+    expect(init).toMatchObject({
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': 'google-key',
+        'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.location',
+      },
+    });
+    expect(JSON.parse(init.body)).toEqual({
+      textQuery: '杭州西湖',
+      languageCode: 'zh-CN',
+      regionCode: 'CN',
+      maxResultCount: 10,
+    });
+    expect(results).toEqual([
+      {
+        name: '杭州西湖',
+        address: '中国浙江省杭州市西湖区',
+        longitude: 120.153576,
+        latitude: 30.243382,
+        height: 1000,
+        coordSystem: 'WGS84',
+      },
+    ]);
+  });
+
+  it('maps Google Places referrer restriction failures to client restriction errors', async () => {
+    const searchService = new ProviderSearchService({
+      request: vi.fn(async () => ({
+        ok: false,
+        status: 403,
+        text: async () => JSON.stringify({
+          error: {
+            message: 'API keys with referer restrictions cannot be used with this API.',
+          },
+        }),
+      })) as any,
+    });
+
+    await expect(searchService.search('西湖', resolveConfiguredMapService({
+      provider: 'google',
+      serviceKey: 'google-key',
+    }))).rejects.toMatchObject<Partial<ProviderSearchError>>({
+      name: 'ProviderSearchError',
+      provider: 'google',
+      code: 'CLIENT_RESTRICTION',
+      status: 403,
+    });
+  });
+
   it('maps baidu permission failures to invalid credentials errors', async () => {
     const searchService = new ProviderSearchService({
       request: vi.fn(async () => ({

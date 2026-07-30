@@ -11,6 +11,7 @@ import {
 } from './mapService';
 
 const DEFAULT_TDT_VALIDATION_URL = 'https://t0.tianditu.gov.cn/img_w/wmts';
+const DEFAULT_GOOGLE_VALIDATION_URL = 'https://tile.googleapis.com/v1/createSession';
 const ONLINE_PROVIDERS: MapServiceProvider[] = ['tdt', 'gaode', 'tencent', 'baidu', 'google', 'private'];
 
 const SEARCH_CAPABILITY_BY_PROVIDER: Record<MapServiceProvider, MapServiceValidationResult['capabilities']['search']> = {
@@ -128,6 +129,31 @@ function createPrivateProbeUrl(
     .replace(/\{reverseY\}/gi, String(coordinates.y));
 }
 
+function createGoogleValidationUrl(
+  serviceKey: string,
+  endpoint = DEFAULT_GOOGLE_VALIDATION_URL,
+): string {
+  const url = new URL(endpoint);
+  url.searchParams.set('key', serviceKey);
+  return url.toString();
+}
+
+function createGoogleValidationInit(): RequestInit {
+  return {
+    method: 'POST',
+    mode: 'cors',
+    credentials: 'omit',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      mapType: 'satellite',
+      language: 'zh-CN',
+      region: 'CN',
+    }),
+  };
+}
+
 function mapHttpStatusToCode(status: number, provider: MapServiceProvider): MapServiceValidationCode {
   if (status === 401 || status === 403) {
     return provider === 'private' ? 'CLIENT_RESTRICTION' : 'INVALID_CREDENTIALS';
@@ -152,41 +178,110 @@ function mapThrownErrorToCode(error: unknown): MapServiceValidationCode {
   return 'NETWORK_ERROR';
 }
 
+function parseJsonText(text: string): any {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}
+
+function extractErrorMessage(payload: any, fallback: string): string {
+  if (typeof payload === 'string' && payload.trim()) {
+    return payload.trim();
+  }
+  if (payload && typeof payload === 'object') {
+    const message = [
+      payload.error?.message,
+      payload.error_message,
+      payload.message,
+      payload.info,
+    ].find((value) => typeof value === 'string' && value.trim());
+    if (message) {
+      return message.trim();
+    }
+  }
+  return fallback;
+}
+
+function mapGoogleMessageToCode(message: string): MapServiceValidationCode {
+  const normalized = message.toLowerCase();
+  if (
+    normalized.includes('referer')
+    || normalized.includes('referrer')
+    || normalized.includes('billing')
+    || normalized.includes('not enabled')
+    || normalized.includes('has not been used')
+  ) {
+    return 'CLIENT_RESTRICTION';
+  }
+  if (
+    normalized.includes('api key')
+    || normalized.includes('unregistered callers')
+    || normalized.includes('permission denied')
+  ) {
+    return 'INVALID_CREDENTIALS';
+  }
+  return 'SERVICE_UNAVAILABLE';
+}
+
 async function validateWithRequest(
   provider: MapServiceProvider,
   url: string,
   options: MapServiceValidationOptions,
+  init?: RequestInit,
 ): Promise<MapServiceValidationResult> {
   const request = options.request || ((_provider: MapServiceProvider, input: string, init?: RequestInit) => fetch(input, init));
 
   try {
-    const response = await request(provider, url, {
+    const response = await request(provider, url, init || {
       method: 'GET',
       mode: 'cors',
       credentials: 'omit',
     });
 
     if (response.ok) {
+      const payload = provider === 'google' ? await response.json().catch(() => ({})) : undefined;
+      if (provider === 'google' && !payload?.session) {
+        return createResult(provider, {
+          ok: false,
+          code: 'SERVICE_UNAVAILABLE',
+          capabilities: {
+            basemap: {
+              status: 'unavailable',
+              credentialVerified: true,
+              message: 'Google session 返回缺少 session',
+            },
+          },
+        });
+      }
+
       return createResult(provider, {
         ok: true,
         capabilities: {
           basemap: {
             status: 'available',
-            credentialVerified: provider === 'tdt' ? true : undefined,
+            credentialVerified: provider === 'tdt' || provider === 'google' ? true : undefined,
           },
         },
       });
     }
 
-    const code = mapHttpStatusToCode(response.status, provider);
+    const message = await response.text().then((text) => {
+      const payload = parseJsonText(text);
+      return extractErrorMessage(payload ?? text, `底图校验请求返回 HTTP ${response.status}`);
+    });
+    const code = provider === 'google'
+      ? mapGoogleMessageToCode(message)
+      : mapHttpStatusToCode(response.status, provider);
     return createResult(provider, {
       ok: false,
       code,
       capabilities: {
         basemap: {
           status: 'unavailable',
-          credentialVerified: provider === 'tdt' ? true : undefined,
-          message: `底图校验请求返回 HTTP ${response.status}`,
+          credentialVerified: provider === 'tdt' || provider === 'google' ? true : undefined,
+          message,
         },
       },
     });
@@ -232,6 +327,18 @@ export async function validateMapService(
           options.tdtValidationUrl,
         ),
         options,
+      );
+    }
+
+    if (normalized.provider === 'google') {
+      return await validateWithRequest(
+        'google',
+        createGoogleValidationUrl(
+          normalized.serviceKey,
+          options.googleValidationUrl,
+        ),
+        options,
+        createGoogleValidationInit(),
       );
     }
 

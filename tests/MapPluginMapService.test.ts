@@ -254,6 +254,94 @@ describe('MapPlugin mapService contract', () => {
     ]);
   });
 
+  it('uses component-owned google places search in mapService mode and emits standardized selection results', async () => {
+    const request = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        places: [
+          {
+            displayName: {
+              text: '杭州西湖',
+            },
+            formattedAddress: '中国浙江省杭州市西湖区',
+            location: {
+              longitude: 120.153576,
+              latitude: 30.243382,
+            },
+          },
+        ],
+      }),
+    })) as any;
+    const onSearchResultSelected = vi.fn();
+    const legacyOnSelect = vi.fn();
+    const plugin = new MapPlugin('map', {
+      mapService: {
+        provider: 'google',
+        serviceKey: 'google-key',
+      },
+      providerSearch: {
+        request,
+      },
+      onSearchResultSelected,
+    });
+
+    const callbacks = (plugin as any).buildToolbarCallbacks({
+      onSelect: legacyOnSelect,
+    });
+    const results = await callbacks.onSearch('杭州西湖');
+
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(results).toEqual([
+      {
+        name: '杭州西湖',
+        address: '中国浙江省杭州市西湖区',
+        longitude: 120.153576,
+        latitude: 30.243382,
+        height: 1000,
+        coordSystem: 'WGS84',
+      },
+    ]);
+
+    const flyTo = vi.fn();
+    (plugin as any).viewer = {
+      camera: {
+        positionCartographic: {
+          height: 5200,
+        },
+        heading: 0.4,
+        pitch: -0.8,
+        roll: 0.03,
+        flyTo,
+      },
+    };
+
+    const fromDegreesSpy = vi.spyOn(Cesium.Cartesian3, 'fromDegrees').mockReturnValue({} as Cesium.Cartesian3);
+    await callbacks.onResultSelect?.(results[0]);
+
+    expect(fromDegreesSpy).toHaveBeenCalledWith(120.153576, 30.243382, 5200);
+    expect(flyTo).toHaveBeenCalledTimes(1);
+    expect(legacyOnSelect).toHaveBeenCalledWith({
+      provider: 'google',
+      name: '杭州西湖',
+      address: '中国浙江省杭州市西湖区',
+      longitude: 120.153576,
+      latitude: 30.243382,
+      height: 5200,
+      coordSystem: 'WGS84',
+    });
+    expect(onSearchResultSelected).toHaveBeenCalledWith({
+      provider: 'google',
+      name: '杭州西湖',
+      address: '中国浙江省杭州市西湖区',
+      longitude: 120.153576,
+      latitude: 30.243382,
+      height: 5200,
+      coordSystem: 'WGS84',
+    });
+
+    fromDegreesSpy.mockRestore();
+  });
+
   it('uses component-owned baidu search selection to preserve camera height and emit WGS-84 results', () => {
     const onSearchResultSelected = vi.fn();
     const plugin = new MapPlugin('map', {
