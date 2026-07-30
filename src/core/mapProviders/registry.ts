@@ -1,6 +1,13 @@
 import * as Cesium from 'cesium';
 import type { MapType } from '../types';
 import type { BaseMapConfig, BaseMapProviderId, MapAuthConfig, MapProviderContext } from './types';
+import {
+  buildDefaultBaseMap,
+  normalizeProviderId,
+  resolveLegacyMapService,
+  resolveSecureKey,
+  resolveServiceKey,
+} from './mapService';
 import { createBaiduTilingScheme } from './tilingSchemes/baidu';
 import { createGCJ02TilingScheme } from './tilingSchemes/gcj02';
 import {
@@ -17,32 +24,11 @@ const BAIDU_TILING_SCHEME = createBaiduTilingScheme();
 
 type ProviderFactory = (context: MapProviderContext) => MapType[];
 
-function resolveAuthValue(baseMap: BaseMapConfig, auth: MapAuthConfig | undefined, provider: BaseMapProviderId): string {
-  let value = '';
-  switch (provider) {
-    case 'tdt':
-      value = baseMap.token || baseMap.key || auth?.tdt?.token || ''; break;
-    case 'gaode':
-      value = baseMap.key || baseMap.token || auth?.gaode?.key || ''; break;
-    case 'tencent':
-      value = baseMap.key || baseMap.token || auth?.tencent?.key || ''; break;
-    case 'baidu':
-      value = baseMap.ak || baseMap.key || baseMap.token || auth?.baidu?.ak || ''; break;
-    case 'google':
-      value = baseMap.key || baseMap.token || auth?.google?.apiKey || ''; break;
-    default:
-      value = baseMap.key || baseMap.token || '';
-  }
-  return value.trim();
-}
-
-function resolveSk(baseMap: BaseMapConfig, auth: MapAuthConfig | undefined): string {
-  return (baseMap.sk || auth?.tdt?.sk || '').trim();
-}
-
 function tdtFactory(context: MapProviderContext): MapType[] {
-  const token = resolveAuthValue(context.baseMap, context.auth, 'tdt');
-  const sk = resolveSk(context.baseMap, context.auth);
+  const token = context.service?.credentials.serviceKey
+    || resolveServiceKey(context.baseMap, context.auth, 'tdt');
+  const sk = context.service?.credentials.secureKey
+    || resolveSecureKey(context.baseMap, context.auth, 'tdt');
   const wrap = (
     id: string,
     name: string,
@@ -205,7 +191,7 @@ function baiduFactory(context: MapProviderContext): MapType[] {
 }
 
 async function createGoogleSession(baseMap: BaseMapConfig, auth?: MapAuthConfig): Promise<string> {
-  const apiKey = resolveAuthValue(baseMap, auth, 'google');
+  const apiKey = resolveServiceKey(baseMap, auth, 'google');
   if (!apiKey) {
     throw new Error('Google Map Tiles API key 未配置');
   }
@@ -239,7 +225,8 @@ function googleFactory(context: MapProviderContext): MapType[] {
     name,
     thumbnail: '',
     provider: async () => {
-      const apiKey = resolveAuthValue(context.baseMap, context.auth, 'google');
+      const apiKey = context.service?.credentials.serviceKey
+        || resolveServiceKey(context.baseMap, context.auth, 'google');
       const session = await createGoogleSession({ ...context.baseMap, type }, context.auth);
       return [
         new Cesium.UrlTemplateImageryProvider({
@@ -330,40 +317,6 @@ const FACTORIES: Record<BaseMapProviderId, ProviderFactory> = {
   custom: customFactory,
 };
 
-export function normalizeProviderId(provider?: string): BaseMapProviderId {
-  if (provider === 'tiandi') {
-    return 'tdt';
-  }
-  if (provider === 'amap') {
-    return 'gaode';
-  }
-  // 系统地图配置接口使用 private 表示离线地图，组件内部统一使用 custom。
-  if (provider === 'private') {
-    return 'custom';
-  }
-  if (provider === 'tencent' || provider === 'baidu' || provider === 'google' || provider === 'custom' || provider === 'gaode') {
-    return provider;
-  }
-  return 'tdt';
-}
-
-export function buildDefaultBaseMap(provider: BaseMapProviderId = 'tdt'): BaseMapConfig {
-  switch (provider) {
-    case 'gaode':
-      return { provider, type: 'satellite', showLabel: true };
-    case 'tencent':
-      return { provider, type: 'satellite', showLabel: true };
-    case 'baidu':
-      return { provider, type: 'satellite', showLabel: true };
-    case 'google':
-      return { provider, type: 'satellite', showLabel: true };
-    case 'custom':
-      return { provider, type: 'xyz', showLabel: false };
-    default:
-      return { provider: 'tdt', type: 'img', showLabel: true };
-  }
-}
-
 export function resolveMapTypeId(baseMap: BaseMapConfig): string {
   const provider = normalizeProviderId(baseMap.provider);
   if (provider === 'tdt') {
@@ -402,8 +355,13 @@ export function mapTypeIdToBaseMapConfig(mapTypeId: string, current: BaseMapConf
 
 export class BaseMapRegistry {
   getMapTypes(baseMap: BaseMapConfig, auth?: MapAuthConfig, viewer?: Cesium.Viewer): MapType[] {
-    const provider = normalizeProviderId(baseMap.provider);
-    return FACTORIES[provider]({ baseMap: { ...buildDefaultBaseMap(provider), ...baseMap, provider }, auth, viewer });
+    const service = resolveLegacyMapService({ baseMap, mapAuth: auth });
+    return FACTORIES[service.provider]({
+      baseMap: service.baseMap,
+      auth: service.auth,
+      viewer,
+      service,
+    });
   }
 
   getAllMapTypes(auth?: MapAuthConfig, viewer?: Cesium.Viewer): MapType[] {
@@ -419,3 +377,5 @@ export class BaseMapRegistry {
 }
 
 export const baseMapRegistry = new BaseMapRegistry();
+
+export { buildDefaultBaseMap, normalizeProviderId };

@@ -1,4 +1,5 @@
 import * as Cesium from 'cesium';
+import type { ResolvedMapService } from './mapService';
 
 export type BaseMapProviderId = 'tdt' | 'gaode' | 'tencent' | 'baidu' | 'google' | 'custom';
 
@@ -69,4 +70,5 @@ export interface MapProviderContext {
   viewer?: Cesium.Viewer;
   baseMap: BaseMapConfig;
   auth?: MapAuthConfig;
+  service?: ResolvedMapService;
 }

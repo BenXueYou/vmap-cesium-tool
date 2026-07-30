@@ -47,6 +47,10 @@ import {
 } from './mapProviders/registry';
 import { coordinateService } from './mapProviders/coordinates/CoordinateService';
 import { normalizeMapAuth, ProviderSearchService } from './mapProviders/ProviderSearchService';
+import {
+  resolveLegacyMapService,
+  type ResolvedMapService,
+} from './mapProviders/mapService';
 
 interface InitialCenter {
   longitude: number;
@@ -154,6 +158,7 @@ export class MapPlugin {
   private layersConfig: LayersConfig;
   private baseMapConfig: BaseMapConfig;
   private mapAuthConfig: MapAuthConfig | undefined;
+  private mapService: ResolvedMapService;
   private providerSearchConfig: ProviderSearchOptions;
   private creditsConfig: CreditsOptions;
   private cesiumToken: string;
@@ -200,6 +205,12 @@ export class MapPlugin {
     this.layersConfig = this.mergeLayersConfig(options.layers);
     this.baseMapConfig = this.resolveBaseMapConfig(options);
     this.mapAuthConfig = normalizeMapAuth(options.mapAuth);
+    this.mapService = resolveLegacyMapService({
+      baseMap: this.baseMapConfig,
+      mapAuth: this.mapAuthConfig,
+    });
+    this.baseMapConfig = this.mapService.baseMap;
+    this.mapAuthConfig = this.mapService.auth;
     this.providerSearchConfig = options.providerSearch || {};
     this.creditsConfig = { visible: true, ...(options.credits || {}) };
     this.cesiumToken = options.cesiumToken || '';
@@ -209,7 +220,7 @@ export class MapPlugin {
     this.initialCenter = this.toInitialCenter(this.cameraConfig);
     this.toolbarMapTypes = withDefaultMapTypeThumbnails(
       this.toolbarLayersMenuConfig.mapTypes
-        || baseMapRegistry.getMapTypes(this.baseMapConfig, this.mapAuthConfig),
+        || baseMapRegistry.getMapTypes(this.mapService.baseMap, this.mapService.auth),
     );
     this.currentMapTypeId = this.resolveCurrentMapTypeId();
     this.nonForcedPlaceNameVisible = this.toolbarLayersMenuConfig.defaultPlaceNameChecked
@@ -466,25 +477,29 @@ export class MapPlugin {
     return this.toolbarMapTypes.find((mapType) => mapType.id === this.currentMapTypeId);
   }
 
+  private refreshToolbarMapTypes(): void {
+    this.toolbarMapTypes = withDefaultMapTypeThumbnails(
+      this.toolbarLayersMenuConfig.mapTypes
+        || baseMapRegistry.getMapTypes(this.mapService.baseMap, this.mapService.auth, this.viewer || undefined),
+    );
+  }
+
+  private syncMapServiceState(): void {
+    this.mapService = resolveLegacyMapService({
+      baseMap: this.baseMapConfig,
+      mapAuth: this.mapAuthConfig,
+    });
+    this.baseMapConfig = this.mapService.baseMap;
+    this.mapAuthConfig = this.mapService.auth;
+    this.refreshToolbarMapTypes();
+  }
+
   private getLayerToken(): string {
-    switch (this.baseMapConfig.provider) {
-      case 'tdt':
-        return this.baseMapConfig.token || this.mapAuthConfig?.tdt?.token || '';
-      case 'gaode':
-        return this.baseMapConfig.key || this.mapAuthConfig?.gaode?.key || '';
-      case 'tencent':
-        return this.baseMapConfig.key || this.mapAuthConfig?.tencent?.key || '';
-      case 'baidu':
-        return this.baseMapConfig.ak || this.mapAuthConfig?.baidu?.ak || '';
-      case 'google':
-        return this.baseMapConfig.key || this.mapAuthConfig?.google?.apiKey || '';
-      default:
-        return this.baseMapConfig.token || this.baseMapConfig.key || '';
-    }
+    return this.mapService.credentials.serviceKey;
   }
 
   private getLayerSk(): string {
-    return this.baseMapConfig.sk || this.mapAuthConfig?.tdt?.sk || '';
+    return this.mapService.credentials.secureKey;
   }
 
   private resetTerrainProvider(): void {
@@ -731,8 +746,7 @@ export class MapPlugin {
       return;
     }
 
-    const isOffline = this.baseMapConfig.provider === 'custom' && this.baseMapConfig.mode === 'offline';
-    if (isOffline) {
+    if (this.mapService.isOffline) {
       this.toolbarService.hideButton('search');
       this.toolbarService.hideButton('layers');
       return;
@@ -878,10 +892,10 @@ export class MapPlugin {
     const requestVersion = ++this.layerRequestVersion;
     const mapType = baseMapRegistry.getMapTypeById(
       this.currentMapTypeId,
-      this.baseMapConfig,
-      this.mapAuthConfig,
+      this.mapService.baseMap,
+      this.mapService.auth,
       this.viewer,
-    ) || baseMapRegistry.getMapTypes(this.baseMapConfig, this.mapAuthConfig, this.viewer)[0];
+    ) || baseMapRegistry.getMapTypes(this.mapService.baseMap, this.mapService.auth, this.viewer)[0];
 
     if (!mapType) {
       throw new Error(`未找到可用地图类型: ${this.currentMapTypeId}`);
@@ -893,8 +907,9 @@ export class MapPlugin {
 
     const context = {
       viewer: this.viewer,
-      baseMap: this.baseMapConfig,
-      auth: this.mapAuthConfig,
+      baseMap: this.mapService.baseMap,
+      auth: this.mapService.auth,
+      service: this.mapService,
     };
     const providers = await Promise.resolve(mapType.provider(context));
     const terrainProvider = mapType.terrainProvider
@@ -1120,6 +1135,7 @@ export class MapPlugin {
       layers: this.layersConfig,
       mapAuth: this.mapAuthConfig,
     });
+    this.syncMapServiceState();
     this.currentMapTypeId = this.resolveCurrentMapTypeId();
     const mapType = this.getCurrentToolbarMapType();
     const isForcedMapType = !!mapType?.forcePlaceName;
@@ -1146,6 +1162,7 @@ export class MapPlugin {
       ...baseMap,
       provider: normalizeProviderId(baseMap.provider || this.baseMapConfig.provider),
     };
+    this.syncMapServiceState();
     this.currentMapTypeId = this.resolveCurrentMapTypeId();
     this.placeNameVisible = this.resolvePlaceNameVisible();
     if (this.isInitialized) {
@@ -1164,6 +1181,7 @@ export class MapPlugin {
       }
     });
     this.mapAuthConfig = nextAuth;
+    this.syncMapServiceState();
 
     const currentProvider = this.baseMapConfig.provider;
     const affectsCurrentProvider = currentProvider !== 'custom'
@@ -1177,6 +1195,7 @@ export class MapPlugin {
   /** 替换全部厂商鉴权，适合单一当前服务商配置。 */
   setMapAuth(mapAuth: MapAuthConfig): void {
     this.mapAuthConfig = normalizeMapAuth(mapAuth);
+    this.syncMapServiceState();
     if (this.isInitialized) void this.refreshLayersAndGeoWTFS();
     this.updateToolbarLayerState();
   }
@@ -1199,7 +1218,7 @@ export class MapPlugin {
     const callbacks: ToolbarCallbacks = { ...(options.callbacks || {}) };
     if (!callbacks.onSearch && this.providerSearchConfig.enabled) {
       const providerSearchService = new ProviderSearchService(this.providerSearchConfig);
-      callbacks.onSearch = (query: string) => providerSearchService.search(query, this.baseMapConfig, this.mapAuthConfig);
+      callbacks.onSearch = (query: string) => providerSearchService.search(query, this.mapService);
     }
     const toolbarOptions: ToolbarServiceOptions = {
       toolbarStyle: {
