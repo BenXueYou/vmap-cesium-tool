@@ -49,6 +49,12 @@ interface OverlayGraphicsSnapshot {
   };
 }
 
+type HighlightSnapshotSection = keyof OverlayGraphicsSnapshot;
+type HighlightSnapshotKey<TSection extends HighlightSnapshotSection> = keyof NonNullable<OverlayGraphicsSnapshot[TSection]>;
+
+const DEFAULT_HOVER_HIGHLIGHT_COLOR = '#FFD54F';
+const DEFAULT_SELECTION_HIGHLIGHT_COLOR = '#00E5FF';
+
 /**
  * 覆盖物服务选项
  */
@@ -196,6 +202,8 @@ export class OverlayService {
   private pendingHoverPosition: Cesium.Cartesian2 | null = null;
   private lastHoverPosition: Cesium.Cartesian2 | null = null;
   private readonly highlightCache = new WeakMap<Entity, OverlayGraphicsSnapshot>();
+  private trackedGraphicsProperties?: WeakMap<object, Set<string>>;
+  private styleMutationTrackingSuspendedCount = 0;
   private drawInteractionActive = false;
   private cameraHoverSuspended = false;
   private removeCameraMoveStartListener: (() => void) | null = null;
@@ -1844,17 +1852,14 @@ export class OverlayService {
     state[reason] = enabled;
     entity._highlightState = state;
 
-    const activeReason = state.click ? 'click' : state.hover ? 'hover' : null;
-    if (!activeReason) {
+    const activeHighlight = this.resolveActiveHighlightOptions(entity);
+    if (!activeHighlight) {
       this.restoreEntityStyle(entity);
       entity._isHighlighted = false;
       return;
     }
 
-    const highlightConfig = activeReason === 'click'
-      ? entity._selectionHighlight ?? entity._clickHighlight ?? true
-      : entity._hoverHighlight || true;
-    this.applyEntityHighlight(entity, this.normalizeHighlightOptions(highlightConfig, activeReason));
+    this.applyEntityHighlight(entity, activeHighlight);
     entity._isHighlighted = true;
   }
 
@@ -1870,22 +1875,48 @@ export class OverlayService {
     });
   }
 
+  private resolveActiveHighlightOptions(entity: OverlayEntity): Required<OverlayClickHighlightOptions> | null {
+    const state = entity._highlightState;
+    if (!state?.click && !state?.hover) {
+      return null;
+    }
+
+    const selectionConfig = entity._selectionHighlight ?? entity._clickHighlight;
+    if (state?.click) {
+      if (selectionConfig !== false) {
+        return this.normalizeHighlightOptions(selectionConfig ?? true, 'click');
+      }
+
+      if (!state.hover) {
+        return null;
+      }
+    }
+
+    if (state?.hover && entity._hoverHighlight !== false) {
+      return this.normalizeHighlightOptions(entity._hoverHighlight ?? true, 'hover');
+    }
+
+    return null;
+  }
+
   private normalizeHighlightOptions(
-    options: boolean | OverlayClickHighlightOptions,
+    options: true | OverlayClickHighlightOptions,
     reason: 'click' | 'hover',
   ): Required<OverlayClickHighlightOptions> {
-    const defaultColor = Cesium.Color.YELLOW;
+    const defaultColor = reason === 'click'
+      ? DEFAULT_SELECTION_HIGHLIGHT_COLOR
+      : DEFAULT_HOVER_HIGHLIGHT_COLOR;
 
-    if (options === true || options === false) {
+    if (options === true) {
       return {
         color: defaultColor,
-        fillAlpha: reason === 'click' ? 0.35 : 0.22,
+        fillAlpha: reason === 'click' ? 0.4 : 0.25,
       };
     }
 
     return {
       color: options.color || defaultColor,
-      fillAlpha: options.fillAlpha ?? (reason === 'click' ? 0.35 : 0.22),
+      fillAlpha: options.fillAlpha ?? (reason === 'click' ? 0.4 : 0.25),
     };
   }
 
@@ -1895,154 +1926,163 @@ export class OverlayService {
     }
 
     const parsed = Cesium.Color.fromCssColorString(color);
-    return parsed || Cesium.Color.YELLOW;
+    return parsed || Cesium.Color.fromCssColorString(DEFAULT_HOVER_HIGHLIGHT_COLOR) || Cesium.Color.YELLOW;
   }
 
   private applyEntityHighlight(entity: OverlayEntity, options: Required<OverlayClickHighlightOptions>): void {
-    if ((entity as any)._overlayType === 'circle-primitive' || (entity as any)._overlayType === 'polygon-primitive') {
-      const hlColor = this.resolveHighlightColor(options.color);
-      try {
-        const overlay = this.entityOverlayMap.get(entity);
-        if (overlay && typeof (overlay as any).applyPrimitiveHighlight === 'function') {
-          (overlay as any).applyPrimitiveHighlight(entity as Entity, hlColor, options.fillAlpha);
+    this.withStyleMutationTrackingSuspended(() => {
+      if ((entity as any)._overlayType === 'circle-primitive' || (entity as any)._overlayType === 'polygon-primitive') {
+        const hlColor = this.resolveHighlightColor(options.color);
+        try {
+          const overlay = this.entityOverlayMap.get(entity);
+          if (overlay && typeof (overlay as any).applyPrimitiveHighlight === 'function') {
+            (overlay as any).applyPrimitiveHighlight(entity as Entity, hlColor, options.fillAlpha);
+          }
+        } catch {
+          // ignore
         }
-      } catch {
-        // ignore
+        return;
       }
-      return;
-    }
 
-    const highlightColor = this.resolveHighlightColor(options.color);
-    const snapshot = this.captureEntityStyle(entity);
+      const highlightColor = this.resolveHighlightColor(options.color);
+      const snapshot = this.captureEntityStyle(entity);
 
-    if (entity.point) {
-      entity.point.color = new Cesium.ConstantProperty(highlightColor.withAlpha(0.95));
-      entity.point.outlineColor = new Cesium.ConstantProperty(highlightColor.brighten(0.2, new Cesium.Color()));
-      const basePixelSize = snapshot.point?.pixelSize ?? 10;
-      entity.point.pixelSize = new Cesium.ConstantProperty(basePixelSize + 2);
-    }
+      if (entity.point) {
+        entity.point.color = new Cesium.ConstantProperty(highlightColor.withAlpha(0.95));
+        entity.point.outlineColor = new Cesium.ConstantProperty(highlightColor.brighten(0.2, new Cesium.Color()));
+        const basePixelSize = snapshot.point?.pixelSize ?? 10;
+        entity.point.pixelSize = new Cesium.ConstantProperty(basePixelSize + 2);
+      }
 
-    if (entity.label) {
-      entity.label.fillColor = new Cesium.ConstantProperty(highlightColor);
-      entity.label.outlineColor = new Cesium.ConstantProperty(Cesium.Color.WHITE);
-      entity.label.scale = new Cesium.ConstantProperty((snapshot.label?.scale ?? 1) * 1.06);
-    }
+      if (entity.label) {
+        entity.label.fillColor = new Cesium.ConstantProperty(highlightColor);
+        entity.label.outlineColor = new Cesium.ConstantProperty(Cesium.Color.WHITE);
+        entity.label.scale = new Cesium.ConstantProperty((snapshot.label?.scale ?? 1) * 1.06);
+      }
 
-    if (entity.billboard) {
-      entity.billboard.color = new Cesium.ConstantProperty(highlightColor);
-      entity.billboard.scale = new Cesium.ConstantProperty((snapshot.billboard?.scale ?? 1) * 1.08);
-    }
+      if (entity.billboard) {
+        entity.billboard.color = new Cesium.ConstantProperty(highlightColor);
+        entity.billboard.scale = new Cesium.ConstantProperty((snapshot.billboard?.scale ?? 1) * 1.08);
+      }
 
-    if (entity.polyline) {
-      entity.polyline.material = new Cesium.ColorMaterialProperty(highlightColor.withAlpha(0.95));
-      entity.polyline.width = new Cesium.ConstantProperty((snapshot.polyline?.width ?? 2) + 1);
-    }
+      if (entity.polyline) {
+        entity.polyline.material = new Cesium.ColorMaterialProperty(highlightColor.withAlpha(0.95));
+        entity.polyline.width = new Cesium.ConstantProperty((snapshot.polyline?.width ?? 2) + 1);
+      }
 
-    if (entity.polygon) {
-      entity.polygon.material = new Cesium.ColorMaterialProperty(highlightColor.withAlpha(options.fillAlpha));
-      entity.polygon.outlineColor = new Cesium.ConstantProperty(highlightColor);
-    }
+      if (entity.polygon) {
+        entity.polygon.material = new Cesium.ColorMaterialProperty(highlightColor.withAlpha(options.fillAlpha));
+        entity.polygon.outlineColor = new Cesium.ConstantProperty(highlightColor);
+      }
 
-    if (entity.rectangle) {
-      entity.rectangle.material = new Cesium.ColorMaterialProperty(highlightColor.withAlpha(options.fillAlpha));
-      entity.rectangle.outlineColor = new Cesium.ConstantProperty(highlightColor);
-    }
+      if (entity.rectangle) {
+        entity.rectangle.material = new Cesium.ColorMaterialProperty(highlightColor.withAlpha(options.fillAlpha));
+        entity.rectangle.outlineColor = new Cesium.ConstantProperty(highlightColor);
+      }
 
-    if (entity.ellipse) {
-      entity.ellipse.material = new Cesium.ColorMaterialProperty(highlightColor.withAlpha(options.fillAlpha));
-      entity.ellipse.outlineColor = new Cesium.ConstantProperty(highlightColor);
-    }
+      if (entity.ellipse) {
+        entity.ellipse.material = new Cesium.ColorMaterialProperty(highlightColor.withAlpha(options.fillAlpha));
+        entity.ellipse.outlineColor = new Cesium.ConstantProperty(highlightColor);
+      }
+    });
   }
 
   private restoreEntityStyle(entity: OverlayEntity): void {
-    if ((entity as any)._overlayType === 'circle-primitive' || (entity as any)._overlayType === 'polygon-primitive') {
-      try {
-        const overlay = this.entityOverlayMap.get(entity);
-        if (overlay && typeof (overlay as any).restorePrimitiveHighlight === 'function') {
-          (overlay as any).restorePrimitiveHighlight(entity as Entity);
+    this.withStyleMutationTrackingSuspended(() => {
+      if ((entity as any)._overlayType === 'circle-primitive' || (entity as any)._overlayType === 'polygon-primitive') {
+        try {
+          const overlay = this.entityOverlayMap.get(entity);
+          if (overlay && typeof (overlay as any).restorePrimitiveHighlight === 'function') {
+            (overlay as any).restorePrimitiveHighlight(entity as Entity);
+          }
+        } catch {
+          // ignore
         }
-      } catch {
-        // ignore
+        this.highlightCache.delete(entity);
+        return;
       }
-      return;
-    }
 
-    const snapshot = this.highlightCache.get(entity);
-    if (!snapshot) {
-      return;
-    }
+      const snapshot = this.highlightCache.get(entity);
+      if (!snapshot) {
+        return;
+      }
 
-    if (entity.point) {
-      if (snapshot.point?.color) {
-        entity.point.color = new Cesium.ConstantProperty(snapshot.point.color);
+      if (entity.point) {
+        if (snapshot.point?.color) {
+          entity.point.color = new Cesium.ConstantProperty(snapshot.point.color);
+        }
+        if (snapshot.point?.outlineColor) {
+          entity.point.outlineColor = new Cesium.ConstantProperty(snapshot.point.outlineColor);
+        }
+        if (snapshot.point?.pixelSize !== undefined) {
+          entity.point.pixelSize = new Cesium.ConstantProperty(snapshot.point.pixelSize);
+        }
       }
-      if (snapshot.point?.outlineColor) {
-        entity.point.outlineColor = new Cesium.ConstantProperty(snapshot.point.outlineColor);
-      }
-      if (snapshot.point?.pixelSize !== undefined) {
-        entity.point.pixelSize = new Cesium.ConstantProperty(snapshot.point.pixelSize);
-      }
-    }
 
-    if (entity.label) {
-      if (snapshot.label?.fillColor) {
-        entity.label.fillColor = new Cesium.ConstantProperty(snapshot.label.fillColor);
+      if (entity.label) {
+        if (snapshot.label?.fillColor) {
+          entity.label.fillColor = new Cesium.ConstantProperty(snapshot.label.fillColor);
+        }
+        if (snapshot.label?.outlineColor) {
+          entity.label.outlineColor = new Cesium.ConstantProperty(snapshot.label.outlineColor);
+        }
+        if (snapshot.label?.scale !== undefined) {
+          entity.label.scale = new Cesium.ConstantProperty(snapshot.label.scale);
+        }
       }
-      if (snapshot.label?.outlineColor) {
-        entity.label.outlineColor = new Cesium.ConstantProperty(snapshot.label.outlineColor);
-      }
-      if (snapshot.label?.scale !== undefined) {
-        entity.label.scale = new Cesium.ConstantProperty(snapshot.label.scale);
-      }
-    }
 
-    if (entity.billboard) {
-      if (snapshot.billboard?.color) {
-        entity.billboard.color = new Cesium.ConstantProperty(snapshot.billboard.color);
+      if (entity.billboard) {
+        if (snapshot.billboard?.color) {
+          entity.billboard.color = new Cesium.ConstantProperty(snapshot.billboard.color);
+        }
+        if (snapshot.billboard?.scale !== undefined) {
+          entity.billboard.scale = new Cesium.ConstantProperty(snapshot.billboard.scale);
+        }
       }
-      if (snapshot.billboard?.scale !== undefined) {
-        entity.billboard.scale = new Cesium.ConstantProperty(snapshot.billboard.scale);
-      }
-    }
 
-    if (entity.polyline) {
-      if (snapshot.polyline?.material !== undefined) {
-        entity.polyline.material = snapshot.polyline.material;
+      if (entity.polyline) {
+        if (snapshot.polyline?.material !== undefined) {
+          entity.polyline.material = snapshot.polyline.material;
+        }
+        if (snapshot.polyline?.width !== undefined) {
+          entity.polyline.width = new Cesium.ConstantProperty(snapshot.polyline.width);
+        }
       }
-      if (snapshot.polyline?.width !== undefined) {
-        entity.polyline.width = new Cesium.ConstantProperty(snapshot.polyline.width);
-      }
-    }
 
-    if (entity.polygon) {
-      if (snapshot.polygon?.material !== undefined) {
-        entity.polygon.material = snapshot.polygon.material;
+      if (entity.polygon) {
+        if (snapshot.polygon?.material !== undefined) {
+          entity.polygon.material = snapshot.polygon.material;
+        }
+        if (snapshot.polygon?.outlineColor) {
+          entity.polygon.outlineColor = new Cesium.ConstantProperty(snapshot.polygon.outlineColor);
+        }
       }
-      if (snapshot.polygon?.outlineColor) {
-        entity.polygon.outlineColor = new Cesium.ConstantProperty(snapshot.polygon.outlineColor);
-      }
-    }
 
-    if (entity.rectangle) {
-      if (snapshot.rectangle?.material !== undefined) {
-        entity.rectangle.material = snapshot.rectangle.material;
+      if (entity.rectangle) {
+        if (snapshot.rectangle?.material !== undefined) {
+          entity.rectangle.material = snapshot.rectangle.material;
+        }
+        if (snapshot.rectangle?.outlineColor) {
+          entity.rectangle.outlineColor = new Cesium.ConstantProperty(snapshot.rectangle.outlineColor);
+        }
       }
-      if (snapshot.rectangle?.outlineColor) {
-        entity.rectangle.outlineColor = new Cesium.ConstantProperty(snapshot.rectangle.outlineColor);
-      }
-    }
 
-    if (entity.ellipse) {
-      if (snapshot.ellipse?.material !== undefined) {
-        entity.ellipse.material = snapshot.ellipse.material;
+      if (entity.ellipse) {
+        if (snapshot.ellipse?.material !== undefined) {
+          entity.ellipse.material = snapshot.ellipse.material;
+        }
+        if (snapshot.ellipse?.outlineColor) {
+          entity.ellipse.outlineColor = new Cesium.ConstantProperty(snapshot.ellipse.outlineColor);
+        }
       }
-      if (snapshot.ellipse?.outlineColor) {
-        entity.ellipse.outlineColor = new Cesium.ConstantProperty(snapshot.ellipse.outlineColor);
-      }
-    }
+
+      this.highlightCache.delete(entity);
+    });
   }
 
   private captureEntityStyle(entity: OverlayEntity): OverlayGraphicsSnapshot {
+    this.ensureEntityStyleTracking(entity);
+
     const existing = this.highlightCache.get(entity);
     if (existing) {
       return existing;
@@ -2104,6 +2144,212 @@ export class OverlayService {
 
     this.highlightCache.set(entity, snapshot);
     return snapshot;
+  }
+
+  private withStyleMutationTrackingSuspended<T>(action: () => T): T {
+    this.styleMutationTrackingSuspendedCount = (this.styleMutationTrackingSuspendedCount ?? 0) + 1;
+    try {
+      return action();
+    } finally {
+      this.styleMutationTrackingSuspendedCount -= 1;
+    }
+  }
+
+  private isStyleMutationTrackingSuspended(): boolean {
+    return (this.styleMutationTrackingSuspendedCount ?? 0) > 0;
+  }
+
+  private getTrackedGraphicsProperties(): WeakMap<object, Set<string>> {
+    if (!this.trackedGraphicsProperties) {
+      this.trackedGraphicsProperties = new WeakMap();
+    }
+
+    return this.trackedGraphicsProperties;
+  }
+
+  private ensureEntityStyleTracking(entity: OverlayEntity): void {
+    if (entity.point) {
+      this.installTrackedGraphicsProperty(entity, entity.point as unknown as Record<string, unknown>, 'color', () => {
+        this.updateHighlightSnapshotValue(entity, 'point', 'color', entity.point?.color?.getValue(Cesium.JulianDate.now()));
+      });
+      this.installTrackedGraphicsProperty(entity, entity.point as unknown as Record<string, unknown>, 'outlineColor', () => {
+        this.updateHighlightSnapshotValue(
+          entity,
+          'point',
+          'outlineColor',
+          entity.point?.outlineColor?.getValue(Cesium.JulianDate.now()),
+        );
+      });
+      this.installTrackedGraphicsProperty(entity, entity.point as unknown as Record<string, unknown>, 'pixelSize', () => {
+        this.updateHighlightSnapshotValue(entity, 'point', 'pixelSize', entity.point?.pixelSize?.getValue(Cesium.JulianDate.now()));
+      });
+    }
+
+    if (entity.label) {
+      this.installTrackedGraphicsProperty(entity, entity.label as unknown as Record<string, unknown>, 'fillColor', () => {
+        this.updateHighlightSnapshotValue(entity, 'label', 'fillColor', entity.label?.fillColor?.getValue(Cesium.JulianDate.now()));
+      });
+      this.installTrackedGraphicsProperty(entity, entity.label as unknown as Record<string, unknown>, 'outlineColor', () => {
+        this.updateHighlightSnapshotValue(
+          entity,
+          'label',
+          'outlineColor',
+          entity.label?.outlineColor?.getValue(Cesium.JulianDate.now()),
+        );
+      });
+      this.installTrackedGraphicsProperty(entity, entity.label as unknown as Record<string, unknown>, 'scale', () => {
+        this.updateHighlightSnapshotValue(entity, 'label', 'scale', entity.label?.scale?.getValue(Cesium.JulianDate.now()));
+      });
+    }
+
+    if (entity.billboard) {
+      this.installTrackedGraphicsProperty(entity, entity.billboard as unknown as Record<string, unknown>, 'color', () => {
+        this.updateHighlightSnapshotValue(
+          entity,
+          'billboard',
+          'color',
+          entity.billboard?.color?.getValue(Cesium.JulianDate.now()),
+        );
+      });
+      this.installTrackedGraphicsProperty(entity, entity.billboard as unknown as Record<string, unknown>, 'scale', () => {
+        this.updateHighlightSnapshotValue(entity, 'billboard', 'scale', entity.billboard?.scale?.getValue(Cesium.JulianDate.now()));
+      });
+    }
+
+    if (entity.polyline) {
+      this.installTrackedGraphicsProperty(entity, entity.polyline as unknown as Record<string, unknown>, 'width', () => {
+        this.updateHighlightSnapshotValue(entity, 'polyline', 'width', entity.polyline?.width?.getValue(Cesium.JulianDate.now()));
+      });
+      this.installTrackedGraphicsProperty(entity, entity.polyline as unknown as Record<string, unknown>, 'material', () => {
+        this.updateHighlightSnapshotValue(entity, 'polyline', 'material', entity.polyline?.material);
+      });
+    }
+
+    if (entity.polygon) {
+      this.installTrackedGraphicsProperty(entity, entity.polygon as unknown as Record<string, unknown>, 'material', () => {
+        this.updateHighlightSnapshotValue(entity, 'polygon', 'material', entity.polygon?.material);
+      });
+      this.installTrackedGraphicsProperty(entity, entity.polygon as unknown as Record<string, unknown>, 'outlineColor', () => {
+        this.updateHighlightSnapshotValue(
+          entity,
+          'polygon',
+          'outlineColor',
+          entity.polygon?.outlineColor?.getValue(Cesium.JulianDate.now()),
+        );
+      });
+    }
+
+    if (entity.rectangle) {
+      this.installTrackedGraphicsProperty(entity, entity.rectangle as unknown as Record<string, unknown>, 'material', () => {
+        this.updateHighlightSnapshotValue(entity, 'rectangle', 'material', entity.rectangle?.material);
+      });
+      this.installTrackedGraphicsProperty(entity, entity.rectangle as unknown as Record<string, unknown>, 'outlineColor', () => {
+        this.updateHighlightSnapshotValue(
+          entity,
+          'rectangle',
+          'outlineColor',
+          entity.rectangle?.outlineColor?.getValue(Cesium.JulianDate.now()),
+        );
+      });
+    }
+
+    if (entity.ellipse) {
+      this.installTrackedGraphicsProperty(entity, entity.ellipse as unknown as Record<string, unknown>, 'material', () => {
+        this.updateHighlightSnapshotValue(entity, 'ellipse', 'material', entity.ellipse?.material);
+      });
+      this.installTrackedGraphicsProperty(entity, entity.ellipse as unknown as Record<string, unknown>, 'outlineColor', () => {
+        this.updateHighlightSnapshotValue(
+          entity,
+          'ellipse',
+          'outlineColor',
+          entity.ellipse?.outlineColor?.getValue(Cesium.JulianDate.now()),
+        );
+      });
+    }
+  }
+
+  private installTrackedGraphicsProperty(
+    entity: OverlayEntity,
+    graphics: Record<string, unknown>,
+    propertyName: string,
+    updateSnapshot: () => void,
+  ): void {
+    const trackedProperties = this.getTrackedGraphicsProperties();
+    const existing = trackedProperties.get(graphics) ?? new Set<string>();
+    if (existing.has(propertyName)) {
+      return;
+    }
+
+    const descriptor = this.findPropertyDescriptor(graphics, propertyName);
+    let fallbackValue = descriptor?.get ? descriptor.get.call(graphics) : graphics[propertyName];
+
+    Object.defineProperty(graphics, propertyName, {
+      configurable: true,
+      enumerable: descriptor?.enumerable ?? true,
+      get: () => (descriptor?.get ? descriptor.get.call(graphics) : fallbackValue),
+      set: (nextValue) => {
+        if (descriptor?.set) {
+          descriptor.set.call(graphics, nextValue);
+        } else {
+          fallbackValue = nextValue;
+        }
+
+        if (this.isStyleMutationTrackingSuspended() || !this.hasTrackedBaseStyleMutation(entity)) {
+          return;
+        }
+
+        updateSnapshot();
+        this.reapplyTrackedHighlightState(entity);
+      },
+    });
+
+    existing.add(propertyName);
+    trackedProperties.set(graphics, existing);
+  }
+
+  private findPropertyDescriptor(target: object, propertyName: string): PropertyDescriptor | undefined {
+    let current: object | null = target;
+    while (current) {
+      const descriptor = Object.getOwnPropertyDescriptor(current, propertyName);
+      if (descriptor) {
+        return descriptor;
+      }
+      current = Object.getPrototypeOf(current);
+    }
+
+    return undefined;
+  }
+
+  private hasTrackedBaseStyleMutation(entity: OverlayEntity): boolean {
+    return !!entity._highlightState && !!(entity._highlightState.click || entity._highlightState.hover);
+  }
+
+  private reapplyTrackedHighlightState(entity: OverlayEntity): void {
+    const activeHighlight = this.resolveActiveHighlightOptions(entity);
+    if (!activeHighlight) {
+      this.restoreEntityStyle(entity);
+      entity._isHighlighted = false;
+      return;
+    }
+
+    this.applyEntityHighlight(entity, activeHighlight);
+    entity._isHighlighted = true;
+  }
+
+  private updateHighlightSnapshotValue<TSection extends HighlightSnapshotSection>(
+    entity: OverlayEntity,
+    section: TSection,
+    key: HighlightSnapshotKey<TSection>,
+    value: NonNullable<OverlayGraphicsSnapshot[TSection]>[HighlightSnapshotKey<TSection>] | undefined,
+  ): void {
+    const snapshot = this.highlightCache.get(entity) ?? {};
+    const sectionSnapshot = {
+      ...(snapshot[section] ?? {}),
+      [key]: value,
+    } as NonNullable<OverlayGraphicsSnapshot[TSection]>;
+
+    snapshot[section] = sectionSnapshot;
+    this.highlightCache.set(entity, snapshot);
   }
 
   /**
