@@ -126,7 +126,7 @@ describe('OverlayService selection flow', () => {
     expect(reasons).toEqual(['api-select', 'api-clear']);
   });
 
-  it('isolates listener and callback exceptions and clears removed selection silently', () => {
+  it('isolates listener and callback exceptions without rolling selection state back', () => {
     const marker = createRoot('marker');
     const service = createService([marker]);
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
@@ -147,10 +147,87 @@ describe('OverlayService selection flow', () => {
     expect(callbackStates).toEqual(['marker']);
     expect(warnSpy).toHaveBeenCalledTimes(2);
 
-    const removed = service.removeOverlay('marker');
-    expect(removed).toBe(true);
-    expect(service.getSelectedOverlayId()).toBeNull();
-
     warnSpy.mockRestore();
+  });
+
+  it('emits hidden and removed reasons, but destroys the whole service silently', () => {
+    const marker = createRoot('marker');
+    const service = createService([marker]);
+    const events: Array<Record<string, unknown>> = [];
+    const order: string[] = [];
+
+    service.onSelectionChange((event: Record<string, unknown>) => {
+      order.push(String(event.reason));
+      events.push(event);
+    });
+
+    expect(service.selectOverlay('marker')).toBe(true);
+    expect(service.setOverlayVisible('marker', false)).toBe(true);
+    expect(service.getSelectedOverlayId()).toBeNull();
+    expect(order).toEqual(['api-select', 'hidden']);
+    expect(events[1]).toMatchObject({
+      current: null,
+      currentId: null,
+      previous: marker,
+      previousId: 'marker',
+      reason: 'hidden',
+    });
+
+    marker.show = true;
+    expect(service.selectOverlay('marker')).toBe(true);
+
+    const overlayRecord = service.overlays.get('marker');
+    overlayRecord.remove.mockImplementation(() => {
+      order.push('remove');
+    });
+
+    expect(service.removeOverlay('marker')).toBe(true);
+    expect(service.getSelectedOverlayId()).toBeNull();
+    expect(order).toEqual(['api-select', 'hidden', 'api-select', 'removed', 'remove']);
+    expect(events[3]).toMatchObject({
+      current: null,
+      currentId: null,
+      previous: marker,
+      previousId: 'marker',
+      reason: 'removed',
+    });
+
+    const destroyMarker = createRoot('destroy-marker');
+    const destroyService = createService([destroyMarker]);
+    const destroyEvents: string[] = [];
+    destroyService.onSelectionChange((event: Record<string, any>) => {
+      destroyEvents.push(event.reason);
+    });
+
+    expect(destroyService.selectOverlay('destroy-marker')).toBe(true);
+    destroyService.destroy();
+    expect(destroyService.getSelectedOverlayId()).toBeNull();
+    expect(destroyEvents).toEqual(['api-select']);
+  });
+
+  it('rejects duplicate root IDs without corrupting selection identity or pick-id normalization', () => {
+    const original = createRoot('duplicate');
+    const replacement = createRoot('duplicate');
+    const service = createService([]);
+    const firstOverlay = {
+      getEntity: () => original,
+      remove: vi.fn(),
+    };
+    const secondOverlay = {
+      getEntity: () => replacement,
+      remove: vi.fn(),
+    };
+
+    service.registerOverlay('duplicate', firstOverlay);
+    expect(service.selectOverlay('duplicate')).toBe(true);
+    expect(service.resolveOverlayByPickId('duplicate__fill')).toBe(original);
+
+    expect(() => service.registerOverlay('duplicate', secondOverlay)).toThrowError(
+      '[OverlayService] duplicate overlay id: duplicate',
+    );
+
+    expect(service.getOverlay('duplicate')).toBe(firstOverlay);
+    expect(service.getSelectedOverlay()).toBe(original);
+    expect(service.resolveOverlayByPickId('duplicate__fill')).toBe(original);
   });
 });

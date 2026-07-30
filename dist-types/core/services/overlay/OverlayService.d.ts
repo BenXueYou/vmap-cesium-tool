@@ -44,7 +44,7 @@ export interface OverlayPickingOptions {
     clickDebounceMs?: number;
     governorProfiles?: PickGovernorOptions['profiles'];
 }
-export type OverlaySelectionChangeReason = 'pointer-select' | 'pointer-toggle-off' | 'empty-click' | 'api-select' | 'api-clear' | 'disabled';
+export type OverlaySelectionChangeReason = 'pointer-select' | 'pointer-toggle-off' | 'empty-click' | 'api-select' | 'api-clear' | 'hidden' | 'removed' | 'disabled';
 export interface OverlaySelectionChangeEvent {
     current: OverlayEntity | null;
     previous: OverlayEntity | null;

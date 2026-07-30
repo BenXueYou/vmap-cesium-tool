@@ -89,6 +89,8 @@ export type OverlaySelectionChangeReason =
   | 'empty-click'
   | 'api-select'
   | 'api-clear'
+  | 'hidden'
+  | 'removed'
   | 'disabled';
 
 export interface OverlaySelectionChangeEvent {
@@ -265,6 +267,10 @@ export class OverlayService {
    * 注册覆盖物
    */
   registerOverlay(id: string, overlay: OverlayInstance): void {
+    if (this.overlays.has(id)) {
+      throw new Error(`[OverlayService] duplicate overlay id: ${id}`);
+    }
+
     this.overlays.set(id, overlay);
     if (!this.creationOrderById.has(id)) {
       this.creationOrderById.set(id, this.nextCreationOrder++);
@@ -516,7 +522,7 @@ export class OverlayService {
     const overlay = this.overlays.get(id);
     if (!overlay) return false;
 
-    this.clearSelectionForOverlay(id);
+    this.clearSelectionForOverlay(id, 'removed');
     this.clearOverlayHighlightState(overlay);
     this.unbindOverlayEntities(overlay);
     overlay.remove();
@@ -549,7 +555,7 @@ export class OverlayService {
     }
 
     if (!visible) {
-      this.clearSelectionForOverlay(id);
+      this.clearSelectionForOverlay(id, 'hidden');
       this.clearOverlayHighlightState(overlay);
     }
 
@@ -802,16 +808,15 @@ export class OverlayService {
     });
   }
 
-  private clearSelectionForOverlay(id: string): void {
+  private clearSelectionForOverlay(
+    id: string,
+    reason: Extract<OverlaySelectionChangeReason, 'hidden' | 'removed'>,
+  ): void {
     if (this.selectedOverlayId !== id) {
       return;
     }
 
-    if (this.clickHighlightTargets.length > 0) {
-      this.setHighlightTargets(this.clickHighlightTargets, 'click', false);
-    }
-    this.clickHighlightTargets = [];
-    this.selectedOverlayId = null;
+    this.commitSelection(null, reason);
   }
 
   private emitSelectionChange(event: OverlaySelectionChangeEvent): void {
