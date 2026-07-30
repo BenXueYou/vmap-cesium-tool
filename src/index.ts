@@ -21,6 +21,7 @@ export type {
   CustomButtonConfig,
   SearchCallback,
   SearchResult,
+  MapSearchResult,
   MeasurementCallback,
   ZoomCallback,
   MapType,

@@ -22,8 +22,9 @@ import type {
   ToolbarPluginOptions,
   ProviderSearchOptions,
   CreditsOptions,
+  MapSearchResult,
 } from './types';
-import { 
+import {
   DEFAULT_CAMERA_CONFIG,
   DEFAULT_PROVIDER_TYPE,
 } from './constants';
@@ -172,6 +173,7 @@ export class MapPlugin {
   private mapServiceConfig: MapServiceConfig | undefined;
   private mapConfigMode: 'legacy' | 'mapService' = 'legacy';
   private providerSearchConfig: ProviderSearchOptions;
+  private onSearchResultSelected?: (result: MapSearchResult) => void;
   private creditsConfig: CreditsOptions;
   private cesiumToken: string;
   
@@ -236,6 +238,7 @@ export class MapPlugin {
     }
 
     this.providerSearchConfig = options.providerSearch || {};
+    this.onSearchResultSelected = options.onSearchResultSelected;
     this.creditsConfig = { visible: true, ...(options.credits || {}) };
     this.cesiumToken = options.cesiumToken || '';
     this.noFlyZoneConfig = this.resolveNoFlyZoneConfig(options.noFlyZone);
@@ -625,6 +628,105 @@ export class MapPlugin {
 
   private getLayerSk(): string {
     return this.mapService.credentials.secureKey;
+  }
+
+  private supportsMapServiceToolbarSearch(): boolean {
+    return this.mapConfigMode === 'mapService'
+      && !this.mapService.isOffline
+      && (this.mapService.provider === 'tdt' || this.mapService.provider === 'gaode');
+  }
+
+  private createToolbarSearchService(): ProviderSearchService | null {
+    if (this.supportsMapServiceToolbarSearch()) {
+      return new ProviderSearchService(this.providerSearchConfig);
+    }
+
+    if (this.mapConfigMode === 'legacy' && this.providerSearchConfig.enabled) {
+      return new ProviderSearchService(this.providerSearchConfig);
+    }
+
+    return null;
+  }
+
+  private buildToolbarCallbacks(
+    callbacks: ToolbarCallbacks = {},
+  ): ToolbarCallbacks {
+    if (this.mapConfigMode === 'mapService' && callbacks.onSearch) {
+      throw new MapServiceConfigError(
+        'mapService 模式下不支持通过 callbacks.onSearch 接管搜索，请改用 onSearchResultSelected',
+      );
+    }
+
+    const resolvedCallbacks: ToolbarCallbacks = { ...callbacks };
+    const providerSearchService = this.createToolbarSearchService();
+
+    if (providerSearchService && !resolvedCallbacks.onSearch) {
+      resolvedCallbacks.onSearch = (query: string) => providerSearchService.search(query, this.mapService);
+    }
+
+    if (this.supportsMapServiceToolbarSearch()) {
+      resolvedCallbacks.onResultSelect = async (result) => {
+        const selectedResult = this.handleMapServiceSearchSelection(result);
+        if (selectedResult) {
+          callbacks.onSelect?.(selectedResult);
+        }
+      };
+    }
+
+    return resolvedCallbacks;
+  }
+
+  private handleMapServiceSearchSelection(result: {
+    name: string;
+    address: string;
+    longitude: number;
+    latitude: number;
+    height?: number;
+    coordSystem?: 'WGS84' | 'GCJ02' | 'BD09';
+  }): MapSearchResult | null {
+    const viewer = this.viewer;
+    if (!viewer) {
+      return null;
+    }
+
+    const point = coordinateService.toWGS84(
+      {
+        longitude: Number(result.longitude),
+        latitude: Number(result.latitude),
+        height: Number.isFinite(Number(result.height)) ? Number(result.height) : undefined,
+      },
+      result.coordSystem || 'WGS84',
+    );
+    const currentHeight = viewer.camera.positionCartographic?.height;
+    const height = typeof currentHeight === 'number' && Number.isFinite(currentHeight) && currentHeight > 0
+      ? currentHeight
+      : (point.height ?? 2000);
+
+    viewer.camera.flyTo({
+      destination: Cesium.Cartesian3.fromDegrees(point.longitude, point.latitude, height),
+      orientation: {
+        heading: viewer.camera.heading,
+        pitch: viewer.camera.pitch,
+        roll: viewer.camera.roll,
+      },
+      duration: 1.2,
+    });
+
+    if (this.mapService.provider === 'tdt' || this.mapService.provider === 'gaode') {
+      const selectedResult: MapSearchResult = {
+        provider: this.mapService.provider,
+        name: result.name,
+        address: result.address,
+        longitude: point.longitude,
+        latitude: point.latitude,
+        height,
+        coordSystem: 'WGS84',
+      };
+      this.onSearchResultSelected?.(selectedResult);
+      return selectedResult;
+    }
+
+    return null;
   }
 
   private resetTerrainProvider(): void {
@@ -1233,6 +1335,7 @@ export class MapPlugin {
         ? { ...this.mapAuthConfig }
         : undefined,
       providerSearch: { ...this.providerSearchConfig },
+      onSearchResultSelected: this.onSearchResultSelected,
       credits: { ...this.creditsConfig },
       cesiumToken: this.cesiumToken,
       noFlyZone: { ...this.noFlyZoneConfig },
@@ -1360,12 +1463,8 @@ export class MapPlugin {
       return this.toolbarService;
     }
 
+    const callbacks = this.buildToolbarCallbacks(options.callbacks || {});
     const viewer = this.ensureViewer();
-    const callbacks: ToolbarCallbacks = { ...(options.callbacks || {}) };
-    if (!callbacks.onSearch && this.providerSearchConfig.enabled) {
-      const providerSearchService = new ProviderSearchService(this.providerSearchConfig);
-      callbacks.onSearch = (query: string) => providerSearchService.search(query, this.mapService);
-    }
     const toolbarOptions: ToolbarServiceOptions = {
       toolbarStyle: {
         ...DEFAULT_TOOLBAR_STYLE,

@@ -41,6 +41,9 @@ export interface SearchButtonHandlerOptions {
   /** 搜索回调 */
   onSearch?: (query: string) => Promise<any[]>;
 
+  /** 搜索结果点击后的完整处理流程 */
+  onResultSelect?: (result: any) => void | Promise<void>;
+
   /** 搜索选择回调 */
   onSelect?: (result: any) => void;
 }
@@ -153,6 +156,7 @@ export class SearchButtonHandler extends BaseButtonHandler {
     this.options.searchService = options.searchService ?? this.options.searchService;
     this.options.searchContainerStyle = options.searchContainerStyle ?? this.options.searchContainerStyle;
     this.options.onSearch = options.onSearch ?? this.options.onSearch;
+    this.options.onResultSelect = options.onResultSelect ?? this.options.onResultSelect;
     this.options.onSelect = options.onSelect ?? this.options.onSelect;
 
     if (options.searchContainerStyle) {
@@ -570,15 +574,24 @@ export class SearchButtonHandler extends BaseButtonHandler {
 
       item.addEventListener('click', () => {
         Object.assign(item.style, activeStyle);
-        this.flyToResult(result);
-        this.options.onSelect?.(result);
-        this.closeSearch();
+        void this.handleResultSelect(result);
       });
 
       resultsContainer.appendChild(item);
     });
 
     this.searchContainer.appendChild(resultsContainer);
+  }
+
+  private async handleResultSelect(result: any): Promise<void> {
+    if (this.options.onResultSelect) {
+      await this.options.onResultSelect(result);
+    } else {
+      this.flyToResult(result);
+      this.options.onSelect?.(result);
+    }
+
+    this.closeSearch();
   }
 
   /**

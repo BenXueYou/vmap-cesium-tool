@@ -192,6 +192,7 @@ export class ToolbarService {
         idleActionIcon: this.options.searchIdleActionIcon,
         clearActionIcon: this.options.searchClearActionIcon,
         onSearch: callbacks?.onSearch,
+        onResultSelect: callbacks?.onResultSelect,
         onSelect: callbacks?.onSelect,
       },
       this.i18n,
@@ -498,6 +499,7 @@ export class ToolbarService {
       idleActionIcon: this.options.searchIdleActionIcon,
       clearActionIcon: this.options.searchClearActionIcon,
       onSearch: this.config.callbacks?.onSearch,
+      onResultSelect: this.config.callbacks?.onResultSelect,
       onSelect: this.config.callbacks?.onSelect,
     });
   }

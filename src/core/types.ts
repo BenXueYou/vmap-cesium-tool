@@ -138,6 +138,10 @@ export interface SearchResult {
   coordSystem?: CoordSystem;
 }
 
+export interface MapSearchResult extends SearchResult {
+  provider: OnlineMapServiceProvider;
+}
+
 // ==================== 测量相关类型 ====================
 
 /**
@@ -418,6 +422,8 @@ export interface MapPluginOptions {
   mapAuth?: MapAuthConfig;
   /** 内置多厂商搜索；默认关闭，自定义 onSearch 优先 */
   providerSearch?: ProviderSearchOptions;
+  /** 新 mapService 模式下的标准搜索选中通知 */
+  onSearchResultSelected?: (result: MapSearchResult) => void;
   /** Cesium credit/版权区域；默认显示 */
   credits?: CreditsOptions;
   /** Cesium Ion Token */

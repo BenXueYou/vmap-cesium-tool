@@ -90,6 +90,9 @@ export interface ToolbarCallbacks {
   /** 搜索回调 */
   onSearch?: (query: string) => Promise<SearchResult[]>;
   
+  /** 搜索结果点击后的完整处理流程 */
+  onResultSelect?: (result: SearchResult) => void | Promise<void>;
+
   /** 搜索选择回调 */
   onSelect?: (result: SearchResult) => void;
   
@@ -132,6 +135,9 @@ export interface SearchServiceConfig {
   /** 搜索回调 */
   onSearch?: (query: string) => Promise<SearchResult[]>;
   
+  /** 搜索结果点击后的完整处理流程 */
+  onResultSelect?: (result: SearchResult) => void | Promise<void>;
+
   /** 搜索选择回调 */
   onSelect?: (result: SearchResult) => void;
 }
