@@ -4,6 +4,14 @@ import type { ResolvedMapService } from './mapService';
 export type BaseMapProviderId = 'tdt' | 'gaode' | 'tencent' | 'baidu' | 'google' | 'custom';
 export type OnlineMapServiceProvider = 'tdt' | 'gaode' | 'tencent' | 'baidu' | 'google';
 export type MapServiceProvider = OnlineMapServiceProvider | 'private';
+export type CapabilityStatus = 'available' | 'unavailable' | 'unknown' | 'notChecked';
+export type MapServiceValidationCode =
+  | 'INVALID_CONFIG'
+  | 'INVALID_CREDENTIALS'
+  | 'NETWORK_ERROR'
+  | 'SERVICE_UNAVAILABLE'
+  | 'CLIENT_RESTRICTION'
+  | 'PROXY_REQUIRED';
 
 export interface OnlineMapServiceConfig {
   provider: OnlineMapServiceProvider;
@@ -17,6 +25,36 @@ export interface PrivateMapServiceConfig {
 }
 
 export type MapServiceConfig = OnlineMapServiceConfig | PrivateMapServiceConfig;
+
+export interface MapServiceValidationResult {
+  ok: boolean;
+  provider: MapServiceProvider;
+  code?: MapServiceValidationCode;
+  capabilities: {
+    basemap: {
+      status: CapabilityStatus;
+      credentialVerified?: boolean;
+      message?: string;
+    };
+    search: {
+      status: CapabilityStatus;
+      requiresEnablement: boolean;
+      requiredProduct?: string;
+      setupUrl?: string;
+      message?: string;
+    };
+  };
+}
+
+export interface MapServiceValidationOptions {
+  request?: (provider: MapServiceProvider, url: string, init?: RequestInit) => Promise<Response>;
+  tdtValidationUrl?: string;
+  privateProbeCoordinates?: {
+    z: number;
+    x: number;
+    y: number;
+  };
+}
 
 export interface BaseMapRectangle {
   west: number;

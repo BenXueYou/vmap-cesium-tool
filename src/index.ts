@@ -36,8 +36,12 @@ export type {
   MapPluginOptions,
   CameraConfig,
   LayersConfig,
+  CapabilityStatus,
   MapServiceConfig,
   MapServiceProvider,
+  MapServiceValidationCode,
+  MapServiceValidationOptions,
+  MapServiceValidationResult,
   ProviderType,
   BaseMapConfig,
   BaseMapProviderId,
@@ -150,6 +154,7 @@ export {
 export { HeatmapLayer } from './adapters/HeatmapLayerAdapter';
 export { baseMapRegistry } from './core/mapProviders/registry';
 export { ProviderSearchService, createAmapSignature, normalizeMapAuth } from './core/mapProviders/ProviderSearchService';
+export { validateMapService } from './core/mapProviders/validation';
 export type {
   ClusterPoint,
   ClusterStyleStep,

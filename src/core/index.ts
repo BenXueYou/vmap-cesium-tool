@@ -11,6 +11,7 @@ export * from './constants';
 
 // 导出主插件类
 export { MapPlugin, createMapPlugin } from './MapPlugin';
+export { validateMapService } from './mapProviders/validation';
 
 // 重新导出 Cesium 类型（可选）
 import * as Cesium from 'cesium';
