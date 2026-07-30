@@ -11,7 +11,7 @@ export { MapPlugin, createMapPlugin } from './core/MapPlugin';
 /**
  * @deprecated 使用 MapPluginOptions 代替
  */
-export type { ToolbarConfig, ButtonConfig, CustomButtonConfig, SearchCallback, SearchResult, MeasurementCallback, ZoomCallback, MapType, MapToolsConfig, ComponentStyleConfig, StyleConfig, LayersPanelStyleConfig, SearchPanelStyleConfig, ToolbarSearchMenuOptions, ToolbarLayersMenuOptions, NoFlyZonePluginOptions, MapPluginOptions, CameraConfig, LayersConfig, ProviderType, BaseMapConfig, BaseMapProviderId, MapAuthConfig, ProviderSearchOptions, CreditsOptions, BaseMapRectangle, OfflineCameraBoundsConfig, CoordSystem, CoordinateAwareInput, CoordinateAwareOutput, TDTLayerConfig, GaodeLayerConfig, TencentLayerConfig, GoogleLayerConfig, BaiduLayerConfig, ArcGISLayerConfig, OSMLayerConfig, CustomLayerConfig, } from './core/types';
+export type { ToolbarConfig, ButtonConfig, CustomButtonConfig, SearchCallback, SearchResult, MapSearchResult, MeasurementCallback, ZoomCallback, MapType, MapToolsConfig, ComponentStyleConfig, StyleConfig, LayersPanelStyleConfig, SearchPanelStyleConfig, ToolbarSearchMenuOptions, ToolbarLayersMenuOptions, NoFlyZonePluginOptions, MapPluginOptions, CameraConfig, LayersConfig, CapabilityStatus, MapServiceConfig, MapServiceProvider, MapServiceValidationCode, MapServiceValidationOptions, MapServiceValidationResult, MapServiceUpdateResult, ProviderType, BaseMapConfig, BaseMapProviderId, MapAuthConfig, OnlineMapServiceConfig, OnlineMapServiceProvider, PrivateMapServiceConfig, ProviderSearchOptions, CreditsOptions, BaseMapRectangle, OfflineCameraBoundsConfig, CoordSystem, CoordinateAwareInput, CoordinateAwareOutput, TDTLayerConfig, GaodeLayerConfig, TencentLayerConfig, GoogleLayerConfig, BaiduLayerConfig, ArcGISLayerConfig, OSMLayerConfig, CustomLayerConfig, } from './core/types';
 export { BaseOverlay, Marker, Label, Icon, SVG, InfoWindow, Polyline, Polygon, Rectangle, Circle, Ring, } from './core/entities';
 export type { OverlayPosition, BaseOverlayOptions, OverlayClickHighlightOptions, OverlayHoverHighlightOptions, OverlayEntity, MarkerOptions, LabelOptions, IconOptions, SvgOptions, InfoWindowOptions, PolylineOptions, PolygonOptions, RectangleOptions, CircleOptions, RingOptions, } from './core/entities';
 export { OverlayService, resolveOverlayPickCandidates, DrawService, ToolbarService, createToolbarService, } from './core/services';
@@ -20,7 +20,8 @@ export { MarkService, MarkToolbar } from './core/services';
 export { PointClusterLayer, setTDTPlugin, createTDTImageryConfig, createTDTVectorConfig, createTDTTerrainConfig, createTDT3DImageryConfig, createTDT3DTerrainProvider, createTDT3DGeoWTFS, hasTDT3DExtension, } from './core/layers';
 export { HeatmapLayer } from './adapters/HeatmapLayerAdapter';
 export { baseMapRegistry } from './core/mapProviders/registry';
-export { ProviderSearchService, createAmapSignature, normalizeMapAuth } from './core/mapProviders/ProviderSearchService';
+export { ProviderSearchError, ProviderSearchService, createAmapSignature, normalizeMapAuth, } from './core/mapProviders/ProviderSearchService';
+export { validateMapService } from './core/mapProviders/validation';
 export type { ClusterPoint, ClusterStyleStep, PointClusterLayerOptions, } from './core/layers';
 export type { HeatPoint, HeatmapAutoUpdateOptions, HeatmapGradient, HeatmapOptions, } from './adapters/HeatmapLayerAdapter';
 export { BaseComponent, Toolbar, ToolbarButton, SearchBox, } from './components';

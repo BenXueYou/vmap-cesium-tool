@@ -4,11 +4,52 @@ title: 多厂商地图接入
 
 # 多厂商地图接入
 
-组件通过 `baseMap` 描述底图，通过 `mapAuth` 集中管理鉴权。目前支持天地图、高德、腾讯、百度、Google，以及自定义在线/离线瓦片。
+组件支持两套接入方式：
+
+- 新入口：`mapService`
+- 兼容入口：`baseMap + mapAuth`
+
+新项目推荐优先使用 `mapService`。它会把底图厂商、搜索能力和运行时切换统一收口到组件内部。目前支持天地图、高德、腾讯、百度、Google，以及自定义在线/离线瓦片。
 
 > 请通过环境变量或业务配置中心注入密钥，不要把真实密钥提交到仓库或打进前端公开包。
 
 ## 快速接入
+
+推荐新入口：
+
+```ts
+import { createMapPlugin, validateMapService } from '@xingm/vmap-cesium-toolbar';
+
+const mapService = {
+  provider: 'gaode',
+  serviceKey: import.meta.env.VITE_GAODE_KEY,
+  secureKey: import.meta.env.VITE_GAODE_SECURITY_KEY,
+} as const;
+
+const validation = await validateMapService(mapService);
+if (!validation.ok) {
+  throw new Error(validation.capabilities.basemap.message || '地图服务不可用');
+}
+
+const plugin = createMapPlugin('cesiumContainer', {
+  mapService,
+  providerSearch: {
+    endpoints: {
+      gaode: '/amap-search-proxy',
+    },
+  },
+  onSearchResultSelected: (result) => {
+    console.log(result.provider, result.longitude, result.latitude);
+  },
+  services: {
+    toolbar: { enabled: true },
+  },
+});
+
+const viewer = await plugin.initialize();
+```
+
+兼容入口仍可继续使用：
 
 ```ts
 import { initCesium } from '@xingm/vmap-cesium-toolbar';
@@ -30,7 +71,7 @@ const { viewer, mapPlugin } = await initCesium('cesiumContainer', {
 });
 ```
 
-新架构也可直接使用 `createMapPlugin`：
+兼容入口等价的新架构写法：
 
 ```ts
 import { createMapPlugin } from '@xingm/vmap-cesium-toolbar';
@@ -162,6 +203,27 @@ await initCesium('cesiumContainer', {
 
 ## 运行时切换
 
+`mapService` 模式推荐使用原子切换：
+
+```ts
+const update = await plugin.setMapService({
+  provider: 'private',
+  offlineMapUrl: '/tiles/{z}/{x}/{y}.png',
+});
+
+if (!update.ok) {
+  console.warn(update.code, update.capabilities.basemap.message);
+}
+```
+
+切换语义：
+
+- 旧搜索请求在切换开始后立即失效
+- 切换失败时保留旧底图和旧搜索入口
+- 切到私有地图自动隐藏搜索
+
+旧入口仍可继续用下面的兼容方式：
+
 ```ts
 plugin.updateBaseMap({
   provider: 'tencent',
@@ -252,4 +314,4 @@ overlayService.addMarker([116.404, 39.915], {
 
 ## 旧配置迁移
 
-旧版 `layers.type/tdt/gaode/baidu/custom` 仍兼容。新项目建议改用 `baseMap + mapAuth`，它能够覆盖腾讯、Google、离线范围和统一鉴权等新增能力。
+旧版 `layers.type/tdt/gaode/baidu/custom` 仍兼容。1.x 新接入建议改用 `mapService`；如果暂时不能迁移到 `mapService`，至少先收口到 `baseMap + mapAuth`，再逐步移除旧搜索和二次定位逻辑。

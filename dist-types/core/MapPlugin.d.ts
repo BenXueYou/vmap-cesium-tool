@@ -1,8 +1,9 @@
 import * as Cesium from 'cesium';
-import type { BaseMapConfig, MapAuthConfig, CameraConfig, DrawPluginOptions, LayersConfig, MapPluginOptions, OverlayPluginOptions, ToolbarConfig, ToolbarPluginOptions, CreditsOptions } from './types';
+import type { BaseMapConfig, MapAuthConfig, CameraConfig, DrawPluginOptions, LayersConfig, MapServiceConfig, MapPluginOptions, OverlayPluginOptions, ToolbarConfig, ToolbarPluginOptions, CreditsOptions } from './types';
 import { OverlayService } from './services/overlay/OverlayService';
 import { DrawService } from './services/draw/DrawService';
 import { ToolbarService } from './services/toolbar/ToolbarService';
+import type { MapServiceUpdateResult } from './mapProviders/types';
 export interface LayersServiceBridge {
     setMapType: (mapTypeId: string) => void;
     setPlaceNameVisible: (isChecked: boolean) => void;
@@ -18,6 +19,7 @@ export interface LayersServiceBridge {
  * 负责整合所有地图功能，提供统一的 API 接口
  */
 export declare class MapPlugin {
+    private static readonly LEGACY_MAP_SERVICE_FIELDS;
     private viewer;
     private containerId;
     private viewerOptions;
@@ -25,7 +27,11 @@ export declare class MapPlugin {
     private layersConfig;
     private baseMapConfig;
     private mapAuthConfig;
+    private mapService;
+    private mapServiceConfig;
+    private mapConfigMode;
     private providerSearchConfig;
+    private onSearchResultSelected?;
     private creditsConfig;
     private cesiumToken;
     private toolbarConfig;
@@ -45,6 +51,7 @@ export declare class MapPlugin {
     private sceneModeListenerDispose;
     private offlineCleanup;
     private layerRequestVersion;
+    private mapServiceSearchGeneration;
     private toolbarService;
     private overlayService;
     private drawService;
@@ -55,6 +62,7 @@ export declare class MapPlugin {
      * @param options 地图插件配置选项
      */
     constructor(containerId: string, options?: Partial<MapPluginOptions>);
+    private assertNoMixedMapServiceConfig;
     private getToolbarConfig;
     private getToolbarLayersMenuConfig;
     private resolveNoFlyZoneConfig;
@@ -73,18 +81,39 @@ export declare class MapPlugin {
      * 合并图层配置
      */
     private mergeLayersConfig;
+    private buildLayersConfigForBaseMap;
     private resolveBaseMapConfig;
     private resolveCurrentMapTypeId;
     private resolvePlaceNameVisible;
     private getToolbarMapTypes;
     private getCurrentToolbarMapType;
+    private resolveToolbarMapTypes;
+    private refreshToolbarMapTypes;
+    private buildResolvedMapRuntimeState;
+    private applyResolvedMapRuntimeState;
+    private applyResolvedMapService;
+    private syncMapServiceState;
+    private assertLegacyMutationAllowed;
     private getLayerToken;
     private getLayerSk;
+    private supportsMapServiceToolbarSearch;
+    private invalidateMapServiceSearches;
+    private attachMapServiceSearchMeta;
+    private isStaleMapServiceSearchResult;
+    private createToolbarSearchService;
+    private buildToolbarCallbacks;
+    private handleMapServiceSearchSelection;
     private resetTerrainProvider;
     private applyTerrainProvider;
     private ensureNoFlyZoneDataSource;
     private destroyGeoWTFS;
     private syncGeoWTFS;
+    private captureViewerLayerSnapshot;
+    private restoreViewerLayerSnapshot;
+    private resolveMapTypeForRuntimeState;
+    private prepareMapServiceSwitch;
+    private preparePreparedMapServiceSwitch;
+    private applyPreparedMapServiceSwitch;
     private refreshLayersAndGeoWTFS;
     private syncCreditDisplay;
     private clearOfflineConstraints;
@@ -147,10 +176,19 @@ export declare class MapPlugin {
      * 更新图层配置
      */
     updateLayers(config: Partial<LayersConfig>): void;
+    /** @deprecated mapService 模式请使用 setMapService()。 */
     updateBaseMap(baseMap: Partial<BaseMapConfig>): void;
+    /** @deprecated mapService 模式请使用 setMapService()。 */
     updateMapAuth(mapAuth: MapAuthConfig): void;
-    /** 替换全部厂商鉴权，适合单一当前服务商配置。 */
+    /** @deprecated mapService 模式请使用 setMapService()。 */
     setMapAuth(mapAuth: MapAuthConfig): void;
+    private isEquivalentMapServiceConfig;
+    private mapSwitchErrorToCode;
+    private buildMapServiceUpdateResult;
+    private buildSuccessfulMapServiceUpdateResult;
+    private buildFailedMapServiceUpdateResult;
+    private validateMapServiceForSwitch;
+    setMapService(mapService: MapServiceConfig): Promise<MapServiceUpdateResult>;
     /** 运行时更新 Cesium credit/版权区域显示状态。 */
     updateCredits(credits: CreditsOptions): void;
     /**

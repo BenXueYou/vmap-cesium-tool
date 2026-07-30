@@ -61,6 +61,12 @@ function cloneSearchCapability(provider: MapServiceProvider): MapServiceValidati
   return { ...SEARCH_CAPABILITY_BY_PROVIDER[provider] };
 }
 
+export function getDefaultMapServiceSearchCapability(
+  provider: MapServiceProvider,
+): MapServiceValidationResult['capabilities']['search'] {
+  return cloneSearchCapability(provider);
+}
+
 type ValidationResultOverrides = Partial<Omit<MapServiceValidationResult, 'capabilities' | 'provider'>> & {
   capabilities?: {
     basemap?: Partial<MapServiceValidationResult['capabilities']['basemap']>;

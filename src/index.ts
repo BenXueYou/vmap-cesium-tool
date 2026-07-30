@@ -43,6 +43,7 @@ export type {
   MapServiceValidationCode,
   MapServiceValidationOptions,
   MapServiceValidationResult,
+  MapServiceUpdateResult,
   ProviderType,
   BaseMapConfig,
   BaseMapProviderId,

@@ -3,7 +3,7 @@ import type { Cartesian3, Cartographic, Color, MaterialProperty, Rectangle, Enti
 import type { I18nLike } from '../i18n';
 import type { OverlayPickingOptions } from './services/overlay/OverlayService';
 import type { ToolbarCallbacks } from './services/toolbar/types';
-import type { BaseMapConfig, BaseMapProviderId, MapAuthConfig, MapProviderContext, OfflineCameraBoundsConfig, BaseMapRectangle } from './mapProviders/types';
+import type { BaseMapConfig, BaseMapProviderId, CapabilityStatus, MapAuthConfig, MapServiceConfig, MapServiceProvider, MapServiceValidationCode, MapServiceValidationOptions, MapServiceValidationResult, MapServiceUpdateResult, MapProviderContext, OfflineCameraBoundsConfig, OnlineMapServiceConfig, OnlineMapServiceProvider, PrivateMapServiceConfig, BaseMapRectangle } from './mapProviders/types';
 import type { CoordSystem, LngLat } from './mapProviders/coordinates/types';
 /**
  * 核心类型定义 - 整合所有地图插件相关的类型
@@ -109,6 +109,9 @@ export interface SearchResult {
     latitude: number;
     height?: number;
     coordSystem?: CoordSystem;
+}
+export interface MapSearchResult extends SearchResult {
+    provider: OnlineMapServiceProvider;
 }
 /**
  * 测量回调接口
@@ -346,12 +349,16 @@ export interface MapPluginOptions {
     camera?: CameraConfig;
     /** 图层配置 */
     layers?: LayersConfig;
+    /** 新地图服务配置 */
+    mapService?: MapServiceConfig;
     /** 新版底图配置 */
     baseMap?: BaseMapConfig;
     /** 多厂商鉴权配置 */
     mapAuth?: MapAuthConfig;
     /** 内置多厂商搜索；默认关闭，自定义 onSearch 优先 */
     providerSearch?: ProviderSearchOptions;
+    /** 新 mapService 模式下的标准搜索选中通知 */
+    onSearchResultSelected?: (result: MapSearchResult) => void;
     /** Cesium credit/版权区域；默认显示 */
     credits?: CreditsOptions;
     /** Cesium Ion Token */
@@ -667,4 +674,4 @@ export interface ComponentStyleConfig {
     measurement?: StyleConfig;
     layers?: StyleConfig;
 }
-export type { Cesium, BaseMapConfig, BaseMapProviderId, MapAuthConfig, MapProviderContext, OfflineCameraBoundsConfig, BaseMapRectangle, CoordSystem, LngLat, };
+export type { Cesium, BaseMapConfig, BaseMapProviderId, CapabilityStatus, MapAuthConfig, MapServiceConfig, MapServiceProvider, MapServiceValidationCode, MapServiceValidationOptions, MapServiceValidationResult, MapServiceUpdateResult, MapProviderContext, OnlineMapServiceConfig, OnlineMapServiceProvider, PrivateMapServiceConfig, OfflineCameraBoundsConfig, BaseMapRectangle, CoordSystem, LngLat, };

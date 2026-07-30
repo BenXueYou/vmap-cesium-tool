@@ -10,25 +10,29 @@ npm install @xingm/vmap-cesium-toolbar cesium
 
 ## 推荐入口
 
-新项目只推荐使用 createMapPlugin、MapPlugin 和服务层 API。
+新项目只推荐使用 createMapPlugin、MapPlugin 和服务层 API。多厂商地图接入优先使用 `mapService`，旧 `baseMap/mapAuth` 仅保留兼容迁移路径。
 
 ```ts
-import { createMapPlugin } from '@xingm/vmap-cesium-toolbar';
+import { createMapPlugin, validateMapService } from '@xingm/vmap-cesium-toolbar';
+
+const mapService = {
+  provider: 'tdt',
+  serviceKey: 'your-tianditu-token',
+  secureKey: 'your-tianditu-sk',
+} as const;
+
+const validation = await validateMapService(mapService);
+if (!validation.ok) {
+  throw new Error(validation.capabilities.basemap.message || '地图服务不可用');
+}
 
 const mapPlugin = createMapPlugin('cesiumContainer', {
+  mapService,
   cesiumToken: 'your-cesium-ion-token',
   camera: {
     center: [116.3974, 39.9093, 1000],
     pitch: -45,
     heading: 0,
-  },
-  layers: {
-    type: 'tdt',
-    tdt: {
-      mapTypeId: 'img',
-      token: 'your-tianditu-token',
-      showLabel: true,
-    },
   },
   viewerOptions: {
     animation: false,
@@ -40,10 +44,10 @@ const mapPlugin = createMapPlugin('cesiumContainer', {
     draw: true,
     toolbar: {
       enabled: true,
-      callbacks: {
-        onSearch: async () => [],
-      },
     },
+  },
+  onSearchResultSelected: (result) => {
+    console.log(result.provider, result.longitude, result.latitude);
   },
 });
 
@@ -54,13 +58,9 @@ const drawService = mapPlugin.getDrawService();
 
 drawService.startDrawing('polygon');
 
-mapPlugin.updateLayers({
-  type: 'tdt',
-  tdt: {
-    mapTypeId: 'vec',
-    token: 'your-tianditu-token',
-    showLabel: true,
-  },
+await mapPlugin.setMapService({
+  provider: 'private',
+  offlineMapUrl: '/tiles/{z}/{x}/{y}.png',
 });
 ```
 
@@ -99,6 +99,13 @@ mapPlugin.updateLayers({
 3. 用 mapPlugin.getOverlayService() 替代直接维护 CesiumOverlayService 生命周期
 4. 用 mapPlugin.getDrawService() 替代 DrawHelper 的直接持有
 5. 仅在过渡窗口内保留 compat 导出
+
+多厂商地图相关的专项迁移建议：
+
+1. 用 `mapService` 替代分散的 `baseMap`、`mapAuth`、业务搜索 URL 和二次定位
+2. 初始化前可先调用 `validateMapService()`
+3. 运行时切换统一走 `setMapService()`
+4. 搜索选择统一消费 `onSearchResultSelected`
 
 ### 旧写法
 

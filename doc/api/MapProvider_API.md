@@ -32,6 +32,37 @@ interface BaseMapConfig {
 }
 ```
 
+## MapServiceConfig
+
+新接入推荐直接使用 `mapService`，让组件统一拥有厂商来源、默认底图和搜索能力。
+
+```ts
+type OnlineMapServiceProvider =
+  | 'tdt'
+  | 'gaode'
+  | 'baidu'
+  | 'tencent'
+  | 'google';
+
+type MapServiceConfig =
+  | {
+      provider: OnlineMapServiceProvider;
+      serviceKey: string;
+      secureKey?: string;
+    }
+  | {
+      provider: 'private';
+      offlineMapUrl: string;
+    };
+```
+
+约束：
+
+- `mapService` 不能与旧 `baseMap`、`mapAuth`、`layers` 混用
+- 在线厂商统一使用 `provider/serviceKey/secureKey`
+- 私有地图必须显式传 `provider: 'private'` 和 `offlineMapUrl`
+- 私有地图不提供厂商地点搜索
+
 ## MapAuthConfig
 
 ```ts
@@ -79,7 +110,95 @@ interface CreditsOptions {
 
 ## MapPlugin 新增方法
 
+### `validateMapService(mapService, options?)`
+
+校验底图可用性并返回结构化能力状态。默认只校验底图，不主动调用搜索接口。
+
+```ts
+import { validateMapService } from '@xingm/vmap-cesium-toolbar';
+
+const result = await validateMapService({
+  provider: 'tdt',
+  serviceKey: 'YOUR_TDT_TOKEN',
+  secureKey: 'YOUR_TDT_SK',
+});
+```
+
+返回结构：
+
+```ts
+interface MapServiceValidationResult {
+  ok: boolean;
+  provider: MapServiceProvider;
+  code?:
+    | 'INVALID_CONFIG'
+    | 'INVALID_CREDENTIALS'
+    | 'NETWORK_ERROR'
+    | 'SERVICE_UNAVAILABLE'
+    | 'CLIENT_RESTRICTION'
+    | 'PROXY_REQUIRED';
+  capabilities: {
+    basemap: {
+      status: 'available' | 'unavailable' | 'unknown' | 'notChecked';
+      credentialVerified?: boolean;
+      message?: string;
+    };
+    search: {
+      status: 'available' | 'unavailable' | 'unknown' | 'notChecked';
+      requiresEnablement: boolean;
+      requiredProduct?: string;
+      setupUrl?: string;
+      message?: string;
+    };
+  };
+}
+```
+
+### `setMapService(mapService)`
+
+异步切换当前地图服务，返回带 `changed` 标记的结构化结果。
+
+```ts
+const update = await plugin.setMapService({
+  provider: 'private',
+  offlineMapUrl: '/tiles/{z}/{x}/{y}.png',
+});
+```
+
+```ts
+interface MapServiceUpdateResult extends MapServiceValidationResult {
+  changed: boolean;
+}
+```
+
+行为约定：
+
+- 切换开始后，旧搜索请求立即失效
+- 切换失败时保留旧底图、旧地图服务配置和旧搜索入口状态
+- 切到私有地图时隐藏搜索；切回在线地图时恢复为厂商搜索入口
+- `changed: false` 表示本次未提交新地图服务
+
+### `onSearchResultSelected`
+
+`mapService` 模式下，工具栏搜索选中后组件只定位一次，并通过该回调返回标准结果：
+
+```ts
+onSearchResultSelected?: (result: {
+  provider: OnlineMapServiceProvider;
+  name: string;
+  address: string;
+  longitude: number;
+  latitude: number;
+  height?: number;
+  coordSystem?: 'WGS84';
+}) => void;
+```
+
+业务不再需要二次 `flyTo()`，也不应再次做坐标系判断。
+
 ### `updateBaseMap(baseMap)`
+
+> `mapService` 模式下已禁用；仅保留给旧 `baseMap/mapAuth` 接入路径。
 
 合并底图配置，并在组件内部触发影像、地形、注记和离线约束刷新。方法返回 `void`。
 
@@ -89,6 +208,8 @@ plugin.updateBaseMap({ provider: 'gaode', type: 'satellite' });
 
 ### `updateMapAuth(mapAuth)`
 
+> `mapService` 模式下已禁用；仅保留给旧 `baseMap/mapAuth` 接入路径。
+
 合并鉴权配置，并在组件内部刷新当前底图。方法返回 `void`。
 
 ```ts
@@ -96,6 +217,8 @@ plugin.updateMapAuth({ gaode: { key: 'YOUR_KEY' } });
 ```
 
 ### `setMapAuth(mapAuth)`
+
+> `mapService` 模式下已禁用；仅保留给旧 `baseMap/mapAuth` 接入路径。
 
 替换全部厂商鉴权配置并刷新当前底图，适合只允许一个当前服务商的配置中心。
 

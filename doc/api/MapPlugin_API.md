@@ -17,6 +17,7 @@
 import {
   MapPlugin,
   createMapPlugin,
+  validateMapService,
   i18n,
   type I18nLike,
   type MapPluginOptions,
@@ -29,22 +30,29 @@ import {
 ## 推荐用法
 
 ```ts
-import { createMapPlugin } from '@xingm/vmap-cesium-toolbar';
+import { createMapPlugin, validateMapService } from '@xingm/vmap-cesium-toolbar';
+
+const mapService = {
+  provider: 'tdt',
+  serviceKey: 'your-tianditu-token',
+  secureKey: 'your-tianditu-sk',
+} as const;
+
+const validation = await validateMapService(mapService);
+if (!validation.ok) {
+  throw new Error(validation.capabilities.basemap.message || '地图服务不可用');
+}
 
 const mapPlugin = createMapPlugin('cesiumContainer', {
   cesiumToken: 'your-cesium-ion-token',
+  mapService,
   camera: {
     center: [116.3974, 39.9093, 1000],
     pitch: -45,
     heading: 0,
   },
-  layers: {
-    type: 'tdt',
-    tdt: {
-      mapTypeId: 'img',
-      token: 'your-tianditu-token',
-      showLabel: true,
-    },
+  onSearchResultSelected: (result) => {
+    console.log(result.provider, result.longitude, result.latitude);
   },
   services: {
     toolbar: {
@@ -106,6 +114,12 @@ interface MapPluginOptions {
   viewerOptions?: Cesium.Viewer.ConstructorOptions;
   camera?: CameraConfig;
   layers?: LayersConfig;
+  mapService?: MapServiceConfig;
+  baseMap?: BaseMapConfig;
+  mapAuth?: MapAuthConfig;
+  providerSearch?: ProviderSearchOptions;
+  onSearchResultSelected?: (result: MapSearchResult) => void;
+  credits?: CreditsOptions;
   cesiumToken?: string;
   services?: MapPluginServicesOptions;
 }
@@ -161,6 +175,28 @@ interface LayersConfig {
 - `baidu`
 - `osm`
 - `custom`
+
+### MapServiceConfig
+
+```ts
+type MapServiceConfig =
+  | {
+      provider: 'tdt' | 'gaode' | 'baidu' | 'tencent' | 'google';
+      serviceKey: string;
+      secureKey?: string;
+    }
+  | {
+      provider: 'private';
+      offlineMapUrl: string;
+    };
+```
+
+说明：
+
+- 新项目优先使用 `mapService`
+- `mapService` 不能与旧 `layers`、`baseMap`、`mapAuth` 混用
+- 在线地图切换成功后自动接管工具栏搜索；私有地图自动隐藏搜索按钮
+- 旧 `services.toolbar.callbacks.onSearch` 在 `mapService` 模式下不再允许覆盖组件搜索
 
 #### TDTLayerConfig
 
@@ -399,6 +435,49 @@ updateLayers(config: Partial<LayersConfig>): void
 - 注记/路网显隐状态
 - 三维路网实例状态
 - 工具栏图层菜单状态
+
+> `mapService` 模式下不要再调用 `updateLayers()`、`updateBaseMap()`、`updateMapAuth()` 或 `setMapAuth()`。
+
+### validateMapService
+
+```ts
+validateMapService(
+  mapService: MapServiceConfig,
+  options?: MapServiceValidationOptions,
+): Promise<MapServiceValidationResult>
+```
+
+说明：
+
+- 用于初始化前或配置页中预校验地图服务
+- 默认只校验底图能力，搜索能力返回 `notChecked` 或 `unavailable`
+- 返回结构中会区分配置错误、凭证错误、网络故障、代理问题和客户端限制
+
+### setMapService
+
+```ts
+setMapService(mapService: MapServiceConfig): Promise<MapServiceUpdateResult>
+```
+
+说明：
+
+- 运行时异步切换在线或私有地图服务
+- 旧搜索请求在切换开始后立即失效
+- 切换失败时保留旧地图、旧工具栏搜索状态和旧配置快照
+- 返回值中的 `changed` 表示本次是否真正提交了新地图服务
+
+返回示例：
+
+```ts
+const update = await mapPlugin.setMapService({
+  provider: 'private',
+  offlineMapUrl: '/tiles/{z}/{x}/{y}.png',
+});
+
+if (!update.ok) {
+  console.warn(update.code, update.capabilities.basemap.message);
+}
+```
 
 ### createToolbarService
 

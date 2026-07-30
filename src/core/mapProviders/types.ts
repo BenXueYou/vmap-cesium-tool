@@ -46,6 +46,10 @@ export interface MapServiceValidationResult {
   };
 }
 
+export interface MapServiceUpdateResult extends MapServiceValidationResult {
+  changed: boolean;
+}
+
 export interface MapServiceValidationOptions {
   request?: (provider: MapServiceProvider, url: string, init?: RequestInit) => Promise<Response>;
   tdtValidationUrl?: string;

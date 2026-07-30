@@ -23,6 +23,7 @@ import type {
   ProviderSearchOptions,
   CreditsOptions,
   MapSearchResult,
+  SearchResult,
 } from './types';
 import {
   DEFAULT_CAMERA_CONFIG,
@@ -56,6 +57,50 @@ import {
   resolveLegacyMapService,
   type ResolvedMapService,
 } from './mapProviders/mapService';
+import type {
+  MapServiceProvider,
+  MapServiceUpdateResult,
+  MapServiceValidationCode,
+  MapServiceValidationResult,
+  OnlineMapServiceProvider,
+} from './mapProviders/types';
+import {
+  getDefaultMapServiceSearchCapability,
+  validateMapService,
+} from './mapProviders/validation';
+
+const MAP_SERVICE_SEARCH_META = Symbol('mapServiceSearchMeta');
+
+type SearchResultWithMapServiceMeta = SearchResult & {
+  [MAP_SERVICE_SEARCH_META]?: {
+    generation: number;
+    provider: OnlineMapServiceProvider;
+  };
+};
+
+interface ResolvedMapRuntimeState {
+  mapConfigMode: 'legacy' | 'mapService';
+  mapServiceConfig?: MapServiceConfig;
+  mapService: ResolvedMapService;
+  baseMapConfig: BaseMapConfig;
+  mapAuthConfig: MapAuthConfig | undefined;
+  layersConfig: LayersConfig;
+  toolbarMapTypes: MapType[];
+  currentMapTypeId: string;
+  placeNameVisible: boolean;
+  nonForcedPlaceNameVisible: boolean;
+}
+
+interface PreparedMapServiceSwitch {
+  runtimeState: ResolvedMapRuntimeState;
+  providers: Cesium.ImageryProvider[];
+  terrainProvider: Cesium.TerrainProvider | null;
+}
+
+interface ViewerLayerSnapshot {
+  imageryProviders: Cesium.ImageryProvider[];
+  terrainProvider: Cesium.TerrainProvider;
+}
 
 interface InitialCenter {
   longitude: number;
@@ -195,6 +240,7 @@ export class MapPlugin {
   private sceneModeListenerDispose: (() => void) | null = null;
   private offlineCleanup: (() => void) | null = null;
   private layerRequestVersion = 0;
+  private mapServiceSearchGeneration = 0;
 
   private toolbarService: ToolbarService | null = null;
   private overlayService: OverlayService | null = null;
@@ -561,12 +607,12 @@ export class MapPlugin {
     }
   }
 
-  private resolveCurrentMapTypeId(): string {
-    return resolveMapTypeId(this.baseMapConfig);
+  private resolveCurrentMapTypeId(baseMapConfig: BaseMapConfig = this.baseMapConfig): string {
+    return resolveMapTypeId(baseMapConfig);
   }
 
-  private resolvePlaceNameVisible(): boolean {
-    return this.baseMapConfig.showLabel ?? false;
+  private resolvePlaceNameVisible(baseMapConfig: BaseMapConfig = this.baseMapConfig): boolean {
+    return baseMapConfig.showLabel ?? false;
   }
 
   private getToolbarMapTypes() {
@@ -577,11 +623,57 @@ export class MapPlugin {
     return this.toolbarMapTypes.find((mapType) => mapType.id === this.currentMapTypeId);
   }
 
-  private refreshToolbarMapTypes(): void {
-    this.toolbarMapTypes = withDefaultMapTypeThumbnails(
+  private resolveToolbarMapTypes(mapService: ResolvedMapService): MapType[] {
+    return withDefaultMapTypeThumbnails(
       this.toolbarLayersMenuConfig.mapTypes
-        || baseMapRegistry.getMapTypes(this.mapService.baseMap, this.mapService.auth, this.viewer || undefined),
+        || baseMapRegistry.getMapTypes(mapService.baseMap, mapService.auth, this.viewer || undefined),
     );
+  }
+
+  private refreshToolbarMapTypes(): void {
+    this.toolbarMapTypes = this.resolveToolbarMapTypes(this.mapService);
+  }
+
+  private buildResolvedMapRuntimeState(
+    mapService: ResolvedMapService,
+    mode: 'legacy' | 'mapService',
+    mapServiceConfig?: MapServiceConfig,
+  ): ResolvedMapRuntimeState {
+    const baseMapConfig = mapService.baseMap;
+    const toolbarMapTypes = this.resolveToolbarMapTypes(mapService);
+    const currentMapTypeId = this.resolveCurrentMapTypeId(baseMapConfig);
+    const resolvedPlaceNameVisible = this.toolbarLayersMenuConfig.defaultPlaceNameChecked
+      ?? this.resolvePlaceNameVisible(baseMapConfig);
+    const currentToolbarMapType = toolbarMapTypes.find((mapType) => mapType.id === currentMapTypeId);
+    const isForcedMapType = !!currentToolbarMapType?.forcePlaceName;
+    const nonForcedPlaceNameVisible = resolvedPlaceNameVisible;
+    const placeNameVisible = isForcedMapType ? true : resolvedPlaceNameVisible;
+
+    return {
+      mapConfigMode: mode,
+      mapServiceConfig: mapServiceConfig ? { ...mapServiceConfig } : undefined,
+      mapService,
+      baseMapConfig,
+      mapAuthConfig: mapService.auth,
+      layersConfig: this.buildLayersConfigForBaseMap(baseMapConfig),
+      toolbarMapTypes,
+      currentMapTypeId,
+      placeNameVisible,
+      nonForcedPlaceNameVisible,
+    };
+  }
+
+  private applyResolvedMapRuntimeState(state: ResolvedMapRuntimeState): void {
+    this.mapConfigMode = state.mapConfigMode;
+    this.mapServiceConfig = state.mapServiceConfig ? { ...state.mapServiceConfig } : undefined;
+    this.mapService = state.mapService;
+    this.baseMapConfig = state.baseMapConfig;
+    this.mapAuthConfig = state.mapAuthConfig;
+    this.layersConfig = state.layersConfig;
+    this.toolbarMapTypes = state.toolbarMapTypes;
+    this.currentMapTypeId = state.currentMapTypeId;
+    this.placeNameVisible = state.placeNameVisible;
+    this.nonForcedPlaceNameVisible = state.nonForcedPlaceNameVisible;
   }
 
   private applyResolvedMapService(
@@ -589,19 +681,9 @@ export class MapPlugin {
     mode: 'legacy' | 'mapService',
     mapServiceConfig?: MapServiceConfig,
   ): void {
-    this.mapConfigMode = mode;
-    this.mapServiceConfig = mapServiceConfig ? { ...mapServiceConfig } : undefined;
-    this.mapService = mapService;
-    this.baseMapConfig = mapService.baseMap;
-    this.mapAuthConfig = mapService.auth;
-    this.layersConfig = this.buildLayersConfigForBaseMap(this.baseMapConfig);
-    this.refreshToolbarMapTypes();
-    this.currentMapTypeId = this.resolveCurrentMapTypeId();
-    const resolvedPlaceNameVisible = this.toolbarLayersMenuConfig.defaultPlaceNameChecked
-      ?? this.resolvePlaceNameVisible();
-    const isForcedMapType = !!this.getCurrentToolbarMapType()?.forcePlaceName;
-    this.nonForcedPlaceNameVisible = resolvedPlaceNameVisible;
-    this.placeNameVisible = isForcedMapType ? true : resolvedPlaceNameVisible;
+    this.applyResolvedMapRuntimeState(
+      this.buildResolvedMapRuntimeState(mapService, mode, mapServiceConfig),
+    );
   }
 
   private syncMapServiceState(): void {
@@ -642,6 +724,51 @@ export class MapPlugin {
       );
   }
 
+  private invalidateMapServiceSearches(): void {
+    this.mapServiceSearchGeneration += 1;
+  }
+
+  private attachMapServiceSearchMeta(results: SearchResult[]): SearchResult[] {
+    if (
+      this.mapService.provider !== 'tdt'
+      && this.mapService.provider !== 'gaode'
+      && this.mapService.provider !== 'baidu'
+      && this.mapService.provider !== 'tencent'
+      && this.mapService.provider !== 'google'
+    ) {
+      return results;
+    }
+
+    const generation = this.mapServiceSearchGeneration;
+    const provider = this.mapService.provider;
+
+    return results.map((result) => {
+      if (!result || typeof result !== 'object') {
+        return result;
+      }
+
+      Object.defineProperty(result, MAP_SERVICE_SEARCH_META, {
+        configurable: true,
+        enumerable: false,
+        value: {
+          generation,
+          provider,
+        },
+      });
+      return result;
+    });
+  }
+
+  private isStaleMapServiceSearchResult(result: SearchResultWithMapServiceMeta): boolean {
+    const meta = result?.[MAP_SERVICE_SEARCH_META];
+    if (!meta) {
+      return false;
+    }
+
+    return meta.generation !== this.mapServiceSearchGeneration
+      || meta.provider !== this.mapService.provider;
+  }
+
   private createToolbarSearchService(): ProviderSearchService | null {
     if (this.supportsMapServiceToolbarSearch()) {
       return new ProviderSearchService(this.providerSearchConfig);
@@ -667,7 +794,24 @@ export class MapPlugin {
     const providerSearchService = this.createToolbarSearchService();
 
     if (providerSearchService && !resolvedCallbacks.onSearch) {
-      resolvedCallbacks.onSearch = (query: string) => providerSearchService.search(query, this.mapService);
+      resolvedCallbacks.onSearch = async (query: string) => {
+        if (this.mapConfigMode !== 'mapService') {
+          return providerSearchService.search(query, this.mapService);
+        }
+
+        const generation = this.mapServiceSearchGeneration;
+        const service = this.mapService;
+        const results = await providerSearchService.search(query, service);
+        if (
+          generation !== this.mapServiceSearchGeneration
+          || service !== this.mapService
+          || service.provider !== this.mapService.provider
+        ) {
+          return [];
+        }
+
+        return this.attachMapServiceSearchMeta(results);
+      };
     }
 
     if (this.supportsMapServiceToolbarSearch()) {
@@ -690,6 +834,10 @@ export class MapPlugin {
     height?: number;
     coordSystem?: 'WGS84' | 'GCJ02' | 'BD09';
   }): MapSearchResult | null {
+    if (this.isStaleMapServiceSearchResult(result as SearchResultWithMapServiceMeta)) {
+      return null;
+    }
+
     const viewer = this.viewer;
     if (!viewer) {
       return null;
@@ -849,6 +997,116 @@ export class MapPlugin {
       console.warn('创建三维路网实例失败:', error);
       this.currentGeoWTFS = null;
     }
+  }
+
+  private captureViewerLayerSnapshot(): ViewerLayerSnapshot | null {
+    if (!this.viewer) {
+      return null;
+    }
+
+    const imageryProviders: Cesium.ImageryProvider[] = [];
+    for (let index = 0; index < this.viewer.imageryLayers.length; index += 1) {
+      const layer = this.viewer.imageryLayers.get(index);
+      if (layer?.imageryProvider) {
+        imageryProviders.push(layer.imageryProvider);
+      }
+    }
+
+    return {
+      imageryProviders,
+      terrainProvider: this.viewer.terrainProvider,
+    };
+  }
+
+  private restoreViewerLayerSnapshot(snapshot: ViewerLayerSnapshot | null): void {
+    if (!this.viewer || !snapshot) {
+      return;
+    }
+
+    this.viewer.imageryLayers.removeAll();
+    snapshot.imageryProviders.forEach((provider) => {
+      this.viewer!.imageryLayers.addImageryProvider(provider);
+    });
+    this.applyTerrainProvider(snapshot.terrainProvider);
+    this.applyOfflineConstraints();
+    this.syncCreditDisplay();
+    void this.syncGeoWTFS();
+  }
+
+  private resolveMapTypeForRuntimeState(runtimeState: ResolvedMapRuntimeState): MapType {
+    const mapType = baseMapRegistry.getMapTypeById(
+      runtimeState.currentMapTypeId,
+      runtimeState.mapService.baseMap,
+      runtimeState.mapService.auth,
+      this.viewer || undefined,
+    ) || baseMapRegistry.getMapTypes(
+      runtimeState.mapService.baseMap,
+      runtimeState.mapService.auth,
+      this.viewer || undefined,
+    )[0];
+
+    if (!mapType) {
+      throw new Error(`未找到可用地图类型: ${runtimeState.currentMapTypeId}`);
+    }
+
+    return mapType;
+  }
+
+  private async prepareMapServiceSwitch(
+    mapService: ResolvedMapService,
+    mapServiceConfig?: MapServiceConfig,
+  ): Promise<PreparedMapServiceSwitch> {
+    const runtimeState = this.buildResolvedMapRuntimeState(mapService, 'mapService', mapServiceConfig);
+    return this.preparePreparedMapServiceSwitch(runtimeState);
+  }
+
+  private async preparePreparedMapServiceSwitch(
+    runtimeState: ResolvedMapRuntimeState,
+  ): Promise<PreparedMapServiceSwitch> {
+    const viewer = this.viewer;
+    if (!viewer) {
+      return {
+        runtimeState,
+        providers: [],
+        terrainProvider: null,
+      };
+    }
+
+    const mapType = this.resolveMapTypeForRuntimeState(runtimeState);
+    if (mapType.id === 'tdt3d') {
+      await ensureTDT3DExtensionLoaded();
+    }
+
+    const context = {
+      viewer,
+      baseMap: runtimeState.mapService.baseMap,
+      auth: runtimeState.mapService.auth,
+      service: runtimeState.mapService,
+    };
+    const providers = await Promise.resolve(mapType.provider(context));
+    const terrainProvider = mapType.terrainProvider
+      ? await Promise.resolve(mapType.terrainProvider(context))
+      : null;
+
+    return {
+      runtimeState,
+      providers: runtimeState.placeNameVisible ? providers : providers.slice(0, 1),
+      terrainProvider,
+    };
+  }
+
+  private applyPreparedMapServiceSwitch(prepared: PreparedMapServiceSwitch): void {
+    if (!this.viewer) {
+      return;
+    }
+
+    this.viewer.imageryLayers.removeAll();
+    prepared.providers.forEach((provider) => {
+      this.viewer!.imageryLayers.addImageryProvider(provider);
+    });
+    this.applyTerrainProvider(prepared.terrainProvider);
+    this.applyOfflineConstraints();
+    this.syncCreditDisplay();
   }
 
   private async refreshLayersAndGeoWTFS(): Promise<void> {
@@ -1127,45 +1385,26 @@ export class MapPlugin {
   private async addLayers(): Promise<void> {
     if (!this.viewer) return;
     const requestVersion = ++this.layerRequestVersion;
-    const mapType = baseMapRegistry.getMapTypeById(
-      this.currentMapTypeId,
-      this.mapService.baseMap,
-      this.mapService.auth,
-      this.viewer,
-    ) || baseMapRegistry.getMapTypes(this.mapService.baseMap, this.mapService.auth, this.viewer)[0];
-
-    if (!mapType) {
-      throw new Error(`未找到可用地图类型: ${this.currentMapTypeId}`);
-    }
-
-    if (mapType.id === 'tdt3d') {
-      await ensureTDT3DExtensionLoaded();
-    }
-
-    const context = {
-      viewer: this.viewer,
-      baseMap: this.mapService.baseMap,
-      auth: this.mapService.auth,
-      service: this.mapService,
-    };
-    const providers = await Promise.resolve(mapType.provider(context));
-    const terrainProvider = mapType.terrainProvider
-      ? await Promise.resolve(mapType.terrainProvider(context))
-      : null;
+    const prepared = await this.preparePreparedMapServiceSwitch(
+      {
+        mapConfigMode: this.mapConfigMode,
+        mapServiceConfig: this.mapServiceConfig ? { ...this.mapServiceConfig } : undefined,
+        mapService: this.mapService,
+        baseMapConfig: this.baseMapConfig,
+        mapAuthConfig: this.mapAuthConfig,
+        layersConfig: this.layersConfig,
+        toolbarMapTypes: this.toolbarMapTypes,
+        currentMapTypeId: this.currentMapTypeId,
+        placeNameVisible: this.placeNameVisible,
+        nonForcedPlaceNameVisible: this.nonForcedPlaceNameVisible,
+      },
+    );
 
     if (requestVersion !== this.layerRequestVersion || !this.viewer) {
       return;
     }
 
-    this.viewer.imageryLayers.removeAll();
-    providers
-      .slice(0, this.placeNameVisible ? providers.length : 1)
-      .forEach((provider) => {
-        this.viewer!.imageryLayers.addImageryProvider(provider);
-      });
-    this.applyTerrainProvider(terrainProvider);
-    this.applyOfflineConstraints();
-    this.syncCreditDisplay();
+    this.applyPreparedMapServiceSwitch(prepared);
   }
 
   /**
@@ -1398,6 +1637,7 @@ export class MapPlugin {
     this.syncOfflineToolbarState();
   }
 
+  /** @deprecated mapService 模式请使用 setMapService()。 */
   updateBaseMap(baseMap: Partial<BaseMapConfig>): void {
     this.assertLegacyMutationAllowed('updateBaseMap');
     this.baseMapConfig = {
@@ -1415,6 +1655,7 @@ export class MapPlugin {
     this.syncOfflineToolbarState();
   }
 
+  /** @deprecated mapService 模式请使用 setMapService()。 */
   updateMapAuth(mapAuth: MapAuthConfig): void {
     this.assertLegacyMutationAllowed('updateMapAuth');
     const normalized = normalizeMapAuth(mapAuth) || {};
@@ -1436,7 +1677,7 @@ export class MapPlugin {
     this.updateToolbarLayerState();
   }
 
-  /** 替换全部厂商鉴权，适合单一当前服务商配置。 */
+  /** @deprecated mapService 模式请使用 setMapService()。 */
   setMapAuth(mapAuth: MapAuthConfig): void {
     this.assertLegacyMutationAllowed('setMapAuth');
     this.mapAuthConfig = normalizeMapAuth(mapAuth);
@@ -1445,20 +1686,213 @@ export class MapPlugin {
     this.updateToolbarLayerState();
   }
 
-  async setMapService(mapService: MapServiceConfig): Promise<void> {
-    const normalizedMapService = normalizeMapServiceConfig(mapService);
-    this.applyResolvedMapService(
-      resolveConfiguredMapService(normalizedMapService),
-      'mapService',
-      normalizedMapService,
-    );
-
-    if (this.isInitialized) {
-      await this.refreshLayersAndGeoWTFS();
+  private isEquivalentMapServiceConfig(
+    left?: MapServiceConfig,
+    right?: MapServiceConfig,
+  ): boolean {
+    if (!left || !right || left.provider !== right.provider) {
+      return false;
     }
 
-    this.updateToolbarLayerState();
-    this.syncOfflineToolbarState();
+    if (left.provider === 'private' && right.provider === 'private') {
+      return left.offlineMapUrl === right.offlineMapUrl;
+    }
+
+    if (left.provider === 'private' || right.provider === 'private') {
+      return false;
+    }
+
+    return left.serviceKey === right.serviceKey && left.secureKey === right.secureKey;
+  }
+
+  private mapSwitchErrorToCode(error: unknown): MapServiceValidationCode {
+    if (error instanceof MapServiceConfigError) {
+      return 'INVALID_CONFIG';
+    }
+
+    const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+    if (message.includes('proxy') || message.includes('gateway')) {
+      return 'PROXY_REQUIRED';
+    }
+    if (
+      message.includes('network')
+      || message.includes('timeout')
+      || message.includes('failed to fetch')
+      || message.includes('fetch failed')
+    ) {
+      return 'NETWORK_ERROR';
+    }
+    if (
+      message.includes('invalid key')
+      || message.includes('api key')
+      || message.includes('permission denied')
+      || message.includes('credential')
+      || message.includes('密钥')
+      || message.includes('鉴权')
+    ) {
+      return 'INVALID_CREDENTIALS';
+    }
+    if (
+      message.includes('referer')
+      || message.includes('referrer')
+      || message.includes('billing')
+      || message.includes('forbidden')
+      || message.includes('blocked')
+      || message.includes('restriction')
+    ) {
+      return 'CLIENT_RESTRICTION';
+    }
+    return 'SERVICE_UNAVAILABLE';
+  }
+
+  private buildMapServiceUpdateResult(
+    provider: MapServiceProvider,
+    overrides: Partial<Omit<MapServiceUpdateResult, 'capabilities' | 'provider'>> & {
+      capabilities?: {
+        basemap?: Partial<MapServiceUpdateResult['capabilities']['basemap']>;
+        search?: Partial<MapServiceUpdateResult['capabilities']['search']>;
+      };
+    },
+  ): MapServiceUpdateResult {
+    return {
+      ok: overrides.ok ?? false,
+      provider,
+      code: overrides.code,
+      changed: overrides.changed ?? false,
+      capabilities: {
+        basemap: {
+          status: 'unknown',
+          ...overrides.capabilities?.basemap,
+        },
+        search: {
+          ...getDefaultMapServiceSearchCapability(provider),
+          ...overrides.capabilities?.search,
+        },
+      },
+    };
+  }
+
+  private buildSuccessfulMapServiceUpdateResult(
+    mapService: MapServiceConfig,
+    changed: boolean,
+    validated?: MapServiceValidationResult,
+  ): MapServiceUpdateResult {
+    if (validated) {
+      return {
+        ...validated,
+        changed,
+      };
+    }
+
+    return this.buildMapServiceUpdateResult(mapService.provider, {
+      ok: true,
+      changed,
+      capabilities: {
+        basemap: {
+          status: 'available',
+          credentialVerified: mapService.provider === 'private' ? undefined : false,
+        },
+      },
+    });
+  }
+
+  private buildFailedMapServiceUpdateResult(
+    mapService: MapServiceConfig,
+    error: unknown,
+  ): MapServiceUpdateResult {
+    return this.buildMapServiceUpdateResult(mapService.provider, {
+      ok: false,
+      changed: false,
+      code: this.mapSwitchErrorToCode(error),
+      capabilities: {
+        basemap: {
+          status: 'unavailable',
+          message: error instanceof Error ? error.message : String(error),
+        },
+      },
+    });
+  }
+
+  private async validateMapServiceForSwitch(
+    mapService: MapServiceConfig,
+  ): Promise<MapServiceValidationResult | null> {
+    if (
+      mapService.provider === 'tdt'
+      || mapService.provider === 'google'
+      || mapService.provider === 'private'
+    ) {
+      return validateMapService(mapService);
+    }
+
+    return null;
+  }
+
+  async setMapService(mapService: MapServiceConfig): Promise<MapServiceUpdateResult> {
+    const normalizedMapService = normalizeMapServiceConfig(mapService);
+    const changed = !this.isEquivalentMapServiceConfig(this.mapServiceConfig, normalizedMapService);
+    this.invalidateMapServiceSearches();
+
+    if (!changed && this.mapConfigMode === 'mapService') {
+      return this.buildSuccessfulMapServiceUpdateResult(normalizedMapService, false);
+    }
+
+    const validationResult = await this.validateMapServiceForSwitch(normalizedMapService);
+    if (validationResult && !validationResult.ok) {
+      return {
+        ...validationResult,
+        changed: false,
+      };
+    }
+
+    const resolvedMapService = resolveConfiguredMapService(normalizedMapService);
+
+    if (!this.isInitialized || !this.viewer) {
+      this.applyResolvedMapService(
+        resolvedMapService,
+        'mapService',
+        normalizedMapService,
+      );
+      this.updateToolbarLayerState();
+      this.syncOfflineToolbarState();
+      return this.buildSuccessfulMapServiceUpdateResult(
+        normalizedMapService,
+        true,
+        validationResult || undefined,
+      );
+    }
+
+    const previousRuntimeState = this.buildResolvedMapRuntimeState(
+      this.mapService,
+      this.mapConfigMode,
+      this.mapServiceConfig,
+    );
+    const previousViewerSnapshot = this.captureViewerLayerSnapshot();
+
+    try {
+      const preparedSwitch = await this.prepareMapServiceSwitch(
+        resolvedMapService,
+        normalizedMapService,
+      );
+      this.applyResolvedMapRuntimeState(preparedSwitch.runtimeState);
+      try {
+        this.applyPreparedMapServiceSwitch(preparedSwitch);
+        await this.syncGeoWTFS();
+      } catch (error) {
+        this.applyResolvedMapRuntimeState(previousRuntimeState);
+        this.restoreViewerLayerSnapshot(previousViewerSnapshot);
+        throw error;
+      }
+
+      this.updateToolbarLayerState();
+      this.syncOfflineToolbarState();
+      return this.buildSuccessfulMapServiceUpdateResult(
+        normalizedMapService,
+        true,
+        validationResult || undefined,
+      );
+    } catch (error) {
+      return this.buildFailedMapServiceUpdateResult(normalizedMapService, error);
+    }
   }
 
   /** 运行时更新 Cesium credit/版权区域显示状态。 */

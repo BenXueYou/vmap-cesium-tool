@@ -27,7 +27,56 @@ describe('MapPlugin mapService contract', () => {
       },
     });
 
-    const refreshSpy = vi.spyOn(plugin as any, 'refreshLayersAndGeoWTFS').mockResolvedValue(undefined);
+    const validateSpy = vi.spyOn(plugin as any, 'validateMapServiceForSwitch')
+      .mockResolvedValue({
+        ok: true,
+        provider: 'private',
+        capabilities: {
+          basemap: {
+            status: 'available',
+          },
+          search: {
+            status: 'unavailable',
+            requiresEnablement: false,
+            message: '私有地图服务不提供厂商地点搜索能力。',
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        provider: 'private',
+        capabilities: {
+          basemap: {
+            status: 'available',
+          },
+          search: {
+            status: 'unavailable',
+            requiresEnablement: false,
+            message: '私有地图服务不提供厂商地点搜索能力。',
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        provider: 'tdt',
+        capabilities: {
+          basemap: {
+            status: 'available',
+            credentialVerified: true,
+          },
+          search: {
+            status: 'notChecked',
+            requiresEnablement: true,
+            requiredProduct: '天地图搜索服务',
+            setupUrl: 'https://lbs.tianditu.gov.cn/server/search.html',
+            message: '底图校验不包含地点搜索；使用工具栏搜索前请确认已开通天地图搜索服务。',
+          },
+        },
+      });
+    const prepareSpy = vi.spyOn(plugin as any, 'prepareMapServiceSwitch');
+    const applyPreparedSpy = vi.spyOn(plugin as any, 'applyPreparedMapServiceSwitch');
+    const syncGeoWTFSSpy = vi.spyOn(plugin as any, 'syncGeoWTFS').mockResolvedValue(undefined);
+    vi.spyOn(plugin as any, 'syncCreditDisplay').mockImplementation(() => {});
     const updateToolbarLayerStateSpy = vi.spyOn(plugin as any, 'updateToolbarLayerState').mockImplementation(() => {});
     const toolbarService = {
       hideButton: vi.fn(),
@@ -38,6 +87,20 @@ describe('MapPlugin mapService contract', () => {
 
     (plugin as any).toolbarService = toolbarService;
     (plugin as any).isInitialized = true;
+    (plugin as any).viewer = {
+      imageryLayers: {
+        length: 0,
+        removeAll: vi.fn(),
+        addImageryProvider: vi.fn(),
+        get: vi.fn(),
+      },
+      terrainProvider: {},
+      scene: {
+        mode: Cesium.SceneMode.SCENE3D,
+        globe: {},
+        screenSpaceCameraController: {},
+      },
+    };
 
     expect(plugin.getConfig().mapService).toEqual({
       provider: 'tdt',
@@ -46,12 +109,30 @@ describe('MapPlugin mapService contract', () => {
     });
     expect(plugin.getConfig().baseMap).toBeUndefined();
 
-    await plugin.setMapService({
+    const privateResult = await plugin.setMapService({
       provider: 'private',
       offlineMapUrl: ' /tiles/{z}/{x}/{y}.png ',
     });
 
-    expect(refreshSpy).toHaveBeenCalledTimes(1);
+    expect(privateResult).toEqual({
+      ok: true,
+      provider: 'private',
+      changed: true,
+      capabilities: {
+        basemap: {
+          status: 'available',
+        },
+        search: {
+          status: 'unavailable',
+          requiresEnablement: false,
+          message: '私有地图服务不提供厂商地点搜索能力。',
+        },
+      },
+    });
+    expect(validateSpy).toHaveBeenCalledTimes(1);
+    expect(prepareSpy).toHaveBeenCalledTimes(1);
+    expect(applyPreparedSpy).toHaveBeenCalledTimes(1);
+    expect(syncGeoWTFSSpy).toHaveBeenCalledTimes(1);
     expect(updateToolbarLayerStateSpy).toHaveBeenCalledTimes(1);
     expect(toolbarService.hideButton).toHaveBeenCalledWith('search');
     expect(plugin.getConfig().mapService).toEqual({
@@ -59,13 +140,34 @@ describe('MapPlugin mapService contract', () => {
       offlineMapUrl: '/tiles/{z}/{x}/{y}.png',
     });
 
-    await plugin.setMapService({
+    const onlineResult = await plugin.setMapService({
       provider: 'tdt',
       serviceKey: ' next-token ',
       secureKey: ' next-secure ',
     });
 
-    expect(refreshSpy).toHaveBeenCalledTimes(2);
+    expect(onlineResult).toEqual({
+      ok: true,
+      provider: 'tdt',
+      changed: true,
+      capabilities: {
+        basemap: {
+          status: 'available',
+          credentialVerified: true,
+        },
+        search: {
+          status: 'notChecked',
+          requiresEnablement: true,
+          requiredProduct: '天地图搜索服务',
+          setupUrl: 'https://lbs.tianditu.gov.cn/server/search.html',
+          message: '底图校验不包含地点搜索；使用工具栏搜索前请确认已开通天地图搜索服务。',
+        },
+      },
+    });
+    expect(validateSpy).toHaveBeenCalledTimes(2);
+    expect(prepareSpy).toHaveBeenCalledTimes(2);
+    expect(applyPreparedSpy).toHaveBeenCalledTimes(2);
+    expect(syncGeoWTFSSpy).toHaveBeenCalledTimes(2);
     expect(updateToolbarLayerStateSpy).toHaveBeenCalledTimes(2);
     expect(toolbarService.showButton).toHaveBeenCalledWith('search');
     expect(plugin.getConfig().mapService).toEqual({
@@ -408,5 +510,209 @@ describe('MapPlugin mapService contract', () => {
     });
 
     fromDegreesSpy.mockRestore();
+  });
+
+  it('keeps the previous mapService state when an initialized switch fails', async () => {
+    const plugin = new MapPlugin('map', {
+      mapService: {
+        provider: 'tdt',
+        serviceKey: 'token-value',
+      },
+    });
+
+    const toolbarService = {
+      hideButton: vi.fn(),
+      showButton: vi.fn(),
+      setLayersService: vi.fn(),
+      getButtonHandler: vi.fn(() => null),
+    };
+
+    (plugin as any).toolbarService = toolbarService;
+    (plugin as any).isInitialized = true;
+    (plugin as any).viewer = {
+      imageryLayers: {
+        length: 0,
+        removeAll: vi.fn(),
+        addImageryProvider: vi.fn(),
+        get: vi.fn(),
+      },
+      terrainProvider: {},
+      scene: {
+        mode: Cesium.SceneMode.SCENE3D,
+        globe: {},
+        screenSpaceCameraController: {},
+      },
+    };
+
+    vi.spyOn(plugin as any, 'validateMapServiceForSwitch').mockResolvedValue({
+      ok: true,
+      provider: 'private',
+      capabilities: {
+        basemap: {
+          status: 'available',
+        },
+        search: {
+          status: 'unavailable',
+          requiresEnablement: false,
+          message: '私有地图服务不提供厂商地点搜索能力。',
+        },
+      },
+    });
+    vi.spyOn(plugin as any, 'prepareMapServiceSwitch').mockRejectedValue(new Error('offline tiles unavailable'));
+    const updateToolbarLayerStateSpy = vi.spyOn(plugin as any, 'updateToolbarLayerState').mockImplementation(() => {});
+
+    const result = await plugin.setMapService({
+      provider: 'private',
+      offlineMapUrl: '/tiles/{z}/{x}/{y}.png',
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      provider: 'private',
+      code: 'SERVICE_UNAVAILABLE',
+      changed: false,
+      capabilities: {
+        basemap: {
+          status: 'unavailable',
+          message: 'offline tiles unavailable',
+        },
+        search: {
+          status: 'unavailable',
+          requiresEnablement: false,
+          message: '私有地图服务不提供厂商地点搜索能力。',
+        },
+      },
+    });
+    expect(plugin.getConfig().mapService).toEqual({
+      provider: 'tdt',
+      serviceKey: 'token-value',
+    });
+    expect(toolbarService.hideButton).not.toHaveBeenCalled();
+    expect(toolbarService.showButton).not.toHaveBeenCalled();
+    expect(updateToolbarLayerStateSpy).not.toHaveBeenCalled();
+  });
+
+  it('invalidates stale search responses after switching mapService', async () => {
+    let resolveRequest!: (value: any) => void;
+    const request = vi.fn(() => new Promise((resolve) => {
+      resolveRequest = resolve;
+    })) as any;
+    const plugin = new MapPlugin('map', {
+      mapService: {
+        provider: 'tdt',
+        serviceKey: 'token-value',
+      },
+      providerSearch: {
+        request,
+      },
+    });
+
+    vi.spyOn(plugin as any, 'validateMapServiceForSwitch').mockResolvedValue({
+      ok: true,
+      provider: 'private',
+      capabilities: {
+        basemap: {
+          status: 'available',
+        },
+        search: {
+          status: 'unavailable',
+          requiresEnablement: false,
+          message: '私有地图服务不提供厂商地点搜索能力。',
+        },
+      },
+    });
+
+    const callbacks = (plugin as any).buildToolbarCallbacks({});
+    const pendingSearch = callbacks.onSearch('首都机场');
+
+    await plugin.setMapService({
+      provider: 'private',
+      offlineMapUrl: '/tiles/{z}/{x}/{y}.png',
+    });
+
+    resolveRequest({
+      ok: true,
+      json: async () => ({
+        data: {
+          pois: [
+            {
+              name: '首都机场',
+              address: '北京',
+              lonlat: '116.4074,39.9042',
+            },
+          ],
+        },
+      }),
+    });
+
+    await expect(pendingSearch).resolves.toEqual([]);
+  });
+
+  it('ignores stale mapService search selections after switching provider', async () => {
+    const request = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        data: {
+          pois: [
+            {
+              name: '首都机场',
+              address: '北京',
+              lonlat: '116.4074,39.9042',
+            },
+          ],
+        },
+      }),
+    })) as any;
+    const onSearchResultSelected = vi.fn();
+    const plugin = new MapPlugin('map', {
+      mapService: {
+        provider: 'tdt',
+        serviceKey: 'token-value',
+      },
+      providerSearch: {
+        request,
+      },
+      onSearchResultSelected,
+    });
+
+    vi.spyOn(plugin as any, 'validateMapServiceForSwitch').mockResolvedValue({
+      ok: true,
+      provider: 'private',
+      capabilities: {
+        basemap: {
+          status: 'available',
+        },
+        search: {
+          status: 'unavailable',
+          requiresEnablement: false,
+          message: '私有地图服务不提供厂商地点搜索能力。',
+        },
+      },
+    });
+
+    const flyTo = vi.fn();
+    (plugin as any).viewer = {
+      camera: {
+        positionCartographic: {
+          height: 5200,
+        },
+        heading: 0.4,
+        pitch: -0.8,
+        roll: 0.03,
+        flyTo,
+      },
+    };
+
+    const callbacks = (plugin as any).buildToolbarCallbacks({});
+    const results = await callbacks.onSearch('首都机场');
+
+    await plugin.setMapService({
+      provider: 'private',
+      offlineMapUrl: '/tiles/{z}/{x}/{y}.png',
+    });
+    await callbacks.onResultSelect?.(results[0]);
+
+    expect(flyTo).not.toHaveBeenCalled();
+    expect(onSearchResultSelected).not.toHaveBeenCalled();
   });
 });

@@ -21,6 +21,73 @@ title: 迁移指南
 
 ## 推荐迁移顺序
 
+### 0. 多厂商地图接入先收口到 `mapService`
+
+如果旧业务同时维护 `layers/baseMap`、`mapAuth`、搜索代理和搜索选中后的二次定位，建议先把这几条线合并成组件拥有的地图服务入口。
+
+旧写法：
+
+```ts
+const mapPlugin = createMapPlugin('cesiumContainer', {
+  baseMap: {
+    provider: 'tdt',
+    type: 'img',
+    showLabel: true,
+  },
+  mapAuth: {
+    tdt: {
+      token: 'YOUR_TDT_TOKEN',
+      sk: 'YOUR_TDT_SK',
+    },
+  },
+  services: {
+    toolbar: {
+      enabled: true,
+      callbacks: {
+        onSearch: async (query) => [],
+        onSelect: (result) => {
+          viewer.camera.flyTo(...);
+        },
+      },
+    },
+  },
+});
+```
+
+新写法：
+
+```ts
+const mapService = {
+  provider: 'tdt',
+  serviceKey: 'YOUR_TDT_TOKEN',
+  secureKey: 'YOUR_TDT_SK',
+} as const;
+
+const validation = await validateMapService(mapService);
+if (!validation.ok) {
+  throw new Error(validation.capabilities.basemap.message || '地图服务不可用');
+}
+
+const mapPlugin = createMapPlugin('cesiumContainer', {
+  mapService,
+  onSearchResultSelected: (result) => {
+    console.log(result.longitude, result.latitude);
+  },
+  services: {
+    toolbar: {
+      enabled: true,
+    },
+  },
+});
+```
+
+迁移要点：
+
+- 业务不再自己拼厂商搜索 URL、签名或坐标转换
+- 业务不再在搜索选中后再次 `flyTo()`
+- `mapService` 模式下不允许继续传 `callbacks.onSearch`
+- 私有地图改为 `provider: 'private' + offlineMapUrl`
+
 ### 第一步：替换地图初始化入口
 
 旧写法：
@@ -156,11 +223,30 @@ drawService.startDrawing('polygon');
 
 ### 3. 图层切换怎么做？
 
-统一通过 `mapPlugin.updateLayers()`。如果启用了工具栏图层菜单，相关状态也会由插件同步到工具栏。
+旧 `layers/baseMap` 模式统一通过 `mapPlugin.updateLayers()`。
+
+如果已经迁到 `mapService`，请改用：
+
+```ts
+await mapPlugin.setMapService({
+  provider: 'private',
+  offlineMapUrl: '/tiles/{z}/{x}/{y}.png',
+});
+```
+
+该调用会返回结构化结果，并在切换失败时保留旧地图状态。
 
 ### 4. 什么时候调用 destroy？
 
 组件卸载或页面退出时，只需要调用一次 `mapPlugin.destroy()`。
+
+### 5. `mapService` 和旧入口能混用吗？
+
+不能。`mapService` 与旧 `layers`、`baseMap`、`mapAuth` 属于两套入口，1.x 兼容期内允许二选一，但不定义混用优先级。
+
+### 6. 旧 `updateBaseMap/updateMapAuth/setMapAuth` 还能继续用吗？
+
+仅限旧 `baseMap/mapAuth` 接入路径继续使用。进入 `mapService` 模式后，这三个入口都应视为废弃兼容接口。
 
 ## Overlay selection 迁移
 
