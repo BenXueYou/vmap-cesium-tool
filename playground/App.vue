@@ -221,6 +221,21 @@
             </label>
 
             <label>
+              <span>pickWidth</span>
+              <input v-model.number="overlayForm.pickWidth" type="number" min="1" max="9" step="1" />
+            </label>
+
+            <label>
+              <span>pickHeight</span>
+              <input v-model.number="overlayForm.pickHeight" type="number" min="1" max="9" step="1" />
+            </label>
+
+            <label>
+              <span>drillLimit</span>
+              <input v-model.number="overlayForm.drillLimit" type="number" min="1" max="32" step="1" />
+            </label>
+
+            <label>
               <span>高亮原因</span>
               <select v-model="overlayForm.highlightReason">
                 <option value="click">click</option>
@@ -347,6 +362,74 @@
           </div>
         </details>
 
+        <details class="section-block validation-block">
+          <summary class="section-title collapsible-title">12,000 Overlay Benchmark</summary>
+
+          <div class="action-row wrap validation-actions">
+            <button class="primary" @click="buildOverlaySelectionEntityBenchmark">生成 12,000 Entity</button>
+            <button @click="buildOverlaySelectionPrimitiveBenchmark">生成 12,000 Primitive</button>
+            <button @click="buildOverlaySelectionMixedBenchmark">生成 6,000 / 6,000 Mixed</button>
+            <button @click="clearOverlaySelectionBenchmarkScenario">清空基准场景</button>
+            <button @click="resetOverlaySelectionBenchmarkMetrics">重置指标</button>
+          </div>
+
+          <div class="validation-state">
+            <div class="validation-state-item">
+              <span>Scenario</span>
+              <strong>{{ selectionBenchmarkSnapshot.scenarioLabel ?? "-" }}</strong>
+            </div>
+            <div class="validation-state-item">
+              <span>Overlay Count</span>
+              <strong>{{ selectionBenchmarkSnapshot.overlayCount }}</strong>
+            </div>
+            <div class="validation-state-item">
+              <span>Entity / Primitive</span>
+              <strong>
+                {{ selectionBenchmarkSnapshot.entityCount }} / {{ selectionBenchmarkSnapshot.primitiveCount }}
+              </strong>
+            </div>
+            <div class="validation-state-item">
+              <span>Acceptance</span>
+              <strong>{{ selectionBenchmarkSnapshot.acceptanceStatus }}</strong>
+            </div>
+            <div class="validation-state-item">
+              <span>FPS Avg</span>
+              <strong>
+                {{ selectionBenchmarkSnapshot.fpsAverage === null ? "-" : `${selectionBenchmarkSnapshot.fpsAverage.toFixed(1)} fps` }}
+              </strong>
+            </div>
+            <div class="validation-state-item">
+              <span>Hover P95</span>
+              <strong>
+                {{
+                  selectionBenchmarkSnapshot.hoverDecisionP95Ms === null
+                    ? "-"
+                    : `${selectionBenchmarkSnapshot.hoverDecisionP95Ms.toFixed(1)} ms`
+                }}
+              </strong>
+            </div>
+            <div class="validation-state-item">
+              <span>Pick P95</span>
+              <strong>
+                {{
+                  selectionBenchmarkSnapshot.pickResolutionP95Ms === null
+                    ? "-"
+                    : `${selectionBenchmarkSnapshot.pickResolutionP95Ms.toFixed(1)} ms`
+                }}
+              </strong>
+            </div>
+            <div class="validation-state-item">
+              <span>Summary</span>
+              <strong>{{ selectionBenchmarkSnapshot.acceptanceSummary }}</strong>
+            </div>
+          </div>
+
+          <p class="validation-note">
+            生成场景后保持镜头不动并移动鼠标，面板会持续采集 FPS、hover 决议耗时和 pick+resolution 主线程耗时。
+            为避免左侧列表渲染 12,000 行，inventory 面板不会自动同步这类基准对象。
+          </p>
+        </details>
+
         <section class="section-block inventory-block">
           <div class="section-title">当前覆盖物</div>
 
@@ -403,6 +486,7 @@ import * as Cesium from "cesium";
 import type { CustomButtonConfig, MapPluginOptions, SearchResult, ToolbarCallbacks, ToolbarConfig } from "../src/index";
 import { i18n } from "../src/i18n";
 import { getViteTdToken } from "../src/utils/common";
+import { useOverlaySelectionBenchmark } from "./hooks/useOverlaySelectionBenchmark";
 import { useOverlaySelectionValidation } from "./hooks/useOverlaySelectionValidation";
 import { useMapInit } from "./useMapInit";
 import { chinaMapExtent, getTdMapSearchUrl } from "./useMap";
@@ -482,6 +566,9 @@ const customToolbarButton = reactive({
 const overlayForm = reactive({
   hoverEnabled: true,
   clickPickMinIntervalMs: 120,
+  pickWidth: 3,
+  pickHeight: 3,
+  drillLimit: 16,
   highlightReason: "click" as HighlightReason,
   markerLabel: "API Marker",
   circleRadius: 900,
@@ -562,6 +649,24 @@ const {
 } = useOverlaySelectionValidation(mapPlugin, viewer, {
   onLog: pushLog,
   onMessage: showMessage,
+});
+
+const {
+  snapshot: selectionBenchmarkSnapshot,
+  resetMetrics: resetOverlaySelectionBenchmarkMetrics,
+  clearScenario: clearOverlaySelectionBenchmarkScenario,
+  buildEntityScenario: buildOverlaySelectionEntityBenchmark,
+  buildPrimitiveScenario: buildOverlaySelectionPrimitiveBenchmark,
+  buildMixedScenario: buildOverlaySelectionMixedBenchmark,
+} = useOverlaySelectionBenchmark(mapPlugin, viewer, {
+  onLog: pushLog,
+  onMessage: showMessage,
+  onScenarioVisibilityChange: (active) => {
+    if (active) {
+      overlayItems.value = [];
+      selectedOverlayId.value = "";
+    }
+  },
 });
 
 function getViewerCenter() {
@@ -717,8 +822,14 @@ function buildMapOverrides(): Partial<MapPluginOptions> {
     services: {
       overlay: {
         enabled: true,
-        enableHoverHandler: overlayForm.hoverEnabled,
-        clickPickMinIntervalMs: overlayForm.clickPickMinIntervalMs,
+        picking: {
+          hover: overlayForm.hoverEnabled,
+          selection: true,
+          pickWidth: overlayForm.pickWidth,
+          pickHeight: overlayForm.pickHeight,
+          drillLimit: overlayForm.drillLimit,
+          clickDebounceMs: overlayForm.clickPickMinIntervalMs,
+        },
       },
       toolbar: {
         enabled: true,
@@ -1529,6 +1640,13 @@ select option {
   font-size: 12px;
   line-height: 1.4;
   word-break: break-word;
+}
+
+.validation-note {
+  margin: 12px 0 0;
+  color: rgba(148, 163, 184, 0.94);
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 button {

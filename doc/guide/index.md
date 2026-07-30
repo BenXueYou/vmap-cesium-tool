@@ -4,6 +4,8 @@ title: 使用说明
 
 - [架构说明](/guide/Architecture)
 - [迁移指南](/guide/Migration_Guide)
+- [Overlay Selection 与重叠拾取](/guide/Overlay_Selection_Guide)
+- [12,000 Overlay 性能验收](/guide/Overlay_Selection_Performance_Acceptance)
 - [标绘、绘制与编辑](/guide/Mark_Draw_Edit_Guide)
 - [多厂商地图接入](/guide/Multi_Map_Provider_Guide)
 - [GeoJSON](/guide/GeoJSON_Usage)

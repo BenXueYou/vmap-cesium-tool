@@ -2,71 +2,26 @@
 
 ## 概述
 
-`OverlayService` 是新架构下的覆盖物公开服务，负责统一管理点、线、面、信息窗等覆盖物的创建、查询、显示控制、高亮交互和销毁。
+`OverlayService` 是 1.x 新架构下的覆盖物公开服务，负责：
 
-它的定位是“覆盖物服务层”，而不是旧版 `CesiumOverlayService` 的直接别名。新项目推荐通过 `MapPlugin` 获取它。
+- 创建和管理点、线、面、圆、矩形、圆环、信息窗等 overlay
+- 统一处理 hover / selected 两套交互状态
+- 提供重叠拾取排序、selection 事件、显隐和销毁生命周期协同
 
-顶层导出：
-
-```ts
-import {
-  OverlayService,
-  type OverlayServiceOptions,
-  Marker,
-  Label,
-  Icon,
-  SVG,
-  InfoWindow,
-  Polyline,
-  Polygon,
-  Rectangle,
-  Circle,
-  Ring,
-} from '@xingm/vmap-cesium-toolbar';
-```
-
-## 推荐接入方式
-
-### 1. 通过 MapPlugin 获取
-
-这是推荐方式。
+推荐通过 `MapPlugin` 获取它：
 
 ```ts
-import { createMapPlugin } from '@xingm/vmap-cesium-toolbar';
-
-const mapPlugin = createMapPlugin('cesiumContainer', {
+const mapPlugin = createMapPlugin("cesiumContainer", {
   services: {
-    overlay: true,
+    overlay: {
+      enabled: true,
+    },
   },
 });
 
 await mapPlugin.initialize();
 
 const overlayService = mapPlugin.getOverlayService();
-const marker = overlayService.addMarker({
-  position: [116.3974, 39.9093],
-  pixelSize: 12,
-  color: '#ff4d4f',
-});
-```
-
-### 2. 手动创建
-
-适合不走 `MapPlugin` 统一装配、但仍想复用新覆盖物服务的场景。
-
-```ts
-import { OverlayService } from '@xingm/vmap-cesium-toolbar';
-
-const overlayService = new OverlayService(viewer, {
-  enableHoverHandler: true,
-  clickPickMinIntervalMs: 120,
-});
-```
-
-## 类定义
-
-```ts
-class OverlayService
 ```
 
 ## 构造函数
@@ -81,198 +36,44 @@ constructor(viewer: Viewer, options?: OverlayServiceOptions)
 interface OverlayServiceOptions {
   enableHoverHandler?: boolean;
   clickPickMinIntervalMs?: number;
+  picking?: OverlayPickingOptions;
+  onOverlayEditChange?: (entity: Entity) => void;
+  onOverlayEditEnd?: (entity: Entity | null) => void;
 }
 ```
 
-字段说明：
-
-- `enableHoverHandler`: 是否启用 hover 高亮处理，默认 `true`
-- `clickPickMinIntervalMs`: 点击拾取节流间隔，默认 `120ms`
-
-## 返回覆盖物实例
-
-`OverlayService` 的添加方法会返回具体覆盖物实例，例如 `Marker`、`Polygon`、`InfoWindow`。
-
-这些实例都继承自 `BaseOverlay`，因此至少具备这些公共能力：
+### OverlayPickingOptions
 
 ```ts
-getEntity(): Entity
-getId(): string
-setVisible(show: boolean): void
-isVisible(): boolean
-update(options): void
-remove(): void
-destroy(): void
-isDestroyed(): boolean
+interface OverlayPickingOptions {
+  enabled?: boolean;
+  hover?: boolean;
+  selection?: boolean;
+  pickWidth?: number;
+  pickHeight?: number;
+  drillLimit?: number;
+  clickDebounceMs?: number;
+}
 ```
 
-## 公开方法
+当前默认值：
 
-### 查询方法
+- `enabled: true`
+- `hover: true`
+- `selection: true`
+- `pickWidth: 3`
+- `pickHeight: 3`
+- `drillLimit: 16`
+- `clickDebounceMs: 250`
 
-#### getOverlay
+兼容说明：
 
-```ts
-getOverlay(id: string): OverlayInstance | undefined
-```
+- `enableHoverHandler` 是 `picking.hover` 的迁移别名
+- `clickPickMinIntervalMs` 是 `picking.clickDebounceMs` 的迁移别名
 
-根据覆盖物 ID 获取实例。
+## BaseOverlayOptions
 
-#### getAllOverlayIds
-
-```ts
-getAllOverlayIds(): string[]
-```
-
-获取当前服务中所有覆盖物的 ID 列表。
-
-### 添加覆盖物
-
-#### addMarker
-
-```ts
-addMarker(options: MarkerOptions): Marker
-```
-
-#### addLabel
-
-```ts
-addLabel(options: LabelOptions): Label
-```
-
-#### addIcon
-
-```ts
-addIcon(options: IconOptions): Icon
-```
-
-#### addSvg
-
-```ts
-addSvg(options: SvgOptions): SVG
-```
-
-#### addInfoWindow
-
-```ts
-addInfoWindow(options: InfoWindowOptions): InfoWindow
-```
-
-#### addPolyline
-
-```ts
-addPolyline(options: PolylineOptions): Polyline
-```
-
-#### addPolygon
-
-```ts
-addPolygon(options: PolygonOptions): Polygon
-```
-
-#### addRectangle
-
-```ts
-addRectangle(options: RectangleOptions): Rectangle
-```
-
-#### addCircle
-
-```ts
-addCircle(options: CircleOptions): Circle
-```
-
-#### addRing
-
-```ts
-addRing(options: RingOptions): Ring
-```
-
-说明：
-
-- 如果 `options.id` 未传，服务会自动生成唯一 ID
-- 创建后会自动加入 `viewer.entities`
-- 服务会建立内部 `id -> overlay` 映射和 `entity -> overlay` 映射，供点击/hover 交互使用
-
-### 删除与显隐
-
-#### removeOverlay
-
-```ts
-removeOverlay(id: string): boolean
-```
-
-根据 ID 删除覆盖物。成功删除返回 `true`，不存在时返回 `false`。
-
-#### removeAllOverlays
-
-```ts
-removeAllOverlays(): void
-```
-
-删除所有覆盖物。
-
-#### setOverlayVisible
-
-```ts
-setOverlayVisible(id: string, visible: boolean): boolean
-```
-
-设置指定覆盖物显隐状态。
-
-说明：
-
-- 普通覆盖物会调用 `setVisible()`
-- `InfoWindow` 会根据情况调用 `show()` / `hide()`
-- 隐藏时会同步清理该覆盖物的高亮状态
-
-### 高亮控制
-
-#### toggleOverlayHighlight
-
-```ts
-toggleOverlayHighlight(
-  entityOrId: OverlayEntity | Entity | string,
-  reason?: 'click' | 'hover',
-): boolean
-```
-
-切换指定覆盖物的高亮状态。
-
-#### setOverlayHighlight
-
-```ts
-setOverlayHighlight(
-  entityOrId: OverlayEntity | Entity | string,
-  enabled: boolean,
-  reason?: 'click' | 'hover',
-): boolean
-```
-
-显式设置指定覆盖物的高亮状态。
-
-说明：
-
-- `reason='click'` 时使用点击高亮配置
-- `reason='hover'` 时使用 hover 高亮配置
-- 当前实现会维护 click 和 hover 两套高亮状态，并在状态清空时自动恢复原样式
-
-### destroy
-
-```ts
-destroy(): void
-```
-
-销毁服务，包含：
-
-- 清理 click / hover 高亮状态
-- 销毁鼠标事件处理器
-- 清空内部映射
-- 删除当前服务创建的所有覆盖物
-
-## 公共基础配置
-
-大多数覆盖物类型都继承自 `BaseOverlayOptions`。
+大多数 overlay 创建方法都继承自 `BaseOverlayOptions`：
 
 ```ts
 interface BaseOverlayOptions {
@@ -281,117 +82,268 @@ interface BaseOverlayOptions {
   show?: boolean;
   onClick?: (entity: Entity) => void;
   clickHighlight?: boolean | OverlayClickHighlightOptions;
+  selectionHighlight?: boolean | OverlayClickHighlightOptions;
   hoverHighlight?: boolean | OverlayHoverHighlightOptions;
+  selectable?: boolean;
+  pickPriority?: number;
   metadata?: Record<string, any>;
   layerKey?: string;
 }
 ```
 
-### OverlayPosition
+重点字段：
+
+- `selectionHighlight`: 2.x 语义下的 selected 样式
+- `clickHighlight`: 兼容别名；和 `selectionHighlight` 同时传入时，以 `selectionHighlight` 为准
+- `hoverHighlight`: hover 样式
+- `selectable`: 是否允许参与 pointer / API selection
+- `pickPriority`: 重叠拾取优先级，数值越大越优先
+
+默认样式：
+
+- hover: `#FFD54F`，面透明度 `0.25`
+- selected: `#00E5FF`，面透明度 `0.40`
+
+## 创建方法
 
 ```ts
-type OverlayPosition = Cartesian3 | [number, number] | [number, number, number]
+addMarker(options: MarkerOptions): Marker
+addLabel(options: LabelOptions): Label
+addIcon(options: IconOptions): Icon
+addSvg(options: SvgOptions): SVG
+addInfoWindow(options: InfoWindowOptions): InfoWindow
+addPolyline(options: PolylineOptions): Polyline
+addPolygon(options: PolygonOptions): Polygon
+addRectangle(options: RectangleOptions): Rectangle
+addCircle(options: CircleOptions): Circle
+addRing(options: RingOptions): Ring
 ```
 
-支持：
+所有创建方法都会：
 
-- `Cesium.Cartesian3`
-- `[longitude, latitude]`
-- `[longitude, latitude, height]`
+- 自动注册 root overlay id
+- 自动绑定复合图形的 `_highlightEntities`
+- 自动纳入 hover / selection 拾取体系
 
-### OverlayClickHighlightOptions
+## 查询与销毁
 
 ```ts
-interface OverlayClickHighlightOptions {
-  color?: Cesium.Color | string;
-  fillAlpha?: number;
+getOverlay(id: string): OverlayInstance | undefined
+getAllOverlayIds(): string[]
+removeOverlay(id: string): boolean
+removeAllOverlays(): void
+setOverlayVisible(id: string, visible: boolean): boolean
+destroy(): void
+```
+
+selection 生命周期说明：
+
+- 隐藏当前 selected overlay 会发出 `hidden`
+- 删除当前 selected overlay 会在销毁前发出 `removed`
+- `destroy()` 会静默清空 selection，不发晚到事件
+
+## Selection API
+
+```ts
+getSelectedOverlay(): OverlayEntity | null
+getSelectedOverlayId(): string | null
+selectOverlay(entityOrId): boolean
+clearSelection(): boolean
+setOverlaySelectable(entityOrId, selectable): boolean
+setOverlayPickPriority(entityOrId, pickPriority): boolean
+setSelectionEnabled(enabled): void
+isSelectionEnabled(): boolean
+refreshHover(): boolean
+onSelectionChange(listener): () => void
+```
+
+### `selectOverlay`
+
+- 幂等：重复选中同一对象返回 `true`
+- 不会触发 overlay 自身的 `onClick`
+- 对无效、隐藏或不可选对象返回 `false`
+
+### `clearSelection`
+
+- 有 selected 时返回 `true`
+- 已经为空时返回 `false`
+
+### `setOverlaySelectable`
+
+- 运行时切换某个 overlay 是否可选
+- 若当前 selected overlay 被切为不可选，会发出 `disabled`
+- 若它正处于 edit-owned selection，则不会因为这个切换立刻清空
+
+### `setOverlayPickPriority`
+
+- 动态修改重叠拾取优先级
+- 当 hover 交互可用时，会立即触发一次 hover 重算
+
+### `setSelectionEnabled`
+
+- 只关闭 pointer click selection
+- 不清空当前 selected
+- 不影响程序化 `selectOverlay` / `clearSelection`
+
+### `refreshHover`
+
+- 以最近一次有效鼠标位置立即重算 hover
+- 若当前没有可复用的鼠标位置，返回 `false`
+
+## `onSelectionChange`
+
+```ts
+type OverlaySelectionChangeReason =
+  | "pointer-select"
+  | "pointer-toggle-off"
+  | "empty-click"
+  | "api-select"
+  | "api-clear"
+  | "hidden"
+  | "removed"
+  | "disabled"
+  | "edit-start";
+
+interface OverlaySelectionChangeEvent {
+  current: OverlayEntity | null;
+  previous: OverlayEntity | null;
+  currentId: string | null;
+  previousId: string | null;
+  reason: OverlaySelectionChangeReason;
 }
 ```
 
-`OverlayHoverHighlightOptions` 与它使用同样结构。
+```ts
+const unsubscribe = overlayService.onSelectionChange((event) => {
+  console.log(event.currentId, event.previousId, event.reason);
+});
+```
 
-## 交互行为说明
+callback 顺序：
 
-### 点击高亮
+1. 提交 selection 状态
+2. 触发 `onSelectionChange`
+3. pointer click 场景下，再调用 overlay 自身的 `onClick`
 
-如果实体配置了：
+异常隔离：
 
-- `clickHighlight`
-- `onClick`
+- `onSelectionChange` 抛错不会回滚状态
+- overlay `onClick` 抛错不会阻断已提交的 selection
 
-服务会在点击拾取时：
+## Pointer 行为
 
-1. 查找当前命中的覆盖物
-2. 按配置决定是否切换高亮
-3. 回调实体上的 `_onClick`
+当前 pointer click 只处理排序第一的 selectable candidate：
 
-### Hover 高亮
+- 点击未选中的 candidate: `pointer-select`
+- 点击已选中的 candidate: `pointer-toggle-off`
+- 点击空白且当前有 selected: `empty-click`
+- 点击空白且当前没有 selected: 不发事件
 
-如果实体配置了 `hoverHighlight`，且 `enableHoverHandler !== false`，服务会在鼠标移动时自动处理 hover 高亮。
+hover / selected 关系：
 
-### 高亮恢复
+- hover 和 selected 是独立状态
+- 同一对象同时 hover + selected 时，selected 样式优先
+- 若 `selectionHighlight: false`，同一对象 selected 时不改外观；若同时 hovered，则继续显示 hover 样式
 
-服务会缓存 point、label、billboard、polyline、polygon、rectangle、ellipse 的原始样式，在高亮关闭时恢复。
+## 候选排序
+
+重叠拾取排序固定为：
+
+1. `pickPriority` 越大越优先
+2. `drillPick` 视觉顺序越靠前越优先
+3. 创建顺序越早越优先
+4. root overlay id 作为最终兜底
+
+复合图形去重规则：
+
+- fill / border / inner / primitive parts 先归一化到 root overlay
+- 同一个 root overlay 只会作为一个 candidate 参与排序
+
+## 高亮 API
+
+```ts
+toggleOverlayHighlight(entityOrId, reason?: "click" | "hover"): boolean
+setOverlayHighlight(entityOrId, enabled: boolean, reason?: "click" | "hover"): boolean
+setHoverEnabled(enabled: boolean): void
+isHoverEnabled(): boolean
+```
+
+说明：
+
+- `reason: "click"` 走 selected 样式逻辑
+- `reason: "hover"` 走 hover 样式逻辑
+- 高亮关闭后会恢复到最新 base style，而不是旧快照
+
+## 生命周期协同
+
+### Camera
+
+- 相机移动开始：清 hover，保留 selected
+- 相机移动结束：按最后有效鼠标位置重算一次 hover
+
+### Drawing
+
+- drawing 期间暂停 hover 和 pointer selection
+- drawing 结束后恢复 hover
+
+### Editing
+
+- 编辑开始时强制把 edit target 设为 selected，reason 为 `edit-start`
+- 编辑期间暂停正常 hover / pointer selection
+- 编辑中程序化 `selectOverlay` / `clearSelection` 会先结束编辑，再只提交最终一次 selection 变更
 
 ## 示例
 
-### 添加点、线、面
+### 推荐配置
 
 ```ts
-const overlayService = mapPlugin.getOverlayService();
-
-const marker = overlayService.addMarker({
-  position: [116.3974, 39.9093],
-  pixelSize: 12,
-  color: '#ff4d4f',
-  clickHighlight: true,
+const overlayService = new OverlayService(viewer, {
+  picking: {
+    enabled: true,
+    hover: true,
+    selection: true,
+    pickWidth: 3,
+    pickHeight: 3,
+    drillLimit: 16,
+    clickDebounceMs: 250,
+  },
 });
+```
 
-const polyline = overlayService.addPolyline({
-  positions: [
-    [116.38, 39.90],
-    [116.40, 39.91],
-  ],
-  width: 3,
-  color: '#1677ff',
-});
+### 创建一个支持 hover + selected 的 polygon
 
+```ts
 const polygon = overlayService.addPolygon({
+  id: "zone-a",
   positions: [
     [116.38, 39.90],
     [116.40, 39.90],
     [116.39, 39.92],
   ],
-  material: 'rgba(22, 119, 255, 0.25)',
-  clickHighlight: {
-    color: '#faad14',
-    fillAlpha: 0.35,
+  material: "rgba(22, 119, 255, 0.25)",
+  hoverHighlight: true,
+  selectionHighlight: {
+    color: "#00E5FF",
+    fillAlpha: 0.4,
   },
+  selectable: true,
+  pickPriority: 10,
 });
 ```
 
-### 通过 ID 管理覆盖物
+### 监听 selection 并动态调整优先级
 
 ```ts
-const marker = overlayService.addMarker({
-  id: 'city-center',
-  position: [116.3974, 39.9093],
+overlayService.onSelectionChange((event) => {
+  console.log(event.reason, event.currentId, event.previousId);
 });
 
-overlayService.setOverlayVisible('city-center', false);
-overlayService.removeOverlay('city-center');
+overlayService.setOverlayPickPriority("zone-a", 20);
+overlayService.refreshHover();
 ```
 
-### 手动控制高亮
+## 相关文档
 
-```ts
-overlayService.setOverlayHighlight('city-center', true, 'click');
-overlayService.toggleOverlayHighlight('city-center', 'hover');
-```
-
-## 与 compat 层的关系
-
-- `OverlayService` 是新架构的覆盖物服务
-- `CesiumOverlayService` 是兼容适配层
-- 新项目优先使用 `mapPlugin.getOverlayService()`
-- 旧项目迁移时，可以先保留 compat 接口，再逐步切到新的实体类与服务层
+- [Overlay Selection 与重叠拾取](/guide/Overlay_Selection_Guide)
+- [12,000 Overlay 性能验收](/guide/Overlay_Selection_Performance_Acceptance)
+- [迁移指南](/guide/Migration_Guide)

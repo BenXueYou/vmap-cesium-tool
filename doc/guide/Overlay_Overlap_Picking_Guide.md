@@ -2,6 +2,8 @@
 
 > 研究范围限定为 Cesium 官方 `Scene.pick`、`Scene.drillPick`、`Scene.pickPosition`、`ScreenSpaceEventHandler`，以及本仓库 `OverlayService.ts` 第 1059—1260 行和 `BaseOverlay.ts`。本项目当前锁定 CesiumJS 1.134.1；下文官方源码链接固定到 1.143 便于长期复核，涉及的 API 签名与前后视觉顺序语义也已在本地 1.134.1 源码中核对。核对日期：2026-07-17。
 
+> 2026-07-30 更新：本页保留“为什么要这样设计”的研究结论，但 **1.x 当前最终产品语义** 已经固定在 [Overlay Selection 与重叠拾取](/guide/Overlay_Selection_Guide)。需要特别注意的三点差异是：**不做 click cycling**、**首版不引入 `scene.pick` 快路径或候选缓存**、**性能门槛以 12,000 overlay 的人工验收记录为准**。
+
 ## 核心结论
 
 当同一屏幕坐标（实际拾取区域还可能是默认的 3×3 像素矩形）同时命中两个覆盖物时，**仅靠鼠标坐标无法推断用户意图**。坐标说明“用户指向这里”，并不包含“用户想选前面的对象、业务优先级更高的对象，还是后面的对象”等信息。

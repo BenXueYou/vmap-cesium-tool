@@ -161,3 +161,131 @@ drawService.startDrawing('polygon');
 ### 4. 什么时候调用 destroy？
 
 组件卸载或页面退出时，只需要调用一次 `mapPlugin.destroy()`。
+
+## Overlay selection 迁移
+
+如果旧业务已经依赖 overlay click highlight，迁到 2.x 时建议顺手把 selection 语义也一并对齐。
+
+### 1. `clickHighlight` 迁到 `selectionHighlight`
+
+旧写法：
+
+```ts
+overlayService.addPolygon({
+  positions,
+  clickHighlight: true,
+  hoverHighlight: true,
+});
+```
+
+推荐新写法：
+
+```ts
+overlayService.addPolygon({
+  positions,
+  selectionHighlight: {
+    color: "#00E5FF",
+    fillAlpha: 0.4,
+  },
+  hoverHighlight: true,
+});
+```
+
+兼容说明：
+
+- `clickHighlight` 仍然可用
+- `selectionHighlight` 与 `clickHighlight` 同时传入时，以 `selectionHighlight` 为准
+- 若需要“有选中状态但不改外观”，可以显式写 `selectionHighlight: false`
+
+### 2. picking 配置迁到 grouped `picking`
+
+旧写法：
+
+```ts
+const overlayService = new OverlayService(viewer, {
+  enableHoverHandler: true,
+  clickPickMinIntervalMs: 120,
+});
+```
+
+推荐新写法：
+
+```ts
+const overlayService = new OverlayService(viewer, {
+  picking: {
+    enabled: true,
+    hover: true,
+    selection: true,
+    pickWidth: 3,
+    pickHeight: 3,
+    drillLimit: 16,
+    clickDebounceMs: 250,
+  },
+});
+```
+
+兼容说明：
+
+- `enableHoverHandler` 仍可继续作为 hover 迁移别名
+- `clickPickMinIntervalMs` 仍可继续作为 `clickDebounceMs` 的迁移别名
+
+### 3. 点击后的业务观察点改为 `onSelectionChange`
+
+2.x 推荐不要再只盯着 overlay 自身 `onClick`。更稳定的同步点是：
+
+```ts
+const unsubscribe = overlayService.onSelectionChange((event) => {
+  console.log(event.currentId, event.previousId, event.reason);
+});
+```
+
+pointer click 的顺序是：
+
+1. 提交 selection
+2. 触发 `onSelectionChange`
+3. 调用 overlay 自身 `onClick`
+
+程序化 `selectOverlay` / `clearSelection` 不会调用 overlay 自身 `onClick`。
+
+### 4. reason 集合需要按 2.x 对齐
+
+如果旧业务只处理“点击选中 / 取消选中”，建议把 reason 分支补齐到以下集合：
+
+- `pointer-select`
+- `pointer-toggle-off`
+- `empty-click`
+- `api-select`
+- `api-clear`
+- `hidden`
+- `removed`
+- `disabled`
+- `edit-start`
+
+其中最容易漏掉的是：
+
+- `hidden`: 已选中的 overlay 被隐藏
+- `removed`: 已选中的 overlay 被删除
+- `disabled`: 已选中的 overlay 被改成不可选
+- `edit-start`: 编辑开始强制接管 selection
+
+### 5. 可选中的判定迁到 `selectable`
+
+旧业务里常见的“有 `onClick` 就默认可点”在 2.x 仍有兼容推断，但新代码建议显式声明：
+
+```ts
+overlayService.addMarker({
+  position,
+  selectable: true,
+  selectionHighlight: true,
+});
+```
+
+如果某些对象只允许 hover、不允许 selected，推荐：
+
+```ts
+overlayService.addPolygon({
+  positions,
+  hoverHighlight: true,
+  selectable: false,
+});
+```
