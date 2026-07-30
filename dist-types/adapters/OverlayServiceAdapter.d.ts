@@ -114,6 +114,8 @@ export declare class OverlayServiceAdapter {
     clearSelection(): boolean;
     setOverlaySelectable(entityOrId: OverlayEntity | Entity | string | number, selectable: boolean): boolean;
     setSelectionEnabled(enabled: boolean): void;
+    setOverlayPickPriority(entityOrId: OverlayEntity | Entity | string | number, pickPriority: number): boolean;
+    refreshHover(): boolean;
     onSelectionChange(listener: (event: any) => void): () => void;
     toggleOverlayHighlight(entityOrId: OverlayEntity | Entity | string | number, reason?: 'click' | 'hover'): boolean;
     setOverlayHighlight(entityOrId: OverlayEntity | Entity | string | number, enabled: boolean, reason?: 'click' | 'hover'): boolean;

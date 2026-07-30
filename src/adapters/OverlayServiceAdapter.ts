@@ -278,6 +278,19 @@ export class OverlayServiceAdapter {
     this.overlayService.setSelectionEnabled(enabled);
   }
 
+  setOverlayPickPriority(entityOrId: OverlayEntity | Entity | string | number, pickPriority: number): boolean {
+    const target = this.resolveOverlayEntity(entityOrId);
+    if (!target) {
+      return false;
+    }
+
+    return this.overlayService.setOverlayPickPriority(target, pickPriority);
+  }
+
+  refreshHover(): boolean {
+    return this.overlayService.refreshHover();
+  }
+
   onSelectionChange(listener: (event: any) => void): () => void {
     return this.overlayService.onSelectionChange(listener);
   }

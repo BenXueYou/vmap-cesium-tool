@@ -191,6 +191,7 @@ export class OverlayService {
   private lastClickPickAt = 0;
   private pendingHoverRaf: number | null = null;
   private pendingHoverPosition: Cesium.Cartesian2 | null = null;
+  private lastHoverPosition: Cesium.Cartesian2 | null = null;
   private readonly highlightCache = new WeakMap<Entity, OverlayGraphicsSnapshot>();
   private overlayEditEnabled = false;
   private overlayEditOptions: Record<string, any> = {};
@@ -387,6 +388,55 @@ export class OverlayService {
    */
   setSelectionEnabled(enabled: boolean): void {
     this.selectionEnabled = !!enabled;
+  }
+
+  /**
+   * 运行时更新覆盖物的拾取优先级。
+   */
+  setOverlayPickPriority(entityOrId: OverlayEntity | Entity | string, pickPriority: number): boolean {
+    if (!Number.isFinite(pickPriority)) {
+      return false;
+    }
+
+    const entity = this.resolveOverlayEntity(entityOrId);
+    if (!entity || typeof entity.id !== 'string') {
+      return false;
+    }
+
+    const overlay = this.overlays.get(String(entity.id));
+    if (!overlay) {
+      return false;
+    }
+
+    const root = overlay.getEntity() as OverlayEntity;
+    if (root._pickPriority === pickPriority) {
+      return true;
+    }
+
+    root._pickPriority = pickPriority;
+    if (this.hoverEnabled) {
+      this.refreshHover();
+    }
+
+    return true;
+  }
+
+  /**
+   * 基于最近一次有效鼠标位置立即重算 hover。
+   */
+  refreshHover(): boolean {
+    if (!this.hoverEnabled) {
+      return false;
+    }
+
+    const pickPosition = this.getLatestHoverPosition();
+    if (!pickPosition) {
+      return false;
+    }
+
+    this.cancelPendingHoverFrame();
+    this.pendingHoverPosition = null;
+    return this.updateHoverAtPosition(pickPosition, false);
   }
 
   /**
@@ -1350,67 +1400,43 @@ export class OverlayService {
   private setupHoverHandler(): void {
     this.hoverHandler = new Cesium.ScreenSpaceEventHandler(this.viewer.scene.canvas);
 
-    const clearHover = (): void => {
-      this.setHighlightTargets(this.hoverHighlightTargets, 'hover', false);
-      this.hoverHighlightTargets = [];
-    };
-
     this.hoverHandler.setInputAction((movement: Cesium.ScreenSpaceEventHandler.MotionEvent) => {
       if (!this.hoverEnabled) {
-        clearHover();
+        this.clearHoverTargets();
         return;
       }
 
       if (!movement.endPosition) {
-        clearHover();
+        this.clearHoverTargets(true);
         return;
       }
 
-      this.pendingHoverPosition = movement.endPosition;
+      this.pendingHoverPosition = this.cloneWindowPosition(movement.endPosition);
       if (this.pendingHoverRaf !== null) {
         return;
       }
 
-      this.pendingHoverRaf = window.requestAnimationFrame(() => {
+      this.pendingHoverRaf = globalThis.requestAnimationFrame(() => {
         this.pendingHoverRaf = null;
 
         const pickPosition = this.pendingHoverPosition;
         this.pendingHoverPosition = null;
         if (!this.hoverEnabled) {
-          clearHover();
+          this.clearHoverTargets();
           return;
         }
         if (!pickPosition) {
-          clearHover();
+          this.clearHoverTargets();
           return;
         }
-
-        if (!this.pickGovernor.shouldPick('hover', pickPosition)) {
-          return;
-        }
-
-        const overlayEntity = this.pickOverlayEntity(pickPosition, 'hover');
-        if (!overlayEntity) {
-          clearHover();
-          return;
-        }
-
-        const targets = this.getHighlightTargets(overlayEntity, 'hover');
-        const isSameTarget =
-          targets.length === this.hoverHighlightTargets.length &&
-          targets.every((target, index) => target === this.hoverHighlightTargets[index]);
-
-        if (isSameTarget) {
-          return;
-        }
-
-        clearHover();
-        this.hoverHighlightTargets = targets;
-        this.setHighlightTargets(targets, 'hover', true);
+        this.updateHoverAtPosition(pickPosition, true);
       });
     }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
 
-    this.viewer.scene.canvas.addEventListener('mouseleave', clearHover);
+    this.viewer.scene.canvas.addEventListener('mouseleave', () => {
+      this.cancelPendingHoverFrame();
+      this.clearHoverTargets(true);
+    });
   }
 
   /**
@@ -1612,6 +1638,73 @@ export class OverlayService {
 
   private isSelectionOwnedByEditTarget(entity: OverlayEntity): boolean {
     return !!this.overlayEditState && String(this.overlayEditState.entity.id) === String(entity.id);
+  }
+
+  private cancelPendingHoverFrame(): void {
+    if (this.pendingHoverRaf !== null) {
+      globalThis.cancelAnimationFrame?.(this.pendingHoverRaf);
+      this.pendingHoverRaf = null;
+    }
+  }
+
+  private cloneWindowPosition(position: Cesium.Cartesian2): Cesium.Cartesian2 {
+    return {
+      x: position.x,
+      y: position.y,
+    } as Cesium.Cartesian2;
+  }
+
+  private getLatestHoverPosition(): Cesium.Cartesian2 | null {
+    if (this.pendingHoverPosition) {
+      return this.cloneWindowPosition(this.pendingHoverPosition);
+    }
+
+    if (this.lastHoverPosition) {
+      return this.cloneWindowPosition(this.lastHoverPosition);
+    }
+
+    return null;
+  }
+
+  private clearHoverTargets(forgetPosition: boolean = false): void {
+    this.setHighlightTargets(this.hoverHighlightTargets, 'hover', false);
+    this.hoverHighlightTargets = [];
+
+    if (forgetPosition) {
+      this.pendingHoverPosition = null;
+      this.lastHoverPosition = null;
+    }
+  }
+
+  private updateHoverAtPosition(
+    pickPosition: Cesium.Cartesian2,
+    respectGovernor: boolean,
+  ): boolean {
+    this.lastHoverPosition = this.cloneWindowPosition(pickPosition);
+
+    if (respectGovernor && !this.pickGovernor.shouldPick('hover', pickPosition)) {
+      return false;
+    }
+
+    const overlayEntity = this.pickOverlayEntity(pickPosition, 'hover');
+    if (!overlayEntity) {
+      this.clearHoverTargets();
+      return true;
+    }
+
+    const targets = this.getHighlightTargets(overlayEntity, 'hover');
+    const isSameTarget =
+      targets.length === this.hoverHighlightTargets.length &&
+      targets.every((target, index) => target === this.hoverHighlightTargets[index]);
+
+    if (isSameTarget) {
+      return true;
+    }
+
+    this.clearHoverTargets();
+    this.hoverHighlightTargets = targets;
+    this.setHighlightTargets(targets, 'hover', true);
+    return true;
   }
 
   private getHighlightTargets(entity: OverlayEntity, reason: 'click' | 'hover'): Entity[] {
@@ -1908,7 +2001,7 @@ export class OverlayService {
     this.selectionListeners.clear();
 
     if (this.pendingHoverRaf !== null) {
-      window.cancelAnimationFrame(this.pendingHoverRaf);
+      globalThis.cancelAnimationFrame?.(this.pendingHoverRaf);
       this.pendingHoverRaf = null;
     }
 

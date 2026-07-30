@@ -104,6 +104,7 @@ export declare class OverlayService {
     private lastClickPickAt;
     private pendingHoverRaf;
     private pendingHoverPosition;
+    private lastHoverPosition;
     private readonly highlightCache;
     private overlayEditEnabled;
     private overlayEditOptions;
@@ -167,6 +168,14 @@ export declare class OverlayService {
      * 动态开启/关闭 pointer selection。
      */
     setSelectionEnabled(enabled: boolean): void;
+    /**
+     * 运行时更新覆盖物的拾取优先级。
+     */
+    setOverlayPickPriority(entityOrId: OverlayEntity | Entity | string, pickPriority: number): boolean;
+    /**
+     * 基于最近一次有效鼠标位置立即重算 hover。
+     */
+    refreshHover(): boolean;
     /**
      * 添加 Marker
      */
@@ -298,6 +307,11 @@ export declare class OverlayService {
     private resolveOverlayEntity;
     private isOverlaySelectable;
     private isSelectionOwnedByEditTarget;
+    private cancelPendingHoverFrame;
+    private cloneWindowPosition;
+    private getLatestHoverPosition;
+    private clearHoverTargets;
+    private updateHoverAtPosition;
     private getHighlightTargets;
     private setHighlightTargets;
     private setEntityHighlight;
