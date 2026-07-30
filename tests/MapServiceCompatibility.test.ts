@@ -5,7 +5,11 @@ import {
   ProviderSearchService,
 } from '../src/core/mapProviders/ProviderSearchService';
 import { baseMapRegistry } from '../src/core/mapProviders/registry';
-import { resolveLegacyMapService } from '../src/core/mapProviders/mapService';
+import {
+  MapServiceConfigError,
+  resolveConfiguredMapService,
+  resolveLegacyMapService,
+} from '../src/core/mapProviders/mapService';
 
 describe('legacy map service normalization seam', () => {
   it('normalizes legacy online provider inputs into one resolved service shape', () => {
@@ -74,6 +78,60 @@ describe('legacy map service normalization seam', () => {
     const mapTypes = baseMapRegistry.getMapTypes(service.baseMap, service.auth);
     expect(mapTypes.map((item) => item.id)).toEqual(['custom-xyz']);
     expect(mapTypes[0]?.name).toBe('离线地图');
+  });
+});
+
+describe('new mapService normalization seam', () => {
+  it('normalizes tdt mapService config into the shared resolved service shape', () => {
+    const service = resolveConfiguredMapService({
+      provider: 'tdt',
+      serviceKey: ' token-value ',
+      secureKey: ' secure-value ',
+    });
+
+    expect(service.provider).toBe('tdt');
+    expect(service.baseMap).toMatchObject({
+      provider: 'tdt',
+      type: 'img',
+      token: 'token-value',
+      sk: 'secure-value',
+      showLabel: true,
+    });
+    expect(service.auth).toEqual({
+      tdt: {
+        token: 'token-value',
+        sk: 'secure-value',
+      },
+    });
+    expect(service.isOffline).toBe(false);
+  });
+
+  it('normalizes private mapService config into offline custom imagery without requiring rectangle', () => {
+    const service = resolveConfiguredMapService({
+      provider: 'private',
+      offlineMapUrl: ' /tiles/{z}/{x}/{y}.png ',
+    });
+
+    expect(service.provider).toBe('custom');
+    expect(service.baseMap).toMatchObject({
+      provider: 'custom',
+      type: 'xyz',
+      mode: 'offline',
+      urlTemplate: '/tiles/{z}/{x}/{y}.png',
+      showLabel: false,
+    });
+    expect(service.isOffline).toBe(true);
+
+    const mapTypes = baseMapRegistry.getMapTypes(service.baseMap, service.auth);
+    expect(mapTypes.map((item) => item.id)).toEqual(['custom-xyz']);
+    expect(() => mapTypes[0]?.provider({} as any)).not.toThrow();
+  });
+
+  it('rejects unsupported new mapService providers instead of silently falling back', () => {
+    expect(() => resolveConfiguredMapService({
+      provider: 'osm' as any,
+      serviceKey: 'token',
+    })).toThrow(MapServiceConfigError);
   });
 });
 

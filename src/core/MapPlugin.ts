@@ -9,6 +9,7 @@ import type {
   BaiduLayerConfig,
   CustomLayerConfig,
   LayersConfig,
+  MapServiceConfig,
   MapType,
   MapPluginOptions,
   MapPluginServicesOptions,
@@ -48,6 +49,9 @@ import {
 import { coordinateService } from './mapProviders/coordinates/CoordinateService';
 import { normalizeMapAuth, ProviderSearchService } from './mapProviders/ProviderSearchService';
 import {
+  MapServiceConfigError,
+  normalizeMapServiceConfig,
+  resolveConfiguredMapService,
   resolveLegacyMapService,
   type ResolvedMapService,
 } from './mapProviders/mapService';
@@ -149,16 +153,24 @@ class PluginMapController {
  * 负责整合所有地图功能，提供统一的 API 接口
  */
 export class MapPlugin {
+  private static readonly LEGACY_MAP_SERVICE_FIELDS: ReadonlyArray<keyof MapPluginOptions> = [
+    'layers',
+    'baseMap',
+    'mapAuth',
+  ];
+
   private viewer: Cesium.Viewer | null = null;
   private containerId: string;
   
   // 分层配置
   private viewerOptions: Cesium.Viewer.ConstructorOptions;
   private cameraConfig: CameraConfig;
-  private layersConfig: LayersConfig;
-  private baseMapConfig: BaseMapConfig;
+  private layersConfig!: LayersConfig;
+  private baseMapConfig!: BaseMapConfig;
   private mapAuthConfig: MapAuthConfig | undefined;
-  private mapService: ResolvedMapService;
+  private mapService!: ResolvedMapService;
+  private mapServiceConfig: MapServiceConfig | undefined;
+  private mapConfigMode: 'legacy' | 'mapService' = 'legacy';
   private providerSearchConfig: ProviderSearchOptions;
   private creditsConfig: CreditsOptions;
   private cesiumToken: string;
@@ -170,10 +182,10 @@ export class MapPlugin {
   private noFlyZoneConfig: NoFlyZonePluginOptions;
   private initialCenter: InitialCenter;
   private toolbarController: PluginMapController | null = null;
-  private toolbarMapTypes: MapType[];
-  private currentMapTypeId: string;
-  private placeNameVisible: boolean;
-  private nonForcedPlaceNameVisible: boolean;
+  private toolbarMapTypes!: MapType[];
+  private currentMapTypeId!: string;
+  private placeNameVisible!: boolean;
+  private nonForcedPlaceNameVisible!: boolean;
   private noFlyZoneVisible = false;
   private noFlyZoneDataSource: Cesium.CustomDataSource | null = null;
   private noFlyZoneLoadPromise: Promise<Cesium.CustomDataSource> | null = null;
@@ -202,36 +214,47 @@ export class MapPlugin {
     // 解析分层配置
     this.viewerOptions = options.viewerOptions || {};
     this.cameraConfig = this.mergeCameraConfig(options.camera);
-    this.layersConfig = this.mergeLayersConfig(options.layers);
-    this.baseMapConfig = this.resolveBaseMapConfig(options);
-    this.mapAuthConfig = normalizeMapAuth(options.mapAuth);
-    this.mapService = resolveLegacyMapService({
-      baseMap: this.baseMapConfig,
-      mapAuth: this.mapAuthConfig,
-    });
-    this.baseMapConfig = this.mapService.baseMap;
-    this.mapAuthConfig = this.mapService.auth;
+    this.servicesConfig = options.services || {};
+    this.toolbarLayersMenuConfig = this.getToolbarLayersMenuConfig(options.services?.toolbar);
+
+    if (options.mapService) {
+      this.assertNoMixedMapServiceConfig(options);
+      const normalizedMapService = normalizeMapServiceConfig(options.mapService);
+      this.applyResolvedMapService(
+        resolveConfiguredMapService(normalizedMapService),
+        'mapService',
+        normalizedMapService,
+      );
+    } else {
+      this.applyResolvedMapService(
+        resolveLegacyMapService({
+          baseMap: this.resolveBaseMapConfig(options),
+          mapAuth: normalizeMapAuth(options.mapAuth),
+        }),
+        'legacy',
+      );
+    }
+
     this.providerSearchConfig = options.providerSearch || {};
     this.creditsConfig = { visible: true, ...(options.credits || {}) };
     this.cesiumToken = options.cesiumToken || '';
-    this.servicesConfig = options.services || {};
-    this.toolbarLayersMenuConfig = this.getToolbarLayersMenuConfig(options.services?.toolbar);
     this.noFlyZoneConfig = this.resolveNoFlyZoneConfig(options.noFlyZone);
     this.initialCenter = this.toInitialCenter(this.cameraConfig);
-    this.toolbarMapTypes = withDefaultMapTypeThumbnails(
-      this.toolbarLayersMenuConfig.mapTypes
-        || baseMapRegistry.getMapTypes(this.mapService.baseMap, this.mapService.auth),
-    );
-    this.currentMapTypeId = this.resolveCurrentMapTypeId();
-    this.nonForcedPlaceNameVisible = this.toolbarLayersMenuConfig.defaultPlaceNameChecked
-      ?? this.resolvePlaceNameVisible();
-    this.placeNameVisible = this.getCurrentToolbarMapType()?.forcePlaceName
-      ? true
-      : this.nonForcedPlaceNameVisible;
     this.noFlyZoneVisible = this.noFlyZoneConfig.visible ?? false;
     
     // 工具栏和样式配置（保持向后兼容）
     this.toolbarConfig = this.getToolbarConfig(options.services?.toolbar);
+  }
+
+  private assertNoMixedMapServiceConfig(options: Partial<MapPluginOptions>): void {
+    const mixedFields = MapPlugin.LEGACY_MAP_SERVICE_FIELDS.filter((field) => options[field] !== undefined);
+    if (!mixedFields.length) {
+      return;
+    }
+
+    throw new MapServiceConfigError(
+      `mapService 不能与旧配置同时使用: ${mixedFields.join(', ')}`,
+    );
   }
 
   private getToolbarConfig(toolbarOptions?: boolean | ToolbarPluginOptions): ToolbarConfig {
@@ -389,6 +412,80 @@ export class MapPlugin {
     return result;
   }
 
+  private buildLayersConfigForBaseMap(baseMap: BaseMapConfig): LayersConfig {
+    switch (baseMap.provider) {
+      case 'gaode':
+        return {
+          type: 'gaode',
+          gaode: {
+            mapTypeId: (baseMap.type as 'vector' | 'satellite' | 'terrain' | undefined) || 'satellite',
+            token: baseMap.key || baseMap.token,
+            sk: baseMap.sk,
+            showLabel: baseMap.showLabel ?? true,
+          },
+        };
+      case 'tencent':
+        return {
+          type: 'tencent',
+          tencent: {
+            mapTypeId: (baseMap.type as 'vector' | 'satellite' | undefined) || 'satellite',
+            key: baseMap.key,
+            token: baseMap.token,
+            showLabel: baseMap.showLabel ?? true,
+          },
+        };
+      case 'google':
+        return {
+          type: 'google',
+          google: {
+            mapTypeId: (baseMap.type as 'roadmap' | 'satellite' | undefined) || 'roadmap',
+            apiKey: baseMap.key || baseMap.token,
+            showLabel: baseMap.showLabel ?? false,
+          },
+        };
+      case 'baidu':
+        return {
+          type: 'baidu',
+          baidu: {
+            mapTypeId: (baseMap.type as 'normal' | 'satellite' | 'terrain' | undefined) || 'satellite',
+            token: baseMap.ak || baseMap.key || baseMap.token,
+            sk: baseMap.sk,
+            showLabel: baseMap.showLabel ?? true,
+          },
+        };
+      case 'custom':
+        return {
+          type: 'custom',
+          custom: {
+            providers: baseMap.providers || [],
+            type: baseMap.type as 'xyz' | 'wmts' | 'imageryProviders' | undefined,
+            mode: baseMap.mode,
+            customUrl: baseMap.customUrl,
+            urlTemplate: baseMap.urlTemplate,
+            rectangle: baseMap.rectangle,
+            minimumLevel: baseMap.minimumLevel,
+            maximumLevel: baseMap.maximumLevel,
+            credit: baseMap.credit,
+            cameraBounds: baseMap.cameraBounds,
+            wmtsLayer: baseMap.wmtsLayer,
+            wmtsStyle: baseMap.wmtsStyle,
+            wmtsFormat: baseMap.wmtsFormat,
+            tileMatrixSetId: baseMap.tileMatrixSetId,
+          },
+        };
+      default:
+        return {
+          type: 'tdt',
+          tdt: {
+            mapTypeId: (baseMap.type as 'vec' | 'img' | 'ter' | 'tdt3d' | undefined) || 'img',
+            token: baseMap.token || baseMap.key || '',
+            sk: baseMap.sk,
+            showLabel: baseMap.showLabel ?? true,
+          },
+        };
+    }
+  }
+
   private resolveBaseMapConfig(options: Partial<MapPluginOptions>): BaseMapConfig {
     if (options.baseMap) {
       const provider = normalizeProviderId(options.baseMap.provider);
@@ -484,14 +581,42 @@ export class MapPlugin {
     );
   }
 
-  private syncMapServiceState(): void {
-    this.mapService = resolveLegacyMapService({
-      baseMap: this.baseMapConfig,
-      mapAuth: this.mapAuthConfig,
-    });
-    this.baseMapConfig = this.mapService.baseMap;
-    this.mapAuthConfig = this.mapService.auth;
+  private applyResolvedMapService(
+    mapService: ResolvedMapService,
+    mode: 'legacy' | 'mapService',
+    mapServiceConfig?: MapServiceConfig,
+  ): void {
+    this.mapConfigMode = mode;
+    this.mapServiceConfig = mapServiceConfig ? { ...mapServiceConfig } : undefined;
+    this.mapService = mapService;
+    this.baseMapConfig = mapService.baseMap;
+    this.mapAuthConfig = mapService.auth;
+    this.layersConfig = this.buildLayersConfigForBaseMap(this.baseMapConfig);
     this.refreshToolbarMapTypes();
+    this.currentMapTypeId = this.resolveCurrentMapTypeId();
+    const resolvedPlaceNameVisible = this.toolbarLayersMenuConfig.defaultPlaceNameChecked
+      ?? this.resolvePlaceNameVisible();
+    const isForcedMapType = !!this.getCurrentToolbarMapType()?.forcePlaceName;
+    this.nonForcedPlaceNameVisible = resolvedPlaceNameVisible;
+    this.placeNameVisible = isForcedMapType ? true : resolvedPlaceNameVisible;
+  }
+
+  private syncMapServiceState(): void {
+    this.applyResolvedMapService(
+      resolveLegacyMapService({
+        baseMap: this.baseMapConfig,
+        mapAuth: this.mapAuthConfig,
+      }),
+      'legacy',
+    );
+  }
+
+  private assertLegacyMutationAllowed(methodName: string): void {
+    if (this.mapConfigMode === 'mapService') {
+      throw new MapServiceConfigError(
+        `${methodName} 不能在 mapService 模式下调用，请改用 setMapService()`,
+      );
+    }
   }
 
   private getLayerToken(): string {
@@ -748,12 +873,10 @@ export class MapPlugin {
 
     if (this.mapService.isOffline) {
       this.toolbarService.hideButton('search');
-      this.toolbarService.hideButton('layers');
       return;
     }
 
     this.toolbarService.showButton('search');
-    this.toolbarService.showButton('layers');
   }
 
   private async setMapType(mapTypeId: string): Promise<void> {
@@ -1103,9 +1226,12 @@ export class MapPlugin {
     return {
       viewerOptions: { ...this.viewerOptions },
       camera: { ...this.cameraConfig },
-      layers: { ...this.layersConfig },
-      baseMap: { ...this.baseMapConfig },
-      mapAuth: this.mapAuthConfig ? { ...this.mapAuthConfig } : undefined,
+      layers: this.mapConfigMode === 'legacy' ? { ...this.layersConfig } : undefined,
+      mapService: this.mapServiceConfig ? { ...this.mapServiceConfig } : undefined,
+      baseMap: this.mapConfigMode === 'legacy' ? { ...this.baseMapConfig } : undefined,
+      mapAuth: this.mapConfigMode === 'legacy' && this.mapAuthConfig
+        ? { ...this.mapAuthConfig }
+        : undefined,
       providerSearch: { ...this.providerSearchConfig },
       credits: { ...this.creditsConfig },
       cesiumToken: this.cesiumToken,
@@ -1130,6 +1256,7 @@ export class MapPlugin {
    * 更新图层配置
    */
   updateLayers(config: Partial<LayersConfig>): void {
+    this.assertLegacyMutationAllowed('updateLayers');
     this.layersConfig = this.mergeLayersConfig(config);
     this.baseMapConfig = this.resolveBaseMapConfig({
       layers: this.layersConfig,
@@ -1157,6 +1284,7 @@ export class MapPlugin {
   }
 
   updateBaseMap(baseMap: Partial<BaseMapConfig>): void {
+    this.assertLegacyMutationAllowed('updateBaseMap');
     this.baseMapConfig = {
       ...this.baseMapConfig,
       ...baseMap,
@@ -1173,6 +1301,7 @@ export class MapPlugin {
   }
 
   updateMapAuth(mapAuth: MapAuthConfig): void {
+    this.assertLegacyMutationAllowed('updateMapAuth');
     const normalized = normalizeMapAuth(mapAuth) || {};
     const nextAuth = { ...(this.mapAuthConfig || {}) };
     (['tdt', 'gaode', 'tencent', 'baidu', 'google'] as const).forEach((provider) => {
@@ -1194,10 +1323,27 @@ export class MapPlugin {
 
   /** 替换全部厂商鉴权，适合单一当前服务商配置。 */
   setMapAuth(mapAuth: MapAuthConfig): void {
+    this.assertLegacyMutationAllowed('setMapAuth');
     this.mapAuthConfig = normalizeMapAuth(mapAuth);
     this.syncMapServiceState();
     if (this.isInitialized) void this.refreshLayersAndGeoWTFS();
     this.updateToolbarLayerState();
+  }
+
+  async setMapService(mapService: MapServiceConfig): Promise<void> {
+    const normalizedMapService = normalizeMapServiceConfig(mapService);
+    this.applyResolvedMapService(
+      resolveConfiguredMapService(normalizedMapService),
+      'mapService',
+      normalizedMapService,
+    );
+
+    if (this.isInitialized) {
+      await this.refreshLayersAndGeoWTFS();
+    }
+
+    this.updateToolbarLayerState();
+    this.syncOfflineToolbarState();
   }
 
   /** 运行时更新 Cesium credit/版权区域显示状态。 */

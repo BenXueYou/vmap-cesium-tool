@@ -280,10 +280,6 @@ function customFactory(context: MapProviderContext): MapType[] {
         if (!context.baseMap.urlTemplate) {
           throw new Error(context.baseMap.mode === 'offline' ? '离线地图缺少 urlTemplate' : '自定义 XYZ 底图缺少 urlTemplate');
         }
-        if (context.baseMap.mode === 'offline' && !context.baseMap.rectangle) {
-          throw new Error('离线地图缺少 rectangle 配置');
-        }
-
         const rectangle = context.baseMap.rectangle
           ? Cesium.Rectangle.fromDegrees(
             context.baseMap.rectangle.west,

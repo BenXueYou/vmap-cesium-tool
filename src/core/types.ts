@@ -7,8 +7,13 @@ import type {
   BaseMapConfig,
   BaseMapProviderId,
   MapAuthConfig,
+  MapServiceConfig,
+  MapServiceProvider,
   MapProviderContext,
   OfflineCameraBoundsConfig,
+  OnlineMapServiceConfig,
+  OnlineMapServiceProvider,
+  PrivateMapServiceConfig,
   BaseMapRectangle,
 } from './mapProviders/types';
 import type { CoordSystem, LngLat } from './mapProviders/coordinates/types';
@@ -401,6 +406,8 @@ export interface MapPluginOptions {
   camera?: CameraConfig;
   /** 图层配置 */
   layers?: LayersConfig;
+  /** 新地图服务配置 */
+  mapService?: MapServiceConfig;
   /** 新版底图配置 */
   baseMap?: BaseMapConfig;
   /** 多厂商鉴权配置 */
@@ -763,7 +770,12 @@ export type {
   BaseMapConfig,
   BaseMapProviderId,
   MapAuthConfig,
+  MapServiceConfig,
+  MapServiceProvider,
   MapProviderContext,
+  OnlineMapServiceConfig,
+  OnlineMapServiceProvider,
+  PrivateMapServiceConfig,
   OfflineCameraBoundsConfig,
   BaseMapRectangle,
   CoordSystem,

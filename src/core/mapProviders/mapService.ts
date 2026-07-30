@@ -1,6 +1,22 @@
-import type { BaseMapConfig, BaseMapProviderId, MapAuthConfig } from './types';
+import type {
+  BaseMapConfig,
+  BaseMapProviderId,
+  MapAuthConfig,
+  MapServiceConfig,
+  MapServiceProvider,
+  OnlineMapServiceConfig,
+  OnlineMapServiceProvider,
+} from './types';
 
 const clean = (value?: string) => (value || '').trim();
+
+const ONLINE_MAP_SERVICE_PROVIDERS: OnlineMapServiceProvider[] = [
+  'tdt',
+  'gaode',
+  'tencent',
+  'baidu',
+  'google',
+];
 
 export interface ResolvedMapService {
   provider: BaseMapProviderId;
@@ -12,6 +28,13 @@ export interface ResolvedMapService {
     mapId: string;
   };
   isOffline: boolean;
+}
+
+export class MapServiceConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'MapServiceConfigError';
+  }
 }
 
 export function normalizeProviderId(provider?: string): BaseMapProviderId {
@@ -37,6 +60,21 @@ export function normalizeProviderId(provider?: string): BaseMapProviderId {
   return 'tdt';
 }
 
+function isOnlineMapServiceProvider(provider: string): provider is OnlineMapServiceProvider {
+  return ONLINE_MAP_SERVICE_PROVIDERS.includes(provider as OnlineMapServiceProvider);
+}
+
+function normalizeMapServiceProvider(provider?: string): MapServiceProvider {
+  const normalized = clean(provider);
+  if (normalized === 'private') {
+    return 'private';
+  }
+  if (isOnlineMapServiceProvider(normalized)) {
+    return normalized;
+  }
+  throw new MapServiceConfigError(`不支持的 mapService.provider: "${provider || ''}"`);
+}
+
 export function buildDefaultBaseMap(provider: BaseMapProviderId = 'tdt'): BaseMapConfig {
   switch (provider) {
     case 'gaode':
@@ -51,6 +89,128 @@ export function buildDefaultBaseMap(provider: BaseMapProviderId = 'tdt'): BaseMa
       return { provider, type: 'xyz', showLabel: false };
     default:
       return { provider: 'tdt', type: 'img', showLabel: true };
+  }
+}
+
+export function normalizeMapServiceConfig(mapService: MapServiceConfig): MapServiceConfig {
+  const provider = normalizeMapServiceProvider(mapService.provider);
+
+  if (provider === 'private') {
+    const offlineMapUrl = clean((mapService as { offlineMapUrl?: string }).offlineMapUrl);
+    if (!offlineMapUrl) {
+      throw new MapServiceConfigError('private mapService 缺少 offlineMapUrl');
+    }
+    return {
+      provider: 'private',
+      offlineMapUrl,
+    };
+  }
+
+  const onlineMapService = mapService as OnlineMapServiceConfig;
+  const serviceKey = clean(onlineMapService.serviceKey);
+  if (!serviceKey) {
+    throw new MapServiceConfigError(`${provider} mapService 缺少 serviceKey`);
+  }
+
+  const secureKey = clean(onlineMapService.secureKey);
+  return secureKey
+    ? {
+      provider,
+      serviceKey,
+      secureKey,
+    }
+    : {
+      provider,
+      serviceKey,
+    };
+}
+
+function buildMapServiceAuth(mapService: OnlineMapServiceConfig): MapAuthConfig | undefined {
+  switch (mapService.provider) {
+    case 'tdt':
+      return {
+        tdt: {
+          token: mapService.serviceKey,
+          sk: clean(mapService.secureKey),
+        },
+      };
+    case 'gaode':
+      return {
+        gaode: {
+          key: mapService.serviceKey,
+          securityKey: clean(mapService.secureKey),
+        },
+      };
+    case 'tencent':
+      return {
+        tencent: {
+          key: mapService.serviceKey,
+        },
+      };
+    case 'baidu':
+      return {
+        baidu: {
+          ak: mapService.serviceKey,
+        },
+      };
+    case 'google':
+      return {
+        google: {
+          apiKey: mapService.serviceKey,
+        },
+      };
+    default:
+      return undefined;
+  }
+}
+
+function buildMapServiceBaseMap(mapService: MapServiceConfig): BaseMapConfig {
+  if (mapService.provider === 'private') {
+    return {
+      ...buildDefaultBaseMap('custom'),
+      provider: 'custom',
+      type: 'xyz',
+      mode: 'offline',
+      urlTemplate: mapService.offlineMapUrl,
+      showLabel: false,
+    };
+  }
+
+  const baseMap: BaseMapConfig = {
+    ...buildDefaultBaseMap(mapService.provider),
+    provider: mapService.provider,
+  };
+
+  switch (mapService.provider) {
+    case 'tdt':
+      return {
+        ...baseMap,
+        token: mapService.serviceKey,
+        sk: clean(mapService.secureKey),
+      };
+    case 'gaode':
+      return {
+        ...baseMap,
+        key: mapService.serviceKey,
+        sk: clean(mapService.secureKey),
+      };
+    case 'tencent':
+      return {
+        ...baseMap,
+        key: mapService.serviceKey,
+      };
+    case 'baidu':
+      return {
+        ...baseMap,
+        ak: mapService.serviceKey,
+      };
+    case 'google':
+      return {
+        ...baseMap,
+        key: mapService.serviceKey,
+      };
+    default:
+      return baseMap;
   }
 }
 
@@ -148,4 +308,28 @@ export function resolveLegacyMapService(input: {
     },
     isOffline: provider === 'custom' && baseMap.mode === 'offline',
   };
+}
+
+export function resolveConfiguredMapService(mapService: MapServiceConfig): ResolvedMapService {
+  const normalized = normalizeMapServiceConfig(mapService);
+
+  if (normalized.provider === 'private') {
+    const baseMap = buildMapServiceBaseMap(normalized);
+    return {
+      provider: 'custom',
+      baseMap,
+      auth: undefined,
+      credentials: {
+        serviceKey: '',
+        secureKey: '',
+        mapId: '',
+      },
+      isOffline: true,
+    };
+  }
+
+  return resolveLegacyMapService({
+    baseMap: buildMapServiceBaseMap(normalized),
+    mapAuth: buildMapServiceAuth(normalized),
+  });
 }

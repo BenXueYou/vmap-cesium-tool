@@ -2,6 +2,21 @@ import * as Cesium from 'cesium';
 import type { ResolvedMapService } from './mapService';
 
 export type BaseMapProviderId = 'tdt' | 'gaode' | 'tencent' | 'baidu' | 'google' | 'custom';
+export type OnlineMapServiceProvider = 'tdt' | 'gaode' | 'tencent' | 'baidu' | 'google';
+export type MapServiceProvider = OnlineMapServiceProvider | 'private';
+
+export interface OnlineMapServiceConfig {
+  provider: OnlineMapServiceProvider;
+  serviceKey: string;
+  secureKey?: string;
+}
+
+export interface PrivateMapServiceConfig {
+  provider: 'private';
+  offlineMapUrl: string;
+}
+
+export type MapServiceConfig = OnlineMapServiceConfig | PrivateMapServiceConfig;
 
 export interface BaseMapRectangle {
   west: number;
