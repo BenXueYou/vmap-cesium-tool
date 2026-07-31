@@ -4,14 +4,37 @@ title: 多厂商地图接入
 
 # 多厂商地图接入
 
-组件支持两套接入方式：
+组件当前文档重点覆盖两套常用接入方式：
 
 - 新入口：`mapService`
 - 兼容入口：`baseMap + mapAuth`
 
+另外，旧版 `LayersConfig` 仍保留兼容，但更适合历史项目兜底，不建议再作为新接入方案。
+
 新项目推荐优先使用 `mapService`。它会把底图厂商、搜索能力和运行时切换统一收口到组件内部。目前支持天地图、高德、腾讯、百度、Google，以及自定义在线/离线瓦片。
 
 > 请通过环境变量或业务配置中心注入密钥，不要把真实密钥提交到仓库或打进前端公开包。
+
+## 接入方式对照
+
+| 维度 | `LayersConfig` | `baseMap + mapAuth` | `mapService` |
+| --- | --- | --- | --- |
+| 定位 | 最早的图层配置入口 | 1.x 兼容过渡入口 | 1.x 推荐入口 |
+| 核心思路 | 按厂商分别配置：`layers.tdt / gaode / baidu / custom...` | 把底图参数和鉴权参数拆开维护 | 把厂商、凭据、搜索和运行时切换统一收口 |
+| 配置形态 | `layers: { type, tdt, gaode, ... }` | `baseMap: {...}` + `mapAuth: {...}` | `mapService: { provider, serviceKey... }` 或 `{ provider: 'private', offlineMapUrl }` |
+| 厂商选择 | `layers.type` | `baseMap.provider` | `mapService.provider` |
+| 鉴权放置方式 | 写在各厂商子配置中，如 `layers.tdt.token` | 推荐统一写在 `mapAuth`，也兼容少量写在 `baseMap` | 直接写在 `serviceKey / secureKey` |
+| 搜索能力 | 旧模式，通常由业务自己接管 | 可继续兼容旧搜索链路 | 组件内置接管，在线地图自动启用，私有地图自动隐藏 |
+| 运行时切换 | 走旧图层更新逻辑，维护成本较高 | 使用 `updateBaseMap()` / `updateMapAuth()` | 使用 `setMapService()` 原子切换 |
+| 新项目建议 | 不推荐 | 仅用于迁移过渡 | 推荐 |
+| 是否可与 `mapService` 混用 | 不能 | 不能 | 不能与旧入口混用 |
+| 适用场景 | 历史项目暂不改动时兜底 | 旧项目先收口配置，再逐步迁移 | 新项目，或准备统一地图接入的项目 |
+
+可以简单理解为：
+
+- `LayersConfig`：历史兼容入口
+- `baseMap + mapAuth`：过渡兼容入口
+- `mapService`：推荐统一入口
 
 ## 快速接入
 

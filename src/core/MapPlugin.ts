@@ -1695,7 +1695,21 @@ export class MapPlugin {
     }
 
     if (left.provider === 'private' && right.provider === 'private') {
-      return left.offlineMapUrl === right.offlineMapUrl;
+      return JSON.stringify({
+        offlineMapUrl: left.offlineMapUrl,
+        rectangle: left.rectangle,
+        minimumLevel: left.minimumLevel,
+        maximumLevel: left.maximumLevel,
+        credit: left.credit,
+        cameraBounds: left.cameraBounds,
+      }) === JSON.stringify({
+        offlineMapUrl: right.offlineMapUrl,
+        rectangle: right.rectangle,
+        minimumLevel: right.minimumLevel,
+        maximumLevel: right.maximumLevel,
+        credit: right.credit,
+        cameraBounds: right.cameraBounds,
+      });
     }
 
     if (left.provider === 'private' || right.provider === 'private') {

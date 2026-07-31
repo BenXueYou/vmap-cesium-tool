@@ -1,6 +1,6 @@
 {
   "name": "@xingm/vmap-cesium-toolbar",
-  "version": "1.0.6",
+  "version": "1.0.8",
   "description": "A powerful Cesium map toolbar plugin with drawing, measurement, and interaction features",
   "type": "module",
   "main": "dist/index.es.js",
@@ -24,7 +24,6 @@
     "dev": "vite --force",
     "build": "vite build --mode lib",
     "dist": "vite build",
-    "build:dts": "vue-tsc -p tsconfig.dts.json",
     "build:plugin": "node scripts/build-plugin.js",
     "docs:dev": "vitepress dev doc",
     "docs:build": "vitepress build doc",

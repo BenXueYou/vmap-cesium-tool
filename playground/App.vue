@@ -449,33 +449,6 @@
       </template>
     </aside>
 
-    <aside class="console-panel">
-      <div class="console-header">
-        <div>
-          <div class="eyebrow">Events</div>
-          <div class="console-title">结果面板</div>
-        </div>
-
-        <div class="action-row compact">
-          <button @click="syncOverlayInventory">刷新</button>
-          <button @click="clearLogs">清空</button>
-        </div>
-      </div>
-
-      <div class="console-list">
-        <article v-for="entry in logs" :key="entry.id" class="console-entry">
-          <div class="console-meta">
-            <span>{{ entry.time }}</span>
-            <span>{{ entry.scope }}</span>
-            <span>{{ entry.action }}</span>
-          </div>
-          <pre>{{ entry.detail }}</pre>
-        </article>
-
-        <div v-if="logs.length === 0" class="console-empty">还没有事件，先点点左边那些 API。</div>
-      </div>
-    </aside>
-
     <div v-if="message" class="message-bar">{{ message }}</div>
   </div>
 </template>
@@ -503,14 +476,6 @@ interface OverlayInventoryItem {
   visible: boolean;
 }
 
-interface ConsoleEntry {
-  id: number;
-  time: string;
-  scope: string;
-  action: string;
-  detail: string;
-}
-
 const tabs = [
   { id: "toolbar", label: "Toolbar API" },
   { id: "overlay", label: "Overlay API" },
@@ -521,13 +486,11 @@ const { initMap, rebuildMap, destroyMap, viewer, mapPlugin, toolbarService } = u
 const activeTab = ref<TabId>("toolbar");
 const locale = ref<Locale>(i18n.getLocale() as Locale);
 const message = ref("");
-const logs = ref<ConsoleEntry[]>([]);
 const overlayItems = ref<OverlayInventoryItem[]>([]);
 const selectedOverlayId = ref("");
 const selectedToolbarButtonId = ref(toolbarButtonConfigs[0]?.id ?? "search");
 const mountedCustomButtonId = ref("");
 let unsubscribeI18n: (() => void) | null = null;
-let logSeed = 0;
 
 const toolbarForm = reactive({
   mapProvider: "tdt" as PlaygroundMapProvider,
@@ -589,47 +552,6 @@ const toolbarButtonOptions = computed(() => {
   return ids;
 });
 
-function stringifyDetail(value: unknown): string {
-  if (value === undefined) {
-    return "undefined";
-  }
-
-  if (typeof value === "string") {
-    return value;
-  }
-
-  try {
-    return JSON.stringify(
-      value,
-      (_key, currentValue) => {
-        if (currentValue instanceof Cesium.Color) {
-          return currentValue.toCssColorString();
-        }
-        return currentValue;
-      },
-      2,
-    );
-  } catch {
-    return String(value);
-  }
-}
-
-function pushLog(scope: string, action: string, detail?: unknown) {
-  logSeed += 1;
-  logs.value.unshift({
-    id: logSeed,
-    time: new Date().toLocaleTimeString("zh-CN", { hour12: false }),
-    scope,
-    action,
-    detail: stringifyDetail(detail ?? ""),
-  });
-  logs.value = logs.value.slice(0, 120);
-}
-
-function clearLogs() {
-  logs.value = [];
-}
-
 function showMessage(text: string, timeout = 1800) {
   message.value = text;
   window.setTimeout(() => {
@@ -647,7 +569,6 @@ const {
   clearSelected: clearOverlaySelectionState,
   selectBaseMarker: selectOverlaySelectionBaseMarker,
 } = useOverlaySelectionValidation(mapPlugin, viewer, {
-  onLog: pushLog,
   onMessage: showMessage,
 });
 
@@ -659,7 +580,6 @@ const {
   buildPrimitiveScenario: buildOverlaySelectionPrimitiveBenchmark,
   buildMixedScenario: buildOverlaySelectionMixedBenchmark,
 } = useOverlaySelectionBenchmark(mapPlugin, viewer, {
-  onLog: pushLog,
   onMessage: showMessage,
   onScenarioVisibilityChange: (active) => {
     if (active) {
@@ -746,43 +666,32 @@ async function runTdSearch(query: string): Promise<SearchResult[]> {
 function createToolbarCallbacks(): ToolbarCallbacks {
   return {
     onSearch: async (query: string) => {
-      pushLog("toolbar", "onSearch", { query });
       try {
         const results = await runTdSearch(query);
-        pushLog("toolbar", "onSearch:result", { count: results.length, first: results[0] ?? null });
         return results;
       } catch (error) {
-        pushLog("toolbar", "onSearch:error", String(error));
         return [];
       }
     },
     onSelect: (result) => {
-      pushLog("toolbar", "onSelect", result);
       viewer.value?.camera.flyTo({
         destination: Cesium.Cartesian3.fromDegrees(result.longitude, result.latitude, result.height || 1000),
         duration: 1.2,
       });
     },
     onMeasurementStart: () => {
-      pushLog("toolbar", "onMeasurementStart");
     },
     onMeasurementComplete: (result) => {
-      pushLog("toolbar", "onMeasurementComplete", result);
     },
     onClear: () => {
-      pushLog("toolbar", "onClear");
     },
     onZoomIn: (beforeHeight, afterHeight) => {
-      pushLog("toolbar", "onZoomIn", { beforeHeight, afterHeight });
     },
     onZoomOut: (beforeHeight, afterHeight) => {
-      pushLog("toolbar", "onZoomOut", { beforeHeight, afterHeight });
     },
     onFullscreenChange: (isFullscreen) => {
-      pushLog("toolbar", "onFullscreenChange", { isFullscreen });
     },
     onResetLocation: () => {
-      pushLog("toolbar", "onResetLocation");
     },
   };
 }
@@ -879,15 +788,9 @@ async function rebuildPlayground(scope: "toolbar" | "overlay") {
   overlayItems.value = [];
   selectedOverlayId.value = "";
   mountedCustomButtonId.value = "";
-
-  pushLog(scope, "rebuild:start", buildMapOverrides());
   await rebuildMap(buildMapOverrides());
   syncOverlayInventory();
   showMessage(`${scope} playground 已重建`);
-  pushLog(scope, "rebuild:done", {
-    toolbarReady: !!toolbarService.value,
-    overlayReady: !!mapPlugin.value,
-  });
 }
 
 async function rebuildToolbarPlayground() {
@@ -916,7 +819,6 @@ function applyToolbarRuntimeStyle() {
   };
 
   service.updateToolbarStyle(patch);
-  pushLog("toolbar", "updateToolbarStyle", patch);
   showMessage("Toolbar 样式已更新");
 }
 
@@ -928,31 +830,26 @@ function closeToolbarMenus() {
   }
 
   service.closeAllMenus();
-  pushLog("toolbar", "closeAllMenus");
 }
 
 function showToolbarButton() {
   if (!toolbarService.value) return;
   toolbarService.value.showButton(selectedToolbarButtonId.value);
-  pushLog("toolbar", "showButton", { id: selectedToolbarButtonId.value });
 }
 
 function hideToolbarButton() {
   if (!toolbarService.value) return;
   toolbarService.value.hideButton(selectedToolbarButtonId.value);
-  pushLog("toolbar", "hideButton", { id: selectedToolbarButtonId.value });
 }
 
 function enableToolbarButton() {
   if (!toolbarService.value) return;
   toolbarService.value.enableButton(selectedToolbarButtonId.value);
-  pushLog("toolbar", "enableButton", { id: selectedToolbarButtonId.value });
 }
 
 function disableToolbarButton() {
   if (!toolbarService.value) return;
   toolbarService.value.disableButton(selectedToolbarButtonId.value);
-  pushLog("toolbar", "disableButton", { id: selectedToolbarButtonId.value });
 }
 
 function patchToolbarButton() {
@@ -967,7 +864,6 @@ function patchToolbarButton() {
   if (toolbarRuntimePatch.color) patch.color = toolbarRuntimePatch.color;
 
   service.updateButton(selectedToolbarButtonId.value, patch);
-  pushLog("toolbar", "updateButton", { id: selectedToolbarButtonId.value, patch });
   showMessage(`按钮 ${selectedToolbarButtonId.value} 已更新`);
 }
 
@@ -992,14 +888,12 @@ function mountCustomToolbarButton() {
       borderColor: "rgba(96, 165, 250, 0.4)",
     },
     () => {
-      pushLog("toolbar", "customButton:onClick", { id: customToolbarButton.id });
       showMessage(`自定义按钮 ${customToolbarButton.id} 已点击`);
     },
   );
 
   mountedCustomButtonId.value = customToolbarButton.id;
   selectedToolbarButtonId.value = customToolbarButton.id;
-  pushLog("toolbar", "addCustomButton", customToolbarButton);
   showMessage(`自定义按钮 ${customToolbarButton.id} 已挂载`);
 }
 
@@ -1010,7 +904,6 @@ function removeCustomToolbarButton() {
   }
 
   service.removeButton(mountedCustomButtonId.value);
-  pushLog("toolbar", "removeButton", { id: mountedCustomButtonId.value });
   mountedCustomButtonId.value = "";
   selectedToolbarButtonId.value = toolbarButtonConfigs[0]?.id ?? "search";
   showMessage("自定义按钮已移除");
@@ -1032,7 +925,6 @@ function addMarkerOverlay() {
     clickHighlight: true,
     hoverHighlight: true,
     onClick: () => {
-      pushLog("overlay", "marker:onClick", { id: marker.getId() });
     },
   });
 
@@ -1048,7 +940,6 @@ function addMarkerOverlay() {
 
   rememberOverlay(marker.getId(), "marker");
   rememberOverlay(label.getId(), "label");
-  pushLog("overlay", "addMarker", { markerId: marker.getId(), labelId: label.getId() });
   showMessage("Marker 已创建");
 }
 
@@ -1071,7 +962,6 @@ function addCircleOverlay() {
   });
 
   rememberOverlay(circle.getId(), "circle");
-  pushLog("overlay", "addCircle", { id: circle.getId(), radius: overlayForm.circleRadius });
 }
 
 function addRectangleOverlay() {
@@ -1097,7 +987,6 @@ function addRectangleOverlay() {
   });
 
   rememberOverlay(rectangle.getId(), "rectangle");
-  pushLog("overlay", "addRectangle", { id: rectangle.getId() });
 }
 
 function addPolylineOverlay() {
@@ -1121,7 +1010,6 @@ function addPolylineOverlay() {
   });
 
   rememberOverlay(polyline.getId(), "polyline");
-  pushLog("overlay", "addPolyline", { id: polyline.getId() });
 }
 
 function addPolygonOverlay() {
@@ -1147,7 +1035,6 @@ function addPolygonOverlay() {
   });
 
   rememberOverlay(polygon.getId(), "polygon");
-  pushLog("overlay", "addPolygon", { id: polygon.getId() });
 }
 
 function addInfoWindowOverlay() {
@@ -1182,7 +1069,6 @@ function addInfoWindowOverlay() {
 
   rememberOverlay(marker.getId(), "marker");
   rememberOverlay(infoWindow.getId(), "infowindow");
-  pushLog("overlay", "addInfoWindow", { markerId: marker.getId(), infoWindowId: infoWindow.getId() });
 }
 
 function addRingOverlay() {
@@ -1205,7 +1091,6 @@ function addRingOverlay() {
   });
 
   rememberOverlay(ring.getId(), "ring");
-  pushLog("overlay", "addRing", { id: ring.getId() });
 }
 
 function requireSelectedOverlay(): string | null {
@@ -1234,7 +1119,6 @@ function toggleSelectedOverlayVisibility() {
   overlayItems.value = overlayItems.value.map((item) => (
     item.id === overlayId ? { ...item, visible: nextVisible } : item
   ));
-  pushLog("overlay", "setOverlayVisible", { id: overlayId, visible: nextVisible });
 }
 
 function highlightSelectedOverlay() {
@@ -1245,11 +1129,6 @@ function highlightSelectedOverlay() {
   }
 
   const changed = service.setOverlayHighlight(overlayId, true, overlayForm.highlightReason);
-  pushLog("overlay", "setOverlayHighlight", {
-    id: overlayId,
-    enabled: changed,
-    reason: overlayForm.highlightReason,
-  });
 }
 
 function clearSelectedOverlayHighlight() {
@@ -1260,11 +1139,6 @@ function clearSelectedOverlayHighlight() {
   }
 
   const changed = service.setOverlayHighlight(overlayId, false, overlayForm.highlightReason);
-  pushLog("overlay", "clearHighlight", {
-    id: overlayId,
-    enabled: changed,
-    reason: overlayForm.highlightReason,
-  });
 }
 
 function toggleSelectedOverlayHighlight() {
@@ -1275,11 +1149,6 @@ function toggleSelectedOverlayHighlight() {
   }
 
   const changed = service.toggleOverlayHighlight(overlayId, overlayForm.highlightReason);
-  pushLog("overlay", "toggleOverlayHighlight", {
-    id: overlayId,
-    changed,
-    reason: overlayForm.highlightReason,
-  });
 }
 
 function startSelectedOverlayEdit() {
@@ -1296,7 +1165,6 @@ function startSelectedOverlayEdit() {
       pixelSize: 11,
     },
   });
-  pushLog("overlay", "startOverlayEdit", { id: overlayId, started });
   showMessage(started ? "已进入 overlay 编辑模式" : "overlay 编辑模式启动失败");
 }
 
@@ -1307,7 +1175,6 @@ function stopOverlayEdit() {
   }
 
   const result = service.stopOverlayEdit();
-  pushLog("overlay", "stopOverlayEdit", { result: result?.id ?? null });
 }
 
 function removeSelectedOverlay() {
@@ -1325,7 +1192,6 @@ function removeSelectedOverlay() {
 
   overlayItems.value = overlayItems.value.filter((item) => item.id !== overlayId);
   selectedOverlayId.value = overlayItems.value[0]?.id || "";
-  pushLog("overlay", "removeOverlay", { id: overlayId });
 }
 
 function removeAllOverlays() {
@@ -1337,7 +1203,6 @@ function removeAllOverlays() {
   service.removeAllOverlays();
   overlayItems.value = [];
   selectedOverlayId.value = "";
-  pushLog("overlay", "removeAllOverlays");
 }
 
 function applyOverlayHoverMode() {
@@ -1347,14 +1212,12 @@ function applyOverlayHoverMode() {
   }
 
   service.setHoverEnabled(overlayForm.hoverEnabled);
-  pushLog("overlay", "setHoverEnabled", { enabled: overlayForm.hoverEnabled });
   showMessage(`hover handler 已${overlayForm.hoverEnabled ? "开启" : "关闭"}`);
 }
 
 const onLocaleSelect = (event: Event) => {
   const nextLocale = (event.target as HTMLSelectElement).value as Locale;
   i18n.setLocale(nextLocale, { persist: true });
-  pushLog("app", "setLocale", { locale: nextLocale });
 };
 
 onMounted(async () => {
@@ -1370,10 +1233,6 @@ onMounted(async () => {
 
   await initMap(buildMapOverrides());
   syncOverlayInventory();
-  pushLog("app", "mounted", {
-    toolbarReady: !!toolbarService.value,
-    overlayReady: !!mapPlugin.value,
-  });
 });
 
 onBeforeUnmount(() => {
@@ -1397,8 +1256,7 @@ onBeforeUnmount(() => {
   height: 100%;
 }
 
-.workbench,
-.console-panel {
+.workbench {
   position: absolute;
   z-index: 1400;
   border: 1px solid rgba(148, 163, 184, 0.18);
@@ -1417,20 +1275,7 @@ onBeforeUnmount(() => {
   overflow: auto;
 }
 
-.console-panel {
-  right: 16px;
-  bottom: 16px;
-  width: min(420px, calc(100vw - 32px));
-  max-height: min(52vh, 520px);
-  padding: 14px;
-  border-radius: 12px;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.panel-header,
-.console-header {
+.panel-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -1443,8 +1288,7 @@ onBeforeUnmount(() => {
   text-transform: uppercase;
 }
 
-.panel-title,
-.console-title {
+.panel-title {
   margin: 4px 0 0;
   font-size: 18px;
   font-weight: 600;
@@ -1603,10 +1447,6 @@ select option {
   margin-top: 12px;
 }
 
-.action-row.compact {
-  margin-top: 0;
-}
-
 .validation-actions {
   margin-top: 12px;
 }
@@ -1689,47 +1529,6 @@ button.primary {
   background: rgba(37, 99, 235, 0.92);
 }
 
-.console-list {
-  margin-top: 12px;
-  overflow: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.console-entry {
-  padding: 10px;
-  border: 1px solid rgba(51, 65, 85, 0.72);
-  border-radius: 8px;
-  background: rgba(2, 6, 23, 0.4);
-}
-
-.console-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  font-size: 11px;
-  color: rgba(148, 163, 184, 0.9);
-}
-
-.console-entry pre {
-  margin: 8px 0 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-  color: #e2e8f0;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.console-empty {
-  padding: 16px;
-  border: 1px dashed rgba(71, 85, 105, 0.8);
-  border-radius: 8px;
-  color: rgba(148, 163, 184, 0.92);
-  font-size: 12px;
-  text-align: center;
-}
-
 .message-bar {
   position: absolute;
   left: 50%;
@@ -1750,13 +1549,6 @@ button.primary {
     width: calc(100vw - 32px);
     max-height: 58vh;
   }
-
-  .console-panel {
-    left: 16px;
-    right: 16px;
-    width: auto;
-    max-height: 28vh;
-  }
 }
 
 @media (max-width: 720px) {
@@ -1770,8 +1562,7 @@ button.primary {
     grid-column: span 1;
   }
 
-  .panel-header,
-  .console-header {
+  .panel-header {
     flex-direction: column;
     align-items: stretch;
   }

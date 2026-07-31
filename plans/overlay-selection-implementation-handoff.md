@@ -228,7 +228,7 @@ spec、本地提交以及新会话可访问的 issue tracker 为准。
 3. 再接入 hide/remove、camera、draw、edit 生命周期。
 4. 单独完成样式优先级和“最新 base style 恢复”测试。
 5. 完成 12,000 对象性能基准后再考虑优化；没有数据前不增加 pick cache/fast path。
-6. 每个切片执行 `pnpm test`、`pnpm type-check`、`pnpm build:dts`，并保持版本发布排除在外。
+6. 每个切片执行 `pnpm test`、`pnpm type-check`、`pnpm build`，并保持版本发布排除在外。
 
 ## 9. 新会话启动提示词
 

@@ -107,6 +107,18 @@ createMapPlugin(
 
 ## 配置项
 
+标记说明：
+
+- `必传`
+  - `是`：该字段必须提供
+  - `否`：该字段可省略
+  - `条件必传`：仅在特定 provider / 模式下必须提供
+- `兼容性`
+  - `推荐`：当前推荐写法
+  - `兼容`：为旧版入口或迁移场景保留
+  - `保留`：类型已声明，但当前运行时能力未作为主路径提供
+- `mapService` 与 `layers` / `baseMap` / `mapAuth` **不能混用**
+
 ### MapPluginOptions
 
 ```ts
@@ -121,9 +133,25 @@ interface MapPluginOptions {
   onSearchResultSelected?: (result: MapSearchResult) => void;
   credits?: CreditsOptions;
   cesiumToken?: string;
+  noFlyZone?: NoFlyZonePluginOptions;
   services?: MapPluginServicesOptions;
 }
 ```
+
+| 字段 | 必传 | 兼容性 | 说明 |
+| --- | --- | --- | --- |
+| `viewerOptions` | 否 | 推荐 | 透传给 `Cesium.Viewer` 的原生配置 |
+| `camera` | 否 | 推荐 | 初始化视角配置 |
+| `layers` | 否 | 兼容 | 旧版底图配置入口；与 `mapService` 互斥 |
+| `mapService` | 否 | 推荐 | 新版地图服务配置入口；与 `layers` / `baseMap` / `mapAuth` 互斥 |
+| `baseMap` | 否 | 兼容 | 迁移期底图配置；与 `mapService` 互斥 |
+| `mapAuth` | 否 | 兼容 | 迁移期多厂商鉴权配置；与 `mapService` 互斥 |
+| `providerSearch` | 否 | 推荐 | 启用内置多厂商搜索 |
+| `onSearchResultSelected` | 否 | 推荐 | 地图服务搜索结果选中回调 |
+| `credits` | 否 | 推荐 | Cesium 版权区控制 |
+| `cesiumToken` | 否 | 推荐 | Cesium Ion token |
+| `noFlyZone` | 否 | 推荐 | 禁飞区初始化配置 |
+| `services` | 否 | 推荐 | toolbar / overlay / draw 服务装配配置 |
 
 ### viewerOptions
 
@@ -142,25 +170,37 @@ interface CameraConfig {
   pitch?: number;
   heading?: number;
   roll?: number;
+  coordSystem?: CoordSystem;
 }
 ```
 
-字段说明：
-
-- `center`: `[longitude, latitude, height]`
-- `pitch`: 俯仰角，默认 `-45`
-- `heading`: 朝向角，默认 `0`
-- `roll`: 翻滚角，默认 `0`
+| 字段 | 必传 | 兼容性 | 说明 |
+| --- | --- | --- | --- |
+| `center` | 是 | 推荐 | `[longitude, latitude, height]` |
+| `pitch` | 否 | 推荐 | 俯仰角，默认 `-45` |
+| `heading` | 否 | 推荐 | 朝向角，默认 `0` |
+| `roll` | 否 | 推荐 | 翻滚角，默认 `0` |
+| `coordSystem` | 否 | 推荐 | 输入中心点坐标系，默认 `WGS84` |
 
 ### LayersConfig
 
 ```ts
-type ProviderType = 'tdt' | 'gaode' | 'baidu' | 'arcgis' | 'osm' | 'custom';
+type ProviderType =
+  | 'tdt'
+  | 'gaode'
+  | 'tencent'
+  | 'google'
+  | 'baidu'
+  | 'arcgis'
+  | 'osm'
+  | 'custom';
 
 interface LayersConfig {
   type?: ProviderType;
   tdt?: TDTLayerConfig;
   gaode?: GaodeLayerConfig;
+  tencent?: TencentLayerConfig;
+  google?: GoogleLayerConfig;
   baidu?: BaiduLayerConfig;
   arcgis?: ArcGISLayerConfig;
   osm?: OSMLayerConfig;
@@ -168,10 +208,26 @@ interface LayersConfig {
 }
 ```
 
+说明：`LayersConfig` 是 **legacy 兼容入口**，内部会先转成统一的 `baseMap` 配置再参与底图装配；新项目优先使用 `mapService`，迁移项目可继续使用 `layers`。
+
+| 字段 | 必传 | 兼容性 | 说明 |
+| --- | --- | --- | --- |
+| `type` | 否 | 兼容 | 底图 provider，默认 `tdt` |
+| `tdt` | 条件必传 | 兼容 | `type = 'tdt'` 时的配置对象 |
+| `gaode` | 条件必传 | 兼容 | `type = 'gaode'` 时的配置对象 |
+| `tencent` | 条件必传 | 兼容 | `type = 'tencent'` 时的配置对象 |
+| `google` | 条件必传 | 兼容 | `type = 'google'` 时的配置对象 |
+| `baidu` | 条件必传 | 兼容 | `type = 'baidu'` 时的配置对象 |
+| `arcgis` | 条件必传 | 保留 | 类型已声明，当前未作为主要运行时底图接入 |
+| `osm` | 条件必传 | 兼容 | `type = 'osm'` 时的配置对象 |
+| `custom` | 条件必传 | 兼容 | `type = 'custom'` 时的配置对象 |
+
 当前实现重点支持：
 
 - `tdt`
 - `gaode`
+- `tencent`
+- `google`
 - `baidu`
 - `osm`
 - `custom`
@@ -191,6 +247,13 @@ type MapServiceConfig =
     };
 ```
 
+| 字段 | 必传 | 兼容性 | 说明 |
+| --- | --- | --- | --- |
+| `provider` | 是 | 推荐 | 在线地图使用 `tdt / gaode / baidu / tencent / google`，私有地图使用 `private` |
+| `serviceKey` | 条件必传 | 推荐 | 在线地图服务 key / token |
+| `secureKey` | 否 | 推荐 | 在线地图的安全签名字段 |
+| `offlineMapUrl` | 条件必传 | 推荐 | `provider = 'private'` 时的离线地图地址 |
+
 说明：
 
 - 新项目优先使用 `mapService`
@@ -202,11 +265,19 @@ type MapServiceConfig =
 
 ```ts
 interface TDTLayerConfig {
-  mapTypeId?: 'vec' | 'img' | 'ter';
+  mapTypeId?: 'vec' | 'img' | 'ter' | 'tdt3d';
   token: string;
+  sk?: string;
   showLabel?: boolean;
 }
 ```
+
+| 字段 | 必传 | 兼容性 | 说明 |
+| --- | --- | --- | --- |
+| `mapTypeId` | 否 | 兼容 | 底图类型，默认 `img` |
+| `token` | 条件必传 | 兼容 | 在线使用天地图时建议必传 |
+| `sk` | 否 | 兼容 | 安全签名字段 |
+| `showLabel` | 否 | 兼容 | 是否显示注记层，默认 `true` |
 
 #### GaodeLayerConfig
 
@@ -214,9 +285,55 @@ interface TDTLayerConfig {
 interface GaodeLayerConfig {
   mapTypeId?: 'vector' | 'satellite' | 'terrain';
   token?: string;
+  sk?: string;
   showLabel?: boolean;
 }
 ```
+
+| 字段 | 必传 | 兼容性 | 说明 |
+| --- | --- | --- | --- |
+| `mapTypeId` | 否 | 兼容 | 底图类型，默认 `satellite` |
+| `token` | 否 | 兼容 | 高德 key |
+| `sk` | 否 | 兼容 | 安全签名字段 |
+| `showLabel` | 否 | 兼容 | 是否显示注记层，默认 `true` |
+
+#### TencentLayerConfig
+
+```ts
+interface TencentLayerConfig {
+  key?: string;
+  token?: string;
+  mapTypeId?: 'vector' | 'satellite';
+  showLabel?: boolean;
+}
+```
+
+| 字段 | 必传 | 兼容性 | 说明 |
+| --- | --- | --- | --- |
+| `key` | 否 | 兼容 | 腾讯地图 key |
+| `token` | 否 | 兼容 | 旧版兼容字段，等价于 `key` |
+| `mapTypeId` | 否 | 兼容 | 底图类型，默认 `satellite` |
+| `showLabel` | 否 | 兼容 | 是否显示注记层，默认 `true` |
+
+#### GoogleLayerConfig
+
+```ts
+interface GoogleLayerConfig {
+  apiKey?: string;
+  key?: string;
+  token?: string;
+  mapTypeId?: 'roadmap' | 'satellite';
+  showLabel?: boolean;
+}
+```
+
+| 字段 | 必传 | 兼容性 | 说明 |
+| --- | --- | --- | --- |
+| `apiKey` | 否 | 兼容 | Google Maps key |
+| `key` | 否 | 兼容 | 兼容别名 |
+| `token` | 否 | 兼容 | 兼容别名 |
+| `mapTypeId` | 否 | 兼容 | 底图类型，默认 `roadmap` |
+| `showLabel` | 否 | 兼容 | 是否显示注记层，默认 `false` |
 
 #### BaiduLayerConfig
 
@@ -224,9 +341,31 @@ interface GaodeLayerConfig {
 interface BaiduLayerConfig {
   mapTypeId?: 'normal' | 'satellite' | 'terrain';
   token?: string;
+  sk?: string;
   showLabel?: boolean;
 }
 ```
+
+| 字段 | 必传 | 兼容性 | 说明 |
+| --- | --- | --- | --- |
+| `mapTypeId` | 否 | 兼容 | 底图类型，默认 `satellite` |
+| `token` | 否 | 兼容 | 百度 `ak` |
+| `sk` | 否 | 兼容 | 安全签名字段 |
+| `showLabel` | 否 | 兼容 | 是否显示注记层，默认 `true` |
+
+#### ArcGISLayerConfig
+
+```ts
+interface ArcGISLayerConfig {
+  url: string;
+  dynamic?: boolean;
+}
+```
+
+| 字段 | 必传 | 兼容性 | 说明 |
+| --- | --- | --- | --- |
+| `url` | 是 | 保留 | ArcGIS 服务地址 |
+| `dynamic` | 否 | 保留 | 是否使用动态图层 |
 
 #### OSMLayerConfig
 
@@ -237,13 +376,48 @@ interface OSMLayerConfig {
 }
 ```
 
+| 字段 | 必传 | 兼容性 | 说明 |
+| --- | --- | --- | --- |
+| `urlTemplate` | 否 | 兼容 | OSM URL 模板 |
+| `maximumLevel` | 否 | 兼容 | 最大层级，默认 `19` |
+
 #### CustomLayerConfig
 
 ```ts
 interface CustomLayerConfig {
   providers: Cesium.ImageryProvider[];
+  type?: 'xyz' | 'wmts' | 'imageryProviders';
+  mode?: 'online' | 'offline';
+  customUrl?: string;
+  urlTemplate?: string;
+  rectangle?: BaseMapRectangle;
+  minimumLevel?: number;
+  maximumLevel?: number;
+  credit?: string;
+  cameraBounds?: OfflineCameraBoundsConfig;
+  wmtsLayer?: string;
+  wmtsStyle?: string;
+  wmtsFormat?: string;
+  tileMatrixSetId?: string;
 }
 ```
+
+| 字段 | 必传 | 兼容性 | 说明 |
+| --- | --- | --- | --- |
+| `providers` | 是 | 兼容 | 自定义影像源数组 |
+| `type` | 否 | 兼容 | 自定义底图类型 |
+| `mode` | 否 | 兼容 | 在线 / 离线模式 |
+| `customUrl` | 否 | 兼容 | 自定义地址 |
+| `urlTemplate` | 否 | 兼容 | 模板地址 |
+| `rectangle` | 否 | 兼容 | 图层显示范围 |
+| `minimumLevel` | 否 | 兼容 | 最小层级 |
+| `maximumLevel` | 否 | 兼容 | 最大层级 |
+| `credit` | 否 | 兼容 | 版权说明 |
+| `cameraBounds` | 否 | 兼容 | 离线地图初始视域约束 |
+| `wmtsLayer` | 否 | 兼容 | WMTS 图层名 |
+| `wmtsStyle` | 否 | 兼容 | WMTS 样式 |
+| `wmtsFormat` | 否 | 兼容 | WMTS 输出格式 |
+| `tileMatrixSetId` | 否 | 兼容 | WMTS 瓦片矩阵集 |
 
 ### MapPluginServicesOptions
 

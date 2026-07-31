@@ -96,13 +96,36 @@ export function normalizeMapServiceConfig(mapService: MapServiceConfig): MapServ
   const provider = normalizeMapServiceProvider(mapService.provider);
 
   if (provider === 'private') {
-    const offlineMapUrl = clean((mapService as { offlineMapUrl?: string }).offlineMapUrl);
+    const privateMapService = mapService as MapServiceConfig & {
+      offlineMapUrl?: string;
+      rectangle?: BaseMapConfig['rectangle'];
+      minimumLevel?: number;
+      maximumLevel?: number;
+      credit?: string;
+      cameraBounds?: BaseMapConfig['cameraBounds'];
+    };
+    const offlineMapUrl = clean(privateMapService.offlineMapUrl);
     if (!offlineMapUrl) {
       throw new MapServiceConfigError('private mapService 缺少 offlineMapUrl');
     }
+
+    const minimumLevel = Number.isFinite(Number(privateMapService.minimumLevel))
+      ? Number(privateMapService.minimumLevel)
+      : undefined;
+    const maximumLevel = Number.isFinite(Number(privateMapService.maximumLevel))
+      ? Number(privateMapService.maximumLevel)
+      : undefined;
+
     return {
       provider: 'private',
       offlineMapUrl,
+      rectangle: privateMapService.rectangle,
+      minimumLevel,
+      maximumLevel,
+      credit: clean(privateMapService.credit),
+      cameraBounds: privateMapService.cameraBounds
+        ? { ...privateMapService.cameraBounds }
+        : undefined,
     };
   }
 
@@ -172,6 +195,13 @@ function buildMapServiceBaseMap(mapService: MapServiceConfig): BaseMapConfig {
       type: 'xyz',
       mode: 'offline',
       urlTemplate: mapService.offlineMapUrl,
+      rectangle: mapService.rectangle,
+      minimumLevel: mapService.minimumLevel,
+      maximumLevel: mapService.maximumLevel,
+      credit: clean(mapService.credit),
+      cameraBounds: mapService.cameraBounds
+        ? { ...mapService.cameraBounds }
+        : undefined,
       showLabel: false,
     };
   }

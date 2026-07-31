@@ -22,6 +22,11 @@ export interface OnlineMapServiceConfig {
 export interface PrivateMapServiceConfig {
   provider: 'private';
   offlineMapUrl: string;
+  rectangle?: BaseMapRectangle;
+  minimumLevel?: number;
+  maximumLevel?: number;
+  credit?: string;
+  cameraBounds?: OfflineCameraBoundsConfig;
 }
 
 export type MapServiceConfig = OnlineMapServiceConfig | PrivateMapServiceConfig;
