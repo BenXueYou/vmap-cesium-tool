@@ -279,6 +279,12 @@ export class MarkService {
           metadata.controlPoints[1] = position.clone();
           metadata.radius = this.calculateCircleRadius(metadata.controlPoints[0], position);
         }
+      } else if (metadata.type === 'rectangle') {
+        metadata.controlPoints = this.updateRectangleControlPoints(
+          metadata.controlPoints,
+          activeHandleIndex,
+          position,
+        );
       } else {
         metadata.controlPoints[activeHandleIndex] = position.clone();
         handleEntities[activeHandleIndex].position = new Cesium.ConstantPositionProperty(position.clone());
@@ -495,6 +501,37 @@ export class MarkService {
     const R = 6378137.0;
     const dLon = Math.max(0, radiusMeters) / (R * Math.max(Math.cos(carto.latitude), 1e-6));
     return Cesium.Cartesian3.fromRadians(carto.longitude + dLon, carto.latitude, carto.height ?? 0);
+  }
+
+  private updateRectangleControlPoints(
+    controlPoints: Cesium.Cartesian3[],
+    handleIndex: number,
+    position: Cesium.Cartesian3,
+  ): Cesium.Cartesian3[] {
+    if (controlPoints.length < 4) {
+      return controlPoints.map((point, index) => (index === handleIndex ? position.clone() : point.clone()));
+    }
+
+    const oppositeIndex = (handleIndex + 2) % 4;
+    const opposite = controlPoints[oppositeIndex];
+    const draggedCarto = Cesium.Cartographic.fromCartesian(position);
+    const oppositeCarto = Cesium.Cartographic.fromCartesian(opposite);
+    if (!draggedCarto || !oppositeCarto) {
+      return controlPoints.map((point, index) => (index === handleIndex ? position.clone() : point.clone()));
+    }
+
+    const west = Math.min(oppositeCarto.longitude, draggedCarto.longitude);
+    const east = Math.max(oppositeCarto.longitude, draggedCarto.longitude);
+    const south = Math.min(oppositeCarto.latitude, draggedCarto.latitude);
+    const north = Math.max(oppositeCarto.latitude, draggedCarto.latitude);
+    const height = draggedCarto.height ?? oppositeCarto.height ?? 0;
+
+    return [
+      Cesium.Cartesian3.fromRadians(west, south, height),
+      Cesium.Cartesian3.fromRadians(east, south, height),
+      Cesium.Cartesian3.fromRadians(east, north, height),
+      Cesium.Cartesian3.fromRadians(west, north, height),
+    ];
   }
 
   private getRectanglePositions(controlPoints: Cesium.Cartesian3[]): Cesium.Cartesian3[] {

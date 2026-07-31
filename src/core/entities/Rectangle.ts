@@ -375,6 +375,15 @@ export class Rectangle extends BaseOverlay {
     };
   }
 
+  setVisible(show: boolean): void {
+    if (this.destroyed) return;
+
+    super.setVisible(show);
+    if (this.innerEntity) {
+      this.innerEntity.show = show;
+    }
+  }
+
   /**
    * 从场景中移除矩形
    */

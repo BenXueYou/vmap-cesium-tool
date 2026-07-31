@@ -66,6 +66,8 @@ export interface ToolbarServiceConfig {
 export interface ToolbarCallbacks {
     /** 搜索回调 */
     onSearch?: (query: string) => Promise<SearchResult[]>;
+    /** 搜索结果点击后的完整处理流程 */
+    onResultSelect?: (result: SearchResult) => void | Promise<void>;
     /** 搜索选择回调 */
     onSelect?: (result: SearchResult) => void;
     /** 测量回调 */
@@ -105,6 +107,8 @@ export interface SearchResult {
 export interface SearchServiceConfig {
     /** 搜索回调 */
     onSearch?: (query: string) => Promise<SearchResult[]>;
+    /** 搜索结果点击后的完整处理流程 */
+    onResultSelect?: (result: SearchResult) => void | Promise<void>;
     /** 搜索选择回调 */
     onSelect?: (result: SearchResult) => void;
 }

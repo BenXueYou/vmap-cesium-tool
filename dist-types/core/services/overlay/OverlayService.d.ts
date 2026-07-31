@@ -106,6 +106,8 @@ export declare class OverlayService {
     private pendingHoverPosition;
     private lastHoverPosition;
     private readonly highlightCache;
+    private trackedGraphicsProperties?;
+    private styleMutationTrackingSuspendedCount;
     private drawInteractionActive;
     private cameraHoverSuspended;
     private removeCameraMoveStartListener;
@@ -338,11 +340,21 @@ export declare class OverlayService {
     private setEntityHighlight;
     private isHighlightActive;
     private clearOverlayHighlightState;
+    private resolveActiveHighlightOptions;
     private normalizeHighlightOptions;
     private resolveHighlightColor;
     private applyEntityHighlight;
     private restoreEntityStyle;
     private captureEntityStyle;
+    private withStyleMutationTrackingSuspended;
+    private isStyleMutationTrackingSuspended;
+    private getTrackedGraphicsProperties;
+    private ensureEntityStyleTracking;
+    private installTrackedGraphicsProperty;
+    private findPropertyDescriptor;
+    private hasTrackedBaseStyleMutation;
+    private reapplyTrackedHighlightState;
+    private updateHighlightSnapshotValue;
     /**
      * 销毁服务
      */

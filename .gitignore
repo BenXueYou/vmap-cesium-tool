@@ -13,6 +13,7 @@ dist-ssr
 *.local
 /.cache
 cache
+.scratch
 
 # VitePress
 doc/.vitepress/dist

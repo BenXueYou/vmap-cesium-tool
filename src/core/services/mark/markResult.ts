@@ -64,8 +64,8 @@ export function exportMarkEntity(entity: Cesium.Entity, outputCoordSystem: Coord
 }
 
 function resolveCartesionPositions(type: MarkEntityMetadata['type'], controlPoints: Cesium.Cartesian3[]): Cesium.Cartesian3[] {
-  if (type === 'rectangle' && controlPoints.length >= 4) {
-    return controlPoints.slice(0, 4).map((point) => point.clone());
+  if (type === 'rectangle' && controlPoints.length >= 2) {
+    return resolveRectanglePositions(controlPoints);
   }
 
   if (type === 'circle' && controlPoints.length >= 2) {
@@ -73,6 +73,28 @@ function resolveCartesionPositions(type: MarkEntityMetadata['type'], controlPoin
   }
 
   return controlPoints.map((point) => point.clone());
+}
+
+function resolveRectanglePositions(controlPoints: Cesium.Cartesian3[]): Cesium.Cartesian3[] {
+  const cartographics = controlPoints
+    .map((point) => Cesium.Cartographic.fromCartesian(point))
+    .filter((item): item is Cesium.Cartographic => !!item);
+  if (cartographics.length < 2) {
+    return controlPoints.map((point) => point.clone());
+  }
+
+  const west = Math.min(...cartographics.map((item) => item.longitude));
+  const east = Math.max(...cartographics.map((item) => item.longitude));
+  const south = Math.min(...cartographics.map((item) => item.latitude));
+  const north = Math.max(...cartographics.map((item) => item.latitude));
+  const height = cartographics[0]?.height ?? 0;
+
+  return [
+    Cesium.Cartesian3.fromRadians(west, south, height),
+    Cesium.Cartesian3.fromRadians(east, south, height),
+    Cesium.Cartesian3.fromRadians(east, north, height),
+    Cesium.Cartesian3.fromRadians(west, north, height),
+  ];
 }
 
 function resolveRepresentativePosition(

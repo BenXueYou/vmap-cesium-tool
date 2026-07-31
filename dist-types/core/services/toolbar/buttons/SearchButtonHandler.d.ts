@@ -30,6 +30,8 @@ export interface SearchButtonHandlerOptions {
     clearActionIcon?: string | HTMLElement;
     /** 搜索回调 */
     onSearch?: (query: string) => Promise<any[]>;
+    /** 搜索结果点击后的完整处理流程 */
+    onResultSelect?: (result: any) => void | Promise<void>;
     /** 搜索选择回调 */
     onSelect?: (result: any) => void;
 }
@@ -101,6 +103,7 @@ export declare class SearchButtonHandler extends BaseButtonHandler {
      * @param results 搜索结果数组
      */
     private showSearchResults;
+    private handleResultSelect;
     /**
      * 飞到搜索结果位置
      */

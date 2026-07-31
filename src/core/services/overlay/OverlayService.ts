@@ -986,13 +986,13 @@ export class OverlayService {
       (entity as any)._outerRadius !== undefined ||
       (entity as any)._centerCartographic !== undefined
     ) return 'circle';
-    if (overlayType === 'polygon-primitive' || entity.polygon) return 'polygon';
     if (
       overlayType === 'rectangle-primitive' ||
       overlayType === 'rectangle' ||
       entity.rectangle ||
       (entity as any)._outerRectangle !== undefined
     ) return 'rectangle';
+    if (overlayType === 'polygon-primitive' || entity.polygon) return 'polygon';
     if (entity.point) return 'point';
     if (entity.polyline) return 'polyline';
     return null;
@@ -1119,7 +1119,7 @@ export class OverlayService {
     }
 
     if (kind === 'rectangle') {
-      state.controlPoints[handleIndex] = position.clone();
+      state.controlPoints = this.updateRectangleControlPoints(state.controlPoints, handleIndex, position);
       const rect = this.positionsToRectangle(state.controlPoints);
       if (rect) {
         this.applyRectangleCoordinates(state.entity, rect);
@@ -1291,6 +1291,24 @@ export class OverlayService {
       }
     }
 
+    const primitiveCenter = (entity as any)._centerCartographic;
+    if (
+      primitiveCenter
+      && Number.isFinite(primitiveCenter.longitude)
+      && Number.isFinite(primitiveCenter.latitude)
+    ) {
+      return Cesium.Cartesian3.fromRadians(
+        primitiveCenter.longitude,
+        primitiveCenter.latitude,
+        Number.isFinite(primitiveCenter.height) ? primitiveCenter.height : 0,
+      );
+    }
+
+    const innerEntityPosition = (entity as any)._innerEntity?.position?.getValue?.(Cesium.JulianDate.now());
+    if (innerEntityPosition) {
+      return innerEntityPosition.clone();
+    }
+
     return null;
   }
 
@@ -1422,6 +1440,37 @@ export class OverlayService {
       Cesium.Cartesian3.fromRadians(rect.east, rect.south, heightMeters),
       Cesium.Cartesian3.fromRadians(rect.east, rect.north, heightMeters),
       Cesium.Cartesian3.fromRadians(rect.west, rect.north, heightMeters),
+    ];
+  }
+
+  private updateRectangleControlPoints(
+    controlPoints: Cesium.Cartesian3[],
+    handleIndex: number,
+    position: Cesium.Cartesian3,
+  ): Cesium.Cartesian3[] {
+    if (controlPoints.length < 4) {
+      return controlPoints.map((point, index) => (index === handleIndex ? position.clone() : point.clone()));
+    }
+
+    const oppositeIndex = (handleIndex + 2) % 4;
+    const opposite = controlPoints[oppositeIndex];
+    const draggedCarto = Cesium.Cartographic.fromCartesian(position);
+    const oppositeCarto = Cesium.Cartographic.fromCartesian(opposite);
+    if (!draggedCarto || !oppositeCarto) {
+      return controlPoints.map((point, index) => (index === handleIndex ? position.clone() : point.clone()));
+    }
+
+    const west = Math.min(oppositeCarto.longitude, draggedCarto.longitude);
+    const east = Math.max(oppositeCarto.longitude, draggedCarto.longitude);
+    const south = Math.min(oppositeCarto.latitude, draggedCarto.latitude);
+    const north = Math.max(oppositeCarto.latitude, draggedCarto.latitude);
+    const height = draggedCarto.height ?? oppositeCarto.height ?? 0;
+
+    return [
+      Cesium.Cartesian3.fromRadians(west, south, height),
+      Cesium.Cartesian3.fromRadians(east, south, height),
+      Cesium.Cartesian3.fromRadians(east, north, height),
+      Cesium.Cartesian3.fromRadians(west, north, height),
     ];
   }
 
