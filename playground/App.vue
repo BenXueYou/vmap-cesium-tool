@@ -137,6 +137,7 @@
             <button class="primary" @click="rebuildToolbarPlayground">重建并应用</button>
             <button @click="applyToolbarRuntimeStyle">仅更新样式</button>
             <button @click="closeToolbarMenus">关闭菜单</button>
+            <button @click="applyToolbarStyle">测试更新样式</button>
           </div>
         </section>
 
@@ -799,6 +800,18 @@ async function rebuildToolbarPlayground() {
 
 async function rebuildOverlayPlayground() {
   await rebuildPlayground("overlay");
+}
+
+function applyToolbarStyle () {
+  const service = toolbarService.value;
+  if (!service) {
+    showMessage("ToolbarService 未初始化");
+    return;
+  }
+  service?.setToolbarPosition('top-right', {
+    offsetTop: 24,
+    offsetRight: 240,
+  });
 }
 
 function applyToolbarRuntimeStyle() {

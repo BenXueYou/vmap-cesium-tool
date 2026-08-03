@@ -432,6 +432,29 @@ export class ToolbarService {
   }
 
   /**
+   * 单独更新工具栏停靠位置和边距偏移。
+   */
+  setToolbarPosition(
+    position: NonNullable<CoreToolbarConfig['position']>,
+    offsets: Pick<CoreToolbarConfig, 'offsetTop' | 'offsetRight' | 'offsetBottom' | 'offsetLeft'> = {},
+  ): void {
+    this.updateToolbarStyle({
+      position,
+      ...offsets,
+    });
+  }
+
+  /**
+   * 获取当前工具栏样式快照。
+   */
+  getToolbarStyle(): CoreToolbarConfig {
+    return this.toolbar?.getConfig() || {
+      ...DEFAULT_TOOLBAR_STYLE,
+      ...(this.options.toolbarStyle || {}),
+    };
+  }
+
+  /**
    * 启用按钮
    * @param buttonId 按钮 ID
    */

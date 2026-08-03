@@ -32,22 +32,24 @@ function tdtFactory(context: MapProviderContext): MapType[] {
   const wrap = (
     id: string,
     name: string,
+    nameKey: string,
     provider: () => Cesium.ImageryProvider[],
     extra?: Partial<MapType>,
   ): MapType => ({
     id,
     providerId: 'tdt',
     name,
+    nameKey,
     thumbnail: '',
     provider: () => provider(),
     ...extra,
   });
 
   return [
-    wrap('vec', '矢量地图', () => createTDTVectorConfig(token, sk), { forcePlaceName: true }),
-    wrap('img', '影像地图', () => createTDTImageryConfig(token, sk)),
-    wrap('ter', '地形地图', () => createTDTTerrainConfig(token, sk)),
-    wrap('tdt3d', '三维地图', () => createTDT3DImageryConfig(token, sk), {
+    wrap('vec', '矢量地图', 'map.types.vec', () => createTDTVectorConfig(token, sk), { forcePlaceName: true }),
+    wrap('img', '影像地图', 'map.types.img', () => createTDTImageryConfig(token, sk)),
+    wrap('ter', '地形地图', 'map.types.ter', () => createTDTTerrainConfig(token, sk)),
+    wrap('tdt3d', '三维地图', 'map.types.tdt3d', () => createTDT3DImageryConfig(token, sk), {
       terrainProvider: () => createTDT3DTerrainProvider(token, sk),
       geoWTFS: () => createTDT3DGeoWTFS(token, context.viewer!, sk),
     }),
@@ -70,6 +72,7 @@ function gaodeFactory(context: MapProviderContext): MapType[] {
       id: 'gaode-vector',
       providerId: 'gaode',
       name: '高德矢量',
+      nameKey: 'map.types.gaode_vector',
       thumbnail: '',
       forcePlaceName: true,
       provider: () => [
@@ -80,6 +83,7 @@ function gaodeFactory(context: MapProviderContext): MapType[] {
       id: 'gaode-satellite',
       providerId: 'gaode',
       name: '高德影像',
+      nameKey: 'map.types.gaode_satellite',
       thumbnail: '',
       provider: () => [
         createProvider('https://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}'),
@@ -104,6 +108,7 @@ function tencentFactory(context: MapProviderContext): MapType[] {
       id: 'tencent-vector',
       providerId: 'tencent',
       name: '腾讯矢量',
+      nameKey: 'map.types.tencent_vector',
       thumbnail: '',
       forcePlaceName: true,
       provider: () => [
@@ -117,6 +122,7 @@ function tencentFactory(context: MapProviderContext): MapType[] {
       id: 'tencent-satellite',
       providerId: 'tencent',
       name: '腾讯影像',
+      nameKey: 'map.types.tencent_satellite',
       thumbnail: '',
       provider: () => [
         new Cesium.UrlTemplateImageryProvider({
@@ -162,6 +168,7 @@ function baiduFactory(context: MapProviderContext): MapType[] {
       id: 'baidu-vector',
       providerId: 'baidu',
       name: '百度矢量',
+      nameKey: 'map.types.baidu_vector',
       thumbnail: '',
       forcePlaceName: true,
       provider: () => [
@@ -175,6 +182,7 @@ function baiduFactory(context: MapProviderContext): MapType[] {
       id: 'baidu-satellite',
       providerId: 'baidu',
       name: '百度影像',
+      nameKey: 'map.types.baidu_satellite',
       thumbnail: '',
       provider: () => [
         new Cesium.UrlTemplateImageryProvider({
@@ -219,10 +227,16 @@ async function createGoogleSession(baseMap: BaseMapConfig, auth?: MapAuthConfig)
 }
 
 function googleFactory(context: MapProviderContext): MapType[] {
-  const build = (id: string, name: string, type: 'roadmap' | 'satellite'): MapType => ({
+  const build = (
+    id: string,
+    name: string,
+    nameKey: string,
+    type: 'roadmap' | 'satellite',
+  ): MapType => ({
     id,
     providerId: 'google',
     name,
+    nameKey,
     thumbnail: '',
     provider: async () => {
       const apiKey = context.service?.credentials.serviceKey
@@ -241,8 +255,8 @@ function googleFactory(context: MapProviderContext): MapType[] {
   });
 
   return [
-    build('google-roadmap', 'Google 矢量', 'roadmap'),
-    build('google-satellite', 'Google 影像', 'satellite'),
+    build('google-roadmap', 'Google 矢量', 'map.types.google_roadmap', 'roadmap'),
+    build('google-satellite', 'Google 影像', 'map.types.google_satellite', 'satellite'),
   ];
 }
 
@@ -253,6 +267,7 @@ function customFactory(context: MapProviderContext): MapType[] {
       id: `custom-${type}`,
       providerId: 'custom',
       name: context.baseMap.mode === 'offline' ? '离线地图' : '自定义地图',
+      nameKey: context.baseMap.mode === 'offline' ? 'map.types.custom_offline' : 'map.types.custom_online',
       thumbnail: '',
       provider: () => {
         if (type === 'imageryProviders') {

@@ -65,6 +65,7 @@ export class LayersButtonHandler extends BaseMenu {
   private options: LayersButtonHandlerOptions;
   private button: ToolbarButton | null = null;
   private panelStyle: LayersPanelStyleConfig;
+  private unsubscribeI18n?: () => void;
 
   constructor(
     toolbarElement: HTMLElement,
@@ -74,6 +75,13 @@ export class LayersButtonHandler extends BaseMenu {
   ) {
     super(toolbarElement, i18n, useI18n);
     this.options = options;
+    this.syncLocalizedMapTypes();
+    if (this.useI18n && this.i18n?.onLocaleChange) {
+      this.unsubscribeI18n = this.i18n.onLocaleChange(() => {
+        this.syncLocalizedMapTypes();
+      });
+    }
+    console.log('======constructor=========', this.options);
     this.panelStyle = options.panelStyle || {};
   }
 
@@ -94,6 +102,7 @@ export class LayersButtonHandler extends BaseMenu {
     Object.assign(mapTypesGrid.style, styles.mapTypesGrid);
 
     const currentType = this.options.currentMapType || 'img';
+
     (this.options.mapTypes || []).forEach((mapType) => {
       mapTypesGrid.appendChild(this.createMapTypeItem(mapType, currentType, styles));
     });
@@ -144,6 +153,8 @@ export class LayersButtonHandler extends BaseMenu {
 
   destroy(): void {
     super.destroy();
+    this.unsubscribeI18n?.();
+    this.unsubscribeI18n = undefined;
     this.button = null;
   }
 
@@ -152,6 +163,7 @@ export class LayersButtonHandler extends BaseMenu {
       ...this.options,
       ...options,
     };
+    this.syncLocalizedMapTypes();
 
     if (options.panelStyle) {
       this.panelStyle = {
@@ -213,11 +225,13 @@ export class LayersButtonHandler extends BaseMenu {
     thumbnail.appendChild(checkmark);
 
     const label = document.createElement('div');
+    const resolvedName = this.resolveMapTypeName(mapType);
     if (mapType.nameKey && this.useI18n && this.i18n) {
       this.i18n.bindElement(label, mapType.nameKey, 'textContent');
     } else {
-      label.textContent = mapType.name;
+      label.textContent = resolvedName;
     }
+
     Object.assign(label.style, styles.mapTypeLabel);
 
     item.appendChild(thumbnail);
@@ -364,6 +378,24 @@ export class LayersButtonHandler extends BaseMenu {
     }
   }
 
+  private syncLocalizedMapTypes(): void {
+    if (!this.options.mapTypes?.length) {
+      return;
+    }
+
+    this.options.mapTypes = this.options.mapTypes.map((mapType) => ({
+      ...mapType,
+      name: this.resolveMapTypeName(mapType),
+    }));
+  }
+
+  private resolveMapTypeName(mapType: MapTypeConfig): string {
+    if (mapType.nameKey && this.useI18n && this.i18n) {
+      return this.t(mapType.nameKey);
+    }
+    return mapType.name;
+  }
+
   private getPanelStyles(): ResolvedPanelStyles {
     const columnCount = Math.max(1, Math.min(this.options.mapTypes?.length || 1, 4));
 
@@ -383,6 +415,7 @@ export class LayersButtonHandler extends BaseMenu {
         display: 'flex',
         flexDirection: 'column',
         gap: '8px',
+        marginTop: '8px',
         ...this.panelStyle.sectionStyle,
       },
       sectionTitle: {

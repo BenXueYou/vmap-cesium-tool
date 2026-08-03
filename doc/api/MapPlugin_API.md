@@ -674,6 +674,117 @@ getToolbarService(): ToolbarService | null
 
 获取已创建的 `ToolbarService`。如果没有启用 toolbar 服务，会返回 `null`。
 
+### updateToolbarStyle
+
+```ts
+updateToolbarStyle(config: Partial<ToolbarConfig>): void
+```
+
+运行时更新地图组件内部 toolbar 的 UI 样式，无需重建地图实例。
+
+常见用途：
+
+- 调整 `position`
+- 调整 `direction`
+- 调整 `buttonSize`
+- 调整 `buttonSpacing`
+- 调整 `offsetTop` / `offsetRight` / `offsetBottom` / `offsetLeft`
+
+### setToolbarPosition
+
+```ts
+setToolbarPosition(
+  position: NonNullable<ToolbarConfig['position']>,
+  offsets?: Pick<ToolbarConfig, 'offsetTop' | 'offsetRight' | 'offsetBottom' | 'offsetLeft'>,
+): void
+```
+
+专门用于运行时切换 toolbar 停靠位置和边距偏移。
+
+### getToolbarConfig
+
+```ts
+getToolbarConfig(): ToolbarConfig
+```
+
+返回当前地图组件中 toolbar 的样式配置快照。
+
+示例：
+
+```ts
+const mapPlugin = createMapPlugin('cesiumContainer', {
+  services: {
+    toolbar: {
+      enabled: true,
+    },
+  },
+});
+
+await mapPlugin.initialize();
+
+mapPlugin.updateToolbarStyle({
+  direction: 'row',
+  buttonSize: 44,
+  buttonSpacing: 12,
+  backgroundColor: 'rgba(15, 23, 42, 0.72)',
+});
+
+mapPlugin.setToolbarPosition('top-left', {
+  offsetTop: 20,
+  offsetLeft: 20,
+});
+
+const toolbarConfig = mapPlugin.getToolbarConfig();
+console.log(toolbarConfig.position, toolbarConfig.direction);
+```
+
+### 运行时控制 toolbar UI 示例
+
+下面的例子演示了地图初始化完成后，通过 `MapPlugin` 直接控制 toolbar 的样式和位置：
+
+```ts
+const mapPlugin = createMapPlugin('cesiumContainer', {
+  services: {
+    toolbar: {
+      enabled: true,
+      config: {
+        position: 'bottom-right',
+        buttonSize: 36,
+      },
+    },
+  },
+});
+
+await mapPlugin.initialize();
+
+function enterWorkbenchMode() {
+  mapPlugin.updateToolbarStyle({
+    direction: 'row',
+    buttonSize: 44,
+    buttonSpacing: 12,
+    zIndex: 1300,
+  });
+
+  mapPlugin.setToolbarPosition('top-left', {
+    offsetTop: 20,
+    offsetLeft: 20,
+  });
+}
+
+function enterDefaultMode() {
+  mapPlugin.updateToolbarStyle({
+    direction: 'column',
+    buttonSize: 36,
+    buttonSpacing: 8,
+  });
+
+  mapPlugin.setToolbarPosition('bottom-right', {
+    offsetRight: 16,
+    offsetBottom: 16,
+  });
+}
+```
+
 ### createOverlayService
 
 ```ts
@@ -815,6 +926,18 @@ mapPlugin.updateLayers({
     showLabel: true,
   },
 });
+
+mapPlugin.updateToolbarStyle({
+  direction: 'row',
+  buttonSize: 44,
+});
+
+mapPlugin.setToolbarPosition('top-left', {
+  offsetTop: 20,
+  offsetLeft: 20,
+});
+
+console.log(mapPlugin.getToolbarConfig().position);
 ```
 
 ## 与 compat 层的关系

@@ -117,7 +117,7 @@ class ToolbarAdapterMapController {
 export class ToolbarAdapter {
   private readonly viewer: Viewer;
   private readonly container: HTMLElement;
-  private readonly config: ToolbarConfig;
+  private config: ToolbarConfig;
   private readonly callbacks?: LegacyCesiumMapToolbarCallbacks;
   private readonly toolbarService: ToolbarService;
   private readonly drawHelper: DrawHelperAdapter;
@@ -464,6 +464,28 @@ export class ToolbarAdapter {
 
   public getToolbarService(): ToolbarService {
     return this.toolbarService;
+  }
+
+  public updateToolbarStyle(config: Partial<ToolbarConfig>): void {
+    this.config = {
+      ...this.config,
+      ...config,
+    };
+    this.toolbarService.updateToolbarStyle(config);
+  }
+
+  public setToolbarPosition(
+    position: NonNullable<ToolbarConfig['position']>,
+    offsets: Pick<ToolbarConfig, 'offsetTop' | 'offsetRight' | 'offsetBottom' | 'offsetLeft'> = {},
+  ): void {
+    this.updateToolbarStyle({
+      position,
+      ...offsets,
+    });
+  }
+
+  public getToolbarStyle(): ToolbarConfig {
+    return this.toolbarService.getToolbarStyle();
   }
 
   public getToolbarElement(): HTMLElement | null {

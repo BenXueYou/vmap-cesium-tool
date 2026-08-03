@@ -235,7 +235,53 @@ addCustomButton(config: CustomButtonConfig): void
 removeButton(buttonId: string): void
 ```
 
-### 9. 销毁
+### 9. 运行时更新工具栏样式
+
+```ts
+updateToolbarStyle(config: Partial<ToolbarConfig>): void
+```
+
+用于在不销毁实例的情况下调整 toolbar UI，例如按钮尺寸、方向、背景色和位置。
+
+### 10. 运行时更新工具栏位置
+
+```ts
+setToolbarPosition(
+  position: NonNullable<ToolbarConfig['position']>,
+  offsets?: Pick<ToolbarConfig, 'offsetTop' | 'offsetRight' | 'offsetBottom' | 'offsetLeft'>,
+): void
+```
+
+专门用于运行时切换 toolbar 停靠位置和边距偏移。
+
+### 11. 获取当前工具栏样式
+
+```ts
+getToolbarStyle(): ToolbarConfig
+```
+
+返回当前兼容层 toolbar 的样式快照。
+
+**使用示例：**
+
+```ts
+toolbar.updateToolbarStyle({
+  direction: 'row',
+  buttonSize: 44,
+  buttonSpacing: 12,
+  backgroundColor: 'rgba(15, 23, 42, 0.72)',
+});
+
+toolbar.setToolbarPosition('top-left', {
+  offsetTop: 20,
+  offsetLeft: 20,
+});
+
+const currentStyle = toolbar.getToolbarStyle();
+console.log(currentStyle.position, currentStyle.direction);
+```
+
+### 12. 销毁
 
 ```ts
 destroy(): void
@@ -522,6 +568,58 @@ const toolbar = new CesiumMapToolbar(viewer, container, {
   boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
   zIndex: 2000
 });
+```
+
+### 运行时更新 toolbar 位置
+
+```ts
+toolbar.updateToolbarStyle({
+  direction: 'row',
+  buttonSize: 44,
+});
+
+toolbar.setToolbarPosition('top-left', {
+  offsetTop: 20,
+  offsetLeft: 20,
+});
+
+console.log(toolbar.getToolbarStyle().position);
+```
+
+### 运行时控制 toolbar UI 完整示例
+
+```ts
+const toolbar = new CesiumMapToolbar(viewer, container, {
+  position: 'bottom-right',
+  buttonSize: 36,
+  buttonSpacing: 8,
+});
+
+function switchToolbarLayout(layout: 'compact' | 'expanded') {
+  if (layout === 'compact') {
+    toolbar.updateToolbarStyle({
+      direction: 'column',
+      buttonSize: 36,
+      buttonSpacing: 8,
+    });
+    toolbar.setToolbarPosition('bottom-right', {
+      offsetRight: 16,
+      offsetBottom: 16,
+    });
+    return;
+  }
+
+  toolbar.updateToolbarStyle({
+    direction: 'row',
+    buttonSize: 44,
+    buttonSpacing: 12,
+    backgroundColor: 'rgba(2, 6, 23, 0.65)',
+  });
+  toolbar.setToolbarPosition('top-left', {
+    offsetTop: 20,
+    offsetLeft: 20,
+  });
+}
 ```
 
 ## 搜索功能实现

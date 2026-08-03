@@ -12,6 +12,7 @@ import {
 } from '../src/index';
 import { i18n } from '../src/i18n';
 import { toolbarLayersMenu, toolbarSearchMenu, toolbarButtonConfigs } from './z.const';
+import { buildPlaygroundToolbarLayersMenu } from './toolbarMapTypes';
 import { chinaMapExtent, getTdMapSearchUrl } from './useMap';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -262,6 +263,13 @@ export function useMapInit(containerId = 'cesiumContainer') {
         typeof overrides.services?.toolbar === 'object' ? overrides.services.toolbar.callbacks : undefined;
       const baseOptions = createDefaultOptions(viewer, defaultCallbacks);
       const pluginOptions = mergeOptions(baseOptions, overrides);
+
+      if (typeof pluginOptions.services?.toolbar === 'object') {
+        pluginOptions.services.toolbar = {
+          ...pluginOptions.services.toolbar,
+          layersMenu: buildPlaygroundToolbarLayersMenu(pluginOptions),
+        };
+      }
 
       mapPlugin.value = createMapPlugin(containerId, pluginOptions);
       viewer.value = await mapPlugin.value.initialize();

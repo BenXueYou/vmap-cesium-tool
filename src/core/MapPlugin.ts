@@ -292,7 +292,7 @@ export class MapPlugin {
     this.noFlyZoneVisible = this.noFlyZoneConfig.visible ?? false;
     
     // 工具栏和样式配置（保持向后兼容）
-    this.toolbarConfig = this.getToolbarConfig(options.services?.toolbar);
+    this.toolbarConfig = this.resolveToolbarConfig(options.services?.toolbar);
   }
 
   private assertNoMixedMapServiceConfig(options: Partial<MapPluginOptions>): void {
@@ -306,7 +306,7 @@ export class MapPlugin {
     );
   }
 
-  private getToolbarConfig(toolbarOptions?: boolean | ToolbarPluginOptions): ToolbarConfig {
+  private resolveToolbarConfig(toolbarOptions?: boolean | ToolbarPluginOptions): ToolbarConfig {
     if (typeof toolbarOptions === 'object' && toolbarOptions.config) {
       return {
         ...DEFAULT_TOOLBAR_STYLE,
@@ -404,6 +404,23 @@ export class MapPlugin {
     }
 
     return this.toolbarController;
+  }
+
+  private applyToolbarConfigPatch(config: Partial<ToolbarConfig>): void {
+    this.toolbarConfig = {
+      ...this.toolbarConfig,
+      ...config,
+    };
+
+    if (typeof this.servicesConfig.toolbar === 'object') {
+      this.servicesConfig.toolbar = {
+        ...this.servicesConfig.toolbar,
+        config: {
+          ...(this.servicesConfig.toolbar.config || {}),
+          ...config,
+        },
+      };
+    }
   }
 
   private initializeServices(): void {
@@ -1919,6 +1936,10 @@ export class MapPlugin {
    * 创建 ToolbarService
    */
   createToolbarService(options: ToolbarPluginOptions = {}): ToolbarService {
+    if (options.config) {
+      this.applyToolbarConfigPatch(options.config);
+    }
+
     if (this.toolbarService) {
       return this.toolbarService;
     }
@@ -1984,6 +2005,34 @@ export class MapPlugin {
    */
   getToolbarService(): ToolbarService | null {
     return this.toolbarService;
+  }
+
+  /**
+   * 运行时更新工具栏样式配置。
+   */
+  updateToolbarStyle(config: Partial<ToolbarConfig>): void {
+    this.applyToolbarConfigPatch(config);
+    this.toolbarService?.updateToolbarStyle(config);
+  }
+
+  /**
+   * 运行时更新工具栏停靠位置和边距偏移。
+   */
+  setToolbarPosition(
+    position: NonNullable<ToolbarConfig['position']>,
+    offsets: Pick<ToolbarConfig, 'offsetTop' | 'offsetRight' | 'offsetBottom' | 'offsetLeft'> = {},
+  ): void {
+    this.updateToolbarStyle({
+      position,
+      ...offsets,
+    });
+  }
+
+  /**
+   * 获取当前工具栏配置快照。
+   */
+  getToolbarConfig(): ToolbarConfig {
+    return this.toolbarService?.getToolbarStyle() || { ...this.toolbarConfig };
   }
 
   /**

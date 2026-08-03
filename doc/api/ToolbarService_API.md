@@ -269,6 +269,83 @@ updateToolbarStyle(config: Partial<ToolbarConfig>): void
 - 调整 `direction`
 - 调整 `offsetTop` / `offsetRight` / `offsetBottom` / `offsetLeft`
 
+### setToolbarPosition
+
+```ts
+setToolbarPosition(
+  position: NonNullable<ToolbarConfig['position']>,
+  offsets?: Pick<ToolbarConfig, 'offsetTop' | 'offsetRight' | 'offsetBottom' | 'offsetLeft'>,
+): void
+```
+
+专门用于运行时切换工具栏停靠位置和边距偏移。
+
+### getToolbarStyle
+
+```ts
+getToolbarStyle(): ToolbarConfig
+```
+
+返回当前工具栏实际生效的样式快照，适合在业务层读取当前位置、方向、按钮尺寸等 UI 状态。
+
+示例：
+
+```ts
+const toolbarService = mapPlugin.getToolbarService();
+
+toolbarService?.updateToolbarStyle({
+  direction: 'row',
+  buttonSize: 44,
+  buttonSpacing: 12,
+  backgroundColor: 'rgba(15, 23, 42, 0.72)',
+  borderColor: 'rgba(96, 165, 250, 0.45)',
+});
+
+toolbarService?.setToolbarPosition('top-left', {
+  offsetTop: 20,
+  offsetLeft: 20,
+});
+
+const currentStyle = toolbarService?.getToolbarStyle();
+console.log(currentStyle?.position, currentStyle?.buttonSize);
+```
+
+### 运行时控制 UI 示例
+
+下面的例子演示了如何在业务按钮点击后切换 toolbar 的布局方向和停靠位置：
+
+```ts
+const toolbarService = mapPlugin.getToolbarService();
+
+function switchToolbarMode(mode: 'compact' | 'expanded') {
+  if (!toolbarService) return;
+
+  if (mode === 'compact') {
+    toolbarService.updateToolbarStyle({
+      direction: 'column',
+      buttonSize: 36,
+      buttonSpacing: 8,
+    });
+    toolbarService.setToolbarPosition('bottom-right', {
+      offsetRight: 16,
+      offsetBottom: 16,
+    });
+    return;
+  }
+
+  toolbarService.updateToolbarStyle({
+    direction: 'row',
+    buttonSize: 44,
+    buttonSpacing: 12,
+    backgroundColor: 'rgba(2, 6, 23, 0.65)',
+  });
+  toolbarService.setToolbarPosition('top-left', {
+    offsetTop: 20,
+    offsetLeft: 20,
+  });
+}
+```
+
 ### enableButton / disableButton
 
 ```ts
@@ -541,6 +618,10 @@ toolbarService?.disableButton('measure');
 toolbarService?.updateToolbarStyle({
   position: 'top-right',
   direction: 'row',
+});
+toolbarService?.setToolbarPosition('bottom-left', {
+  offsetBottom: 24,
+  offsetLeft: 24,
 });
 ```
 
