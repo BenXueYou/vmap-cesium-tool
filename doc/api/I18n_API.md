@@ -82,7 +82,6 @@ import { i18n, type I18nLike } from '@xingm/vmap-cesium-toolbar';
 例如：
 
 - `examples/vue3-usage/src/App.vue`
-- `src/hooks/useOverlayHelper.ts`
 
 职责：
 

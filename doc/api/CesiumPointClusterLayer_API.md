@@ -253,26 +253,6 @@ destroy(): void
 
 - 单点点击：`onPointClick(point, ctx)`
 
-## Vue3（示例项目）接入
-
-仓库示例中提供了 composition hook：`src/hooks/usePointClusterHelper.ts`。
-
-```ts
-import { usePointClusterHelper } from './hooks/usePointClusterHelper';
-
-const { initCluster, updateClusterData, setClusterVisible, destroyCluster } = usePointClusterHelper(viewer);
-
-initCluster({
-  pixelRange: 60,
-  onClusterClick: (points) => console.log(points),
-});
-
-updateClusterData([{ lon: 120.2, lat: 30.25 }]);
-setClusterVisible(true);
-
-// onBeforeUnmount 时 destroyCluster() 即可
-```
-
 ## 性能与建议
 
 - **推荐点量级**：`< 1 万` 以内通常 `CustomDataSource + clustering` 足够好用
