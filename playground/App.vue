@@ -33,7 +33,9 @@
       <div class="status-strip">
         <span>Toolbar {{ toolbarReady ? "Ready" : "Missing" }}</span>
         <span>Overlay {{ overlayReady ? "Ready" : "Missing" }}</span>
+        <span>Draw {{ drawReady ? "Ready" : "Missing" }}</span>
         <span>{{ overlayCount }} overlays</span>
+        <span>{{ drawCount }} drawings</span>
       </div>
 
       <template v-if="activeTab === 'toolbar'">
@@ -211,7 +213,7 @@
         </section>
       </template>
 
-      <template v-else>
+      <template v-else-if="activeTab === 'overlay'">
         <section class="section-block">
           <div class="section-title">Overlay 初始化与运行配置</div>
 
@@ -448,6 +450,135 @@
           </div>
         </section>
       </template>
+
+      <template v-else>
+        <section class="section-block">
+          <div class="section-title">Draw 初始化与运行状态</div>
+
+          <div class="field-grid">
+            <label>
+              <span>绘制模式</span>
+              <select v-model="drawForm.mode">
+                <option value="line">line</option>
+                <option value="polygon">polygon</option>
+                <option value="rectangle">rectangle</option>
+                <option value="circle">circle</option>
+              </select>
+            </label>
+
+            <label>
+              <span>输出坐标系</span>
+              <select v-model="drawForm.outputCoordSystem">
+                <option value="WGS84">WGS84</option>
+                <option value="GCJ02">GCJ02</option>
+                <option value="BD09">BD09</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="toggle-grid">
+            <label class="toggle-item">
+              <input v-model="drawForm.clampToGround" type="checkbox" />
+              <span>贴地绘制</span>
+            </label>
+
+            <label class="toggle-item">
+              <input v-model="drawForm.selfIntersectionEnabled" type="checkbox" />
+              <span>启用自相交校验</span>
+            </label>
+
+            <label class="toggle-item">
+              <input v-model="drawForm.selfIntersectionAllowTouch" type="checkbox" />
+              <span>允许边界相切</span>
+            </label>
+
+            <label class="toggle-item">
+              <input v-model="drawForm.selfIntersectionAllowContinue" type="checkbox" />
+              <span>允许继续落点</span>
+            </label>
+          </div>
+
+          <div class="action-row wrap">
+            <button class="primary" @click="rebuildDrawPlayground">重建并应用</button>
+            <button @click="refreshDrawState">refreshState</button>
+            <button @click="startDrawGeneric">startDrawing(mode)</button>
+            <button @click="startDrawShortcut">startDrawingXxx</button>
+            <button @click="cancelDrawSession">cancelDrawing</button>
+            <button @click="endDrawSession">endDrawing</button>
+          </div>
+        </section>
+
+        <section class="section-block">
+          <div class="section-title">Draw 结果管理 API</div>
+
+          <div class="field-grid">
+            <label class="span-2">
+              <span>目标实体</span>
+              <select v-model="selectedDrawEntityId">
+                <option value="">请选择</option>
+                <option v-for="item in drawItems" :key="item.id" :value="item.id">
+                  {{ item.id }} | {{ item.type }}
+                </option>
+              </select>
+            </label>
+          </div>
+
+          <div class="action-row wrap">
+            <button @click="syncDrawInventory">getFinishedEntities</button>
+            <button @click="removeSelectedDrawEntity">removeEntity</button>
+            <button @click="removeLastDrawEntity">removeLast</button>
+            <button @click="clearDrawEntities">clearAll</button>
+          </div>
+        </section>
+
+        <section class="section-block">
+          <div class="section-title">Draw 事件快照</div>
+
+          <div class="validation-state">
+            <div class="validation-state-item">
+              <span>isDrawingMode</span>
+              <strong>{{ drawStatus.isDrawing ? "true" : "false" }}</strong>
+            </div>
+            <div class="validation-state-item">
+              <span>getCurrentDrawMode</span>
+              <strong>{{ drawStatus.currentMode ?? "-" }}</strong>
+            </div>
+            <div class="validation-state-item">
+              <span>Last Result</span>
+              <strong>{{ drawStatus.lastSummary }}</strong>
+            </div>
+            <div class="validation-state-item">
+              <span>Last Output</span>
+              <strong>{{ drawStatus.lastCoordSystem ?? "-" }}</strong>
+            </div>
+          </div>
+
+          <div class="event-log">
+            <div v-for="entry in drawEventLog" :key="entry" class="event-log-item">
+              {{ entry }}
+            </div>
+          </div>
+
+          <pre class="result-preview">{{ drawResultPreview }}</pre>
+        </section>
+
+        <section class="section-block inventory-block">
+          <div class="section-title">当前绘制实体</div>
+
+          <div class="inventory-list">
+            <button
+              v-for="item in drawItems"
+              :key="item.id"
+              class="inventory-item"
+              :class="{ active: selectedDrawEntityId === item.id }"
+              @click="selectedDrawEntityId = item.id"
+            >
+              <span>{{ item.type }}</span>
+              <span>{{ item.id }}</span>
+            </button>
+          </div>
+        </section>
+      </template>
     </aside>
 
     <div v-if="message" class="message-bar">{{ message }}</div>
@@ -455,103 +586,33 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
-import * as Cesium from "cesium";
-import type { CustomButtonConfig, MapPluginOptions, SearchResult, ToolbarCallbacks, ToolbarConfig } from "../src/index";
+import { onBeforeUnmount, onMounted, ref } from "vue";
+import type { MapPluginOptions, ToolbarCallbacks } from "../src/index";
 import { i18n } from "../src/i18n";
-import { getViteTdToken } from "../src/utils/common";
 import { useOverlaySelectionBenchmark } from "./hooks/useOverlaySelectionBenchmark";
 import { useOverlaySelectionValidation } from "./hooks/useOverlaySelectionValidation";
+import { usePlaygroundDraw } from "./hooks/usePlaygroundDraw";
+import { usePlaygroundOverlay } from "./hooks/usePlaygroundOverlay";
+import { usePlaygroundToolbar } from "./hooks/usePlaygroundToolbar";
+import { buildPlaygroundMapService } from "./mapServiceConfig";
 import { useMapInit } from "./useMapInit";
-import { chinaMapExtent, getTdMapSearchUrl } from "./useMap";
 import { toolbarButtonConfigs, toolbarLayersMenu, toolbarSearchMenu } from "./z.const";
 
 type Locale = "zh-CN" | "en-US";
-type TabId = "toolbar" | "overlay";
-type HighlightReason = "click" | "hover";
-type PlaygroundMapProvider = "tdt" | "tencent" | "gaode" | "baidu";
-
-interface OverlayInventoryItem {
-  id: string;
-  kind: string;
-  visible: boolean;
-}
+type TabId = "toolbar" | "overlay" | "draw";
 
 const tabs = [
   { id: "toolbar", label: "Toolbar API" },
   { id: "overlay", label: "Overlay API" },
+  { id: "draw", label: "Draw API" },
 ] as const;
 
-const { initMap, rebuildMap, destroyMap, viewer, mapPlugin, toolbarService } = useMapInit("cesiumContainer");
+const { initMap, rebuildMap, destroyMap, viewer, mapPlugin, toolbarService, drawService } = useMapInit("cesiumContainer");
 
 const activeTab = ref<TabId>("toolbar");
 const locale = ref<Locale>(i18n.getLocale() as Locale);
 const message = ref("");
-const overlayItems = ref<OverlayInventoryItem[]>([]);
-const selectedOverlayId = ref("");
-const selectedToolbarButtonId = ref(toolbarButtonConfigs[0]?.id ?? "search");
-const mountedCustomButtonId = ref("");
 let unsubscribeI18n: (() => void) | null = null;
-
-const toolbarForm = reactive({
-  mapProvider: "tdt" as PlaygroundMapProvider,
-  position: "bottom-right" as ToolbarConfig["position"],
-  direction: "column" as ToolbarConfig["direction"],
-  buttonSize: 36,
-  buttonSpacing: 8,
-  zIndex: 1100,
-  backgroundColor: "transparent",
-  borderColor: "transparent",
-  buttonBackgroundColor: "rgba(0, 0, 0, 0.52)",
-  buttonBorderColor: "rgba(9, 109, 236, 0.85)",
-  searchPanelBackground: "rgba(7, 35, 73, 0.92)",
-  searchWidth: 210,
-  defaultPlaceNameChecked: true,
-  defaultNoFlyZoneChecked: true,
-});
-
-const toolbarButtonState = reactive<Record<string, boolean>>(
-  Object.fromEntries(toolbarButtonConfigs.map((button) => [button.id, true])),
-);
-
-const toolbarRuntimePatch = reactive({
-  title: "",
-  backgroundColor: "",
-  color: "",
-});
-
-const customToolbarButton = reactive({
-  id: "custom-api",
-  title: "API",
-  icon: "API",
-  backgroundColor: "rgba(15, 23, 42, 0.78)",
-});
-
-const overlayForm = reactive({
-  hoverEnabled: true,
-  clickPickMinIntervalMs: 120,
-  pickWidth: 3,
-  pickHeight: 3,
-  drillLimit: 16,
-  highlightReason: "click" as HighlightReason,
-  markerLabel: "API Marker",
-  circleRadius: 900,
-  rectangleWidth: 0.018,
-  rectangleHeight: 0.012,
-  infoTitle: "API Debug",
-  infoBody: "Overlay service call result",
-});
-
-const toolbarReady = computed(() => !!toolbarService.value && !!viewer.value);
-const overlayReady = computed(() => !!mapPlugin.value && !!viewer.value);
-const overlayCount = computed(() => overlayItems.value.length);
-const toolbarButtonOptions = computed(() => {
-  const ids = toolbarButtonConfigs.map((button) => button.id);
-  if (mountedCustomButtonId.value) {
-    ids.push(mountedCustomButtonId.value);
-  }
-  return ids;
-});
 
 function showMessage(text: string, timeout = 1800) {
   message.value = text;
@@ -561,6 +622,88 @@ function showMessage(text: string, timeout = 1800) {
     }
   }, timeout);
 }
+
+const {
+  toolbarReady,
+  toolbarForm,
+  toolbarButtonState,
+  toolbarRuntimePatch,
+  customToolbarButton,
+  selectedToolbarButtonId,
+  toolbarButtonOptions,
+  cloneToolbarButtons,
+  resetToolbarState,
+  applyToolbarStyle,
+  applyToolbarRuntimeStyle,
+  closeToolbarMenus,
+  showToolbarButton,
+  hideToolbarButton,
+  enableToolbarButton,
+  disableToolbarButton,
+  patchToolbarButton,
+  mountCustomToolbarButton,
+  removeCustomToolbarButton,
+} = usePlaygroundToolbar({
+  toolbarService,
+  viewer,
+  showMessage,
+});
+
+const {
+  overlayReady,
+  overlayCount,
+  overlayForm,
+  overlayItems,
+  selectedOverlayId,
+  resetOverlayState,
+  syncOverlayInventory,
+  addMarkerOverlay,
+  addCircleOverlay,
+  addRectangleOverlay,
+  addPolylineOverlay,
+  addPolygonOverlay,
+  addInfoWindowOverlay,
+  addRingOverlay,
+  toggleSelectedOverlayVisibility,
+  highlightSelectedOverlay,
+  clearSelectedOverlayHighlight,
+  toggleSelectedOverlayHighlight,
+  startSelectedOverlayEdit,
+  stopOverlayEdit,
+  removeSelectedOverlay,
+  removeAllOverlays,
+  applyOverlayHoverMode,
+} = usePlaygroundOverlay({
+  mapPlugin,
+  viewer,
+  showMessage,
+});
+
+const {
+  drawReady,
+  drawCount,
+  drawForm,
+  drawStatus,
+  drawItems,
+  drawEventLog,
+  selectedDrawEntityId,
+  drawResultPreview,
+  bindDrawCallbacks,
+  syncDrawInventory,
+  resetDrawState,
+  refreshDrawState,
+  startDrawGeneric,
+  startDrawShortcut,
+  cancelDrawSession,
+  endDrawSession,
+  removeSelectedDrawEntity,
+  removeLastDrawEntity,
+  clearDrawEntities,
+} = usePlaygroundDraw({
+  drawService,
+  viewer,
+  showMessage,
+});
 
 const {
   snapshot: selectionValidationSnapshot,
@@ -584,145 +727,33 @@ const {
   onMessage: showMessage,
   onScenarioVisibilityChange: (active) => {
     if (active) {
-      overlayItems.value = [];
-      selectedOverlayId.value = "";
+      resetOverlayState();
     }
   },
 });
 
-function getViewerCenter() {
-  const currentViewer = viewer.value;
-  if (!currentViewer) {
-    return null;
-  }
-
-  const position = currentViewer.camera.positionCartographic;
-  return {
-    lon: Cesium.Math.toDegrees(position.longitude),
-    lat: Cesium.Math.toDegrees(position.latitude),
-  };
-}
-
-function getOverlayService() {
-  if (!mapPlugin.value) {
-    return null;
-  }
-  return mapPlugin.value.getOverlayService();
-}
-
-function rememberOverlay(id: string, kind: string) {
-  const existing = overlayItems.value.filter((item) => item.id !== id);
-  overlayItems.value = [{ id, kind, visible: true }, ...existing];
-  selectedOverlayId.value = id;
-}
-
-function syncOverlayInventory() {
-  const service = getOverlayService();
-  if (!service) {
-    overlayItems.value = [];
-    selectedOverlayId.value = "";
-    return;
-  }
-
-  const existingMap = new Map(overlayItems.value.map((item) => [item.id, item]));
-  overlayItems.value = service.getAllOverlayIds().map((id) => {
-    const existing = existingMap.get(id);
-    return existing ?? { id, kind: "unknown", visible: true };
-  });
-
-  if (selectedOverlayId.value && !overlayItems.value.some((item) => item.id === selectedOverlayId.value)) {
-    selectedOverlayId.value = overlayItems.value[0]?.id || "";
-  }
-}
-
-async function runTdSearch(query: string): Promise<SearchResult[]> {
-  const url = getTdMapSearchUrl(query, chinaMapExtent);
-  const response = await fetch(url, {
-    method: "GET",
-    mode: "cors",
-    credentials: "omit",
-    headers: {
-      Accept: "application/json",
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`);
-  }
-
-  const data = await response.json();
-  const pois = data?.data?.pois || data?.pois || [];
-  return pois.map((location: any) => {
-    const [longitude = "0", latitude = "0"] = String(location?.lonlat ?? "").split(",");
-    return {
-      name: location?.name || query,
-      address: location?.address || "",
-      longitude: Number(longitude || 0),
-      latitude: Number(latitude || 0),
-      height: 100,
-    };
-  });
-}
-
 function createToolbarCallbacks(): ToolbarCallbacks {
   return {
-    onSearch: async (query: string) => {
-      try {
-        const results = await runTdSearch(query);
-        return results;
-      } catch (error) {
-        return [];
-      }
-    },
-    onSelect: (result) => {
-      viewer.value?.camera.flyTo({
-        destination: Cesium.Cartesian3.fromDegrees(result.longitude, result.latitude, result.height || 1000),
-        duration: 1.2,
-      });
-    },
     onMeasurementStart: () => {
+      showMessage("Toolbar 测量开始");
     },
     onMeasurementComplete: (result) => {
+      const summary = typeof result === "object" && result
+        ? JSON.stringify(result)
+        : String(result ?? "");
+      showMessage(`Toolbar 测量完成: ${summary.slice(0, 80)}`);
     },
     onClear: () => {
-    },
-    onZoomIn: (beforeHeight, afterHeight) => {
-    },
-    onZoomOut: (beforeHeight, afterHeight) => {
-    },
-    onFullscreenChange: (isFullscreen) => {
-    },
-    onResetLocation: () => {
+      showMessage("Toolbar 测量结果已清空");
     },
   };
-}
-
-function cloneToolbarButtons(): CustomButtonConfig[] {
-  return toolbarButtonConfigs
-    .filter((button) => toolbarButtonState[button.id])
-    .map((button) => ({
-      ...button,
-      backgroundColor: toolbarForm.buttonBackgroundColor,
-      borderColor: toolbarForm.buttonBorderColor,
-    }));
 }
 
 function buildMapOverrides(): Partial<MapPluginOptions> {
-  const provider = toolbarForm.mapProvider;
-  const mapType = provider === "tdt" ? "img" : "satellite";
-
   return {
-    baseMap: {
-      provider,
-      type: mapType,
-      showLabel: toolbarForm.defaultPlaceNameChecked,
-      ...(provider === "gaode" ? { sk: "85f329e4b2f551232cd24862c753055f" } : {}),
-    },
-    mapAuth: {
-      tdt: { token: getViteTdToken() },
-      tencent: { key: "3Y3BZ-WXTLA-BV6KT-COBRB-4GXKO-7MFQC" },
-      gaode: { key: "083cf2fc37d04fc1d4f45b4ea2a5d1e8" },
-      baidu: { ak: "8c4RjhGrynydOwm1NSTBW8gt1DTE1riA" },
+    mapService: buildPlaygroundMapService(toolbarForm.mapProvider),
+    onSearchResultSelected: (result) => {
+      showMessage(`地图搜索定位: ${result.name} (${result.provider})`);
     },
     noFlyZone: {
       visible: toolbarForm.defaultNoFlyZoneChecked,
@@ -785,12 +816,14 @@ function buildMapOverrides(): Partial<MapPluginOptions> {
   };
 }
 
-async function rebuildPlayground(scope: "toolbar" | "overlay") {
-  overlayItems.value = [];
-  selectedOverlayId.value = "";
-  mountedCustomButtonId.value = "";
+async function rebuildPlayground(scope: TabId) {
+  resetOverlayState();
+  resetDrawState();
+  resetToolbarState();
   await rebuildMap(buildMapOverrides());
+  bindDrawCallbacks();
   syncOverlayInventory();
+  syncDrawInventory();
   showMessage(`${scope} playground 已重建`);
 }
 
@@ -802,430 +835,8 @@ async function rebuildOverlayPlayground() {
   await rebuildPlayground("overlay");
 }
 
-function applyToolbarStyle () {
-  const service = toolbarService.value;
-  if (!service) {
-    showMessage("ToolbarService 未初始化");
-    return;
-  }
-  service?.setToolbarPosition('top-right', {
-    offsetTop: 24,
-    offsetRight: 240,
-  });
-}
-
-function applyToolbarRuntimeStyle() {
-  const service = toolbarService.value;
-  if (!service) {
-    showMessage("ToolbarService 未初始化");
-    return;
-  }
-
-  const patch: Partial<ToolbarConfig> = {
-    position: toolbarForm.position,
-    direction: toolbarForm.direction,
-    buttonSize: toolbarForm.buttonSize,
-    buttonSpacing: toolbarForm.buttonSpacing,
-    backgroundColor: toolbarForm.backgroundColor,
-    borderColor: toolbarForm.borderColor,
-    zIndex: toolbarForm.zIndex,
-  };
-
-  service.updateToolbarStyle(patch);
-  showMessage("Toolbar 样式已更新");
-}
-
-function closeToolbarMenus() {
-  const service = toolbarService.value;
-  if (!service) {
-    showMessage("ToolbarService 未初始化");
-    return;
-  }
-
-  service.closeAllMenus();
-}
-
-function showToolbarButton() {
-  if (!toolbarService.value) return;
-  toolbarService.value.showButton(selectedToolbarButtonId.value);
-}
-
-function hideToolbarButton() {
-  if (!toolbarService.value) return;
-  toolbarService.value.hideButton(selectedToolbarButtonId.value);
-}
-
-function enableToolbarButton() {
-  if (!toolbarService.value) return;
-  toolbarService.value.enableButton(selectedToolbarButtonId.value);
-}
-
-function disableToolbarButton() {
-  if (!toolbarService.value) return;
-  toolbarService.value.disableButton(selectedToolbarButtonId.value);
-}
-
-function patchToolbarButton() {
-  const service = toolbarService.value;
-  if (!service) {
-    return;
-  }
-
-  const patch: Partial<CustomButtonConfig> = {};
-  if (toolbarRuntimePatch.title) patch.title = toolbarRuntimePatch.title;
-  if (toolbarRuntimePatch.backgroundColor) patch.backgroundColor = toolbarRuntimePatch.backgroundColor;
-  if (toolbarRuntimePatch.color) patch.color = toolbarRuntimePatch.color;
-
-  service.updateButton(selectedToolbarButtonId.value, patch);
-  showMessage(`按钮 ${selectedToolbarButtonId.value} 已更新`);
-}
-
-function mountCustomToolbarButton() {
-  const service = toolbarService.value;
-  if (!service) {
-    showMessage("ToolbarService 未初始化");
-    return;
-  }
-
-  if (mountedCustomButtonId.value) {
-    service.removeButton(mountedCustomButtonId.value);
-  }
-
-  service.addCustomButton(
-    {
-      id: customToolbarButton.id,
-      icon: customToolbarButton.icon,
-      title: customToolbarButton.title,
-      backgroundColor: customToolbarButton.backgroundColor,
-      color: "#ffffff",
-      borderColor: "rgba(96, 165, 250, 0.4)",
-    },
-    () => {
-      showMessage(`自定义按钮 ${customToolbarButton.id} 已点击`);
-    },
-  );
-
-  mountedCustomButtonId.value = customToolbarButton.id;
-  selectedToolbarButtonId.value = customToolbarButton.id;
-  showMessage(`自定义按钮 ${customToolbarButton.id} 已挂载`);
-}
-
-function removeCustomToolbarButton() {
-  const service = toolbarService.value;
-  if (!service || !mountedCustomButtonId.value) {
-    return;
-  }
-
-  service.removeButton(mountedCustomButtonId.value);
-  mountedCustomButtonId.value = "";
-  selectedToolbarButtonId.value = toolbarButtonConfigs[0]?.id ?? "search";
-  showMessage("自定义按钮已移除");
-}
-
-function addMarkerOverlay() {
-  const service = getOverlayService();
-  const center = getViewerCenter();
-  if (!service || !center) {
-    return;
-  }
-
-  const marker = service.addMarker({
-    position: [center.lon, center.lat],
-    pixelSize: 12,
-    color: Cesium.Color.ORANGE,
-    outlineColor: Cesium.Color.WHITE,
-    outlineWidth: 2,
-    clickHighlight: true,
-    hoverHighlight: true,
-    onClick: () => {
-    },
-  });
-
-  const label = service.addLabel({
-    position: [center.lon, center.lat, 0],
-    text: overlayForm.markerLabel,
-    font: "15px sans-serif",
-    fillColor: Cesium.Color.WHITE,
-    showBackground: true,
-    backgroundColor: Cesium.Color.fromCssColorString("#0f172ab0"),
-    pixelOffset: new Cesium.Cartesian2(0, -24),
-  });
-
-  rememberOverlay(marker.getId(), "marker");
-  rememberOverlay(label.getId(), "label");
-  showMessage("Marker 已创建");
-}
-
-function addCircleOverlay() {
-  const service = getOverlayService();
-  const center = getViewerCenter();
-  if (!service || !center) {
-    return;
-  }
-
-  const circle = service.addCircle({
-    position: [center.lon + 0.02, center.lat],
-    radius: overlayForm.circleRadius,
-    material: Cesium.Color.fromCssColorString("#ff6b6b").withAlpha(0.28),
-    outline: true,
-    outlineColor: Cesium.Color.fromCssColorString("#ff6b6b"),
-    outlineWidth: 4,
-    clickHighlight: true,
-    hoverHighlight: true,
-  });
-
-  rememberOverlay(circle.getId(), "circle");
-}
-
-function addRectangleOverlay() {
-  const service = getOverlayService();
-  const center = getViewerCenter();
-  if (!service || !center) {
-    return;
-  }
-
-  const rectangle = service.addRectangle({
-    coordinates: Cesium.Rectangle.fromDegrees(
-      center.lon - overlayForm.rectangleWidth,
-      center.lat - overlayForm.rectangleHeight,
-      center.lon - overlayForm.rectangleWidth * 0.2,
-      center.lat - overlayForm.rectangleHeight * 0.2,
-    ),
-    material: Cesium.Color.fromCssColorString("#2dd4bf").withAlpha(0.22),
-    outline: true,
-    outlineColor: Cesium.Color.fromCssColorString("#2dd4bf"),
-    outlineWidth: 3,
-    clickHighlight: true,
-    hoverHighlight: true,
-  });
-
-  rememberOverlay(rectangle.getId(), "rectangle");
-}
-
-function addPolylineOverlay() {
-  const service = getOverlayService();
-  const center = getViewerCenter();
-  if (!service || !center) {
-    return;
-  }
-
-  const polyline = service.addPolyline({
-    positions: [
-      [center.lon - 0.03, center.lat - 0.01],
-      [center.lon - 0.015, center.lat + 0.008],
-      [center.lon + 0.008, center.lat + 0.002],
-    ],
-    width: 4,
-    color: Cesium.Color.fromCssColorString("#f59e0b"),
-    clampToGround: true,
-    clickHighlight: true,
-    hoverHighlight: true,
-  });
-
-  rememberOverlay(polyline.getId(), "polyline");
-}
-
-function addPolygonOverlay() {
-  const service = getOverlayService();
-  const center = getViewerCenter();
-  if (!service || !center) {
-    return;
-  }
-
-  const polygon = service.addPolygon({
-    positions: [
-      [center.lon + 0.012, center.lat - 0.006],
-      [center.lon + 0.03, center.lat - 0.012],
-      [center.lon + 0.038, center.lat + 0.004],
-      [center.lon + 0.02, center.lat + 0.012],
-    ],
-    material: Cesium.Color.fromCssColorString("#60a5fa").withAlpha(0.26),
-    outline: true,
-    outlineColor: Cesium.Color.fromCssColorString("#60a5fa"),
-    outlineWidth: 2,
-    clickHighlight: true,
-    hoverHighlight: true,
-  });
-
-  rememberOverlay(polygon.getId(), "polygon");
-}
-
-function addInfoWindowOverlay() {
-  const service = getOverlayService();
-  const center = getViewerCenter();
-  if (!service || !center) {
-    return;
-  }
-
-  const marker = service.addMarker({
-    position: [center.lon, center.lat + 0.015],
-    pixelSize: 12,
-    color: Cesium.Color.CYAN,
-    outlineColor: Cesium.Color.WHITE,
-    outlineWidth: 2,
-  });
-
-  const infoWindow = service.addInfoWindow({
-    position: [center.lon, center.lat + 0.015],
-    content: `<div style="padding:10px"><h3 style="margin:0 0 8px 0">${overlayForm.infoTitle}</h3><p style="margin:0">${overlayForm.infoBody}</p></div>`,
-    width: 260,
-    anchorPixel: 18,
-    tailGap: 24,
-    showArrow: true,
-    arrowSize: 10,
-    positionOffset: "top",
-    updateInterval: 200,
-    hideWhenOutOfView: true,
-    show: true,
-    closable: true,
-  });
-
-  rememberOverlay(marker.getId(), "marker");
-  rememberOverlay(infoWindow.getId(), "infowindow");
-}
-
-function addRingOverlay() {
-  const service = getOverlayService();
-  const center = getViewerCenter();
-  if (!service || !center) {
-    return;
-  }
-
-  const ring = service.addRing({
-    position: [center.lon - 0.02, center.lat + 0.02, 0],
-    radius: 150,
-    color: Cesium.Color.RED,
-    lineColor: Cesium.Color.RED.withAlpha(0.8),
-    lineStyle: "dashed",
-    lineMaterialMode: "stripe",
-    stripeRepeat: 2048,
-    glowWidth: 24,
-    speed: 1,
-  });
-
-  rememberOverlay(ring.getId(), "ring");
-}
-
-function requireSelectedOverlay(): string | null {
-  if (!selectedOverlayId.value) {
-    showMessage("请先选择一个覆盖物");
-    return null;
-  }
-  return selectedOverlayId.value;
-}
-
-function toggleSelectedOverlayVisibility() {
-  const service = getOverlayService();
-  const overlayId = requireSelectedOverlay();
-  if (!service || !overlayId) {
-    return;
-  }
-
-  const target = overlayItems.value.find((item) => item.id === overlayId);
-  const nextVisible = !(target?.visible ?? true);
-  const changed = service.setOverlayVisible(overlayId, nextVisible);
-  if (!changed) {
-    showMessage("setOverlayVisible 失败");
-    return;
-  }
-
-  overlayItems.value = overlayItems.value.map((item) => (
-    item.id === overlayId ? { ...item, visible: nextVisible } : item
-  ));
-}
-
-function highlightSelectedOverlay() {
-  const service = getOverlayService();
-  const overlayId = requireSelectedOverlay();
-  if (!service || !overlayId) {
-    return;
-  }
-
-  const changed = service.setOverlayHighlight(overlayId, true, overlayForm.highlightReason);
-}
-
-function clearSelectedOverlayHighlight() {
-  const service = getOverlayService();
-  const overlayId = requireSelectedOverlay();
-  if (!service || !overlayId) {
-    return;
-  }
-
-  const changed = service.setOverlayHighlight(overlayId, false, overlayForm.highlightReason);
-}
-
-function toggleSelectedOverlayHighlight() {
-  const service = getOverlayService();
-  const overlayId = requireSelectedOverlay();
-  if (!service || !overlayId) {
-    return;
-  }
-
-  const changed = service.toggleOverlayHighlight(overlayId, overlayForm.highlightReason);
-}
-
-function startSelectedOverlayEdit() {
-  const service = getOverlayService() as any;
-  const overlayId = requireSelectedOverlay();
-  if (!service || !overlayId || typeof service.startOverlayEdit !== "function") {
-    return;
-  }
-
-  const started = service.startOverlayEdit(overlayId, {
-    vertex: {
-      color: "#38bdf8",
-      outlineColor: "#ffffff",
-      pixelSize: 11,
-    },
-  });
-  showMessage(started ? "已进入 overlay 编辑模式" : "overlay 编辑模式启动失败");
-}
-
-function stopOverlayEdit() {
-  const service = getOverlayService() as any;
-  if (!service || typeof service.stopOverlayEdit !== "function") {
-    return;
-  }
-
-  const result = service.stopOverlayEdit();
-}
-
-function removeSelectedOverlay() {
-  const service = getOverlayService();
-  const overlayId = requireSelectedOverlay();
-  if (!service || !overlayId) {
-    return;
-  }
-
-  const removed = service.removeOverlay(overlayId);
-  if (!removed) {
-    showMessage("removeOverlay 失败");
-    return;
-  }
-
-  overlayItems.value = overlayItems.value.filter((item) => item.id !== overlayId);
-  selectedOverlayId.value = overlayItems.value[0]?.id || "";
-}
-
-function removeAllOverlays() {
-  const service = getOverlayService();
-  if (!service) {
-    return;
-  }
-
-  service.removeAllOverlays();
-  overlayItems.value = [];
-  selectedOverlayId.value = "";
-}
-
-function applyOverlayHoverMode() {
-  const service = getOverlayService();
-  if (!service) {
-    return;
-  }
-
-  service.setHoverEnabled(overlayForm.hoverEnabled);
-  showMessage(`hover handler 已${overlayForm.hoverEnabled ? "开启" : "关闭"}`);
+async function rebuildDrawPlayground() {
+  await rebuildPlayground("draw");
 }
 
 const onLocaleSelect = (event: Event) => {
@@ -1245,7 +856,9 @@ onMounted(async () => {
   });
 
   await initMap(buildMapOverrides());
+  bindDrawCallbacks();
   syncOverlayInventory();
+  syncDrawInventory();
 });
 
 onBeforeUnmount(() => {
@@ -1319,7 +932,7 @@ onBeforeUnmount(() => {
 
 .tab-row {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   margin-top: 14px;
 }
@@ -1431,7 +1044,7 @@ select option {
 
 .toggle-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -1502,6 +1115,30 @@ select option {
   line-height: 1.6;
 }
 
+.event-log {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.event-log-item,
+.result-preview {
+  padding: 10px;
+  border: 1px solid rgba(51, 65, 85, 0.68);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.48);
+  color: #f8fafc;
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.result-preview {
+  margin: 12px 0 0;
+  white-space: pre-wrap;
+}
+
 button {
   height: 34px;
   padding: 0 12px;
@@ -1533,9 +1170,17 @@ button.primary {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 10px;
   width: 100%;
   height: 34px;
   background: rgba(15, 23, 42, 0.52);
+}
+
+.inventory-item span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .inventory-item.active {

@@ -3,15 +3,11 @@ import { buildPlaygroundToolbarLayersMenu } from '../playground/toolbarMapTypes'
 import type { MapPluginOptions } from '../src/core/types';
 
 describe('playground toolbar layers menu i18n contract', () => {
-  it('injects localized mapTypes for the selected base map provider', () => {
+  it('injects localized mapTypes for the selected mapService provider', () => {
     const options: Partial<MapPluginOptions> = {
-      baseMap: {
+      mapService: {
         provider: 'tdt',
-        type: 'img',
-        showLabel: true,
-      },
-      mapAuth: {
-        tdt: { token: 'test-token' },
+        serviceKey: 'test-token',
       },
       services: {
         toolbar: {
