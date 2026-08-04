@@ -127,6 +127,7 @@ const zhCN = {
       polygon_second_point: "地图上点击，绘制第二个点",
       polygon_third_point: "地图上点击，绘制第三个点，开始计算面积",
       polygon_continue: "左击继续绘制，右键删除点位，双击结束测面积",
+      polygon_no_intersection: "多边形不允许自相交",
       area_continue: "左击绘制区域，右键删除点位，双击结束绘制",
     },
     measurement: {

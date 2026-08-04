@@ -127,6 +127,7 @@ const enUS = {
       polygon_second_point: "Click on the map to place the second point",
       polygon_third_point: "Click on the map to place the third point and start area calculation",
       polygon_continue: "Left click to continue, right click to remove a point, double click to finish area measurement",
+      polygon_no_intersection: "Polygon self-intersection is not allowed",
       area_continue: "Left click to draw the area, right click to remove a point, double click to finish",
     },
     measurement: {

@@ -122,7 +122,7 @@ describe('OverlayService highlight state visuals', () => {
   it('uses the spec defaults, lets selected beat hover, and falls back to hover when selected styling is disabled', () => {
     const selected = createPolygonRoot('selected');
     const service = createService([selected]);
-    const hoverColor = Cesium.Color.fromCssColorString('#FFD54F')!.withAlpha(0.25);
+    const hoverColor = Cesium.Color.fromCssColorString('#FFFF00')!.withAlpha(0.25);
     const selectedColor = Cesium.Color.fromCssColorString('#00E5FF')!.withAlpha(0.4);
 
     expect(service.setOverlayHighlight('selected', true, 'hover')).toBe(true);

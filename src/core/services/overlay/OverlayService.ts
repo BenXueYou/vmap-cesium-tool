@@ -52,7 +52,7 @@ interface OverlayGraphicsSnapshot {
 type HighlightSnapshotSection = keyof OverlayGraphicsSnapshot;
 type HighlightSnapshotKey<TSection extends HighlightSnapshotSection> = keyof NonNullable<OverlayGraphicsSnapshot[TSection]>;
 
-const DEFAULT_HOVER_HIGHLIGHT_COLOR = '#FFD54F';
+const DEFAULT_HOVER_HIGHLIGHT_COLOR = '#FFFF00';
 const DEFAULT_SELECTION_HIGHLIGHT_COLOR = '#00E5FF';
 
 /**

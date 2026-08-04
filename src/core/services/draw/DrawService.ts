@@ -18,7 +18,13 @@ import { MeasurementLabelFactory } from './labels/measurementLabelFactory';
 import { DrawSessionStore } from './DrawSessionStore';
 import { resolveLabelStyle, resolveMeasurementTheme } from './measurementThemeResolver';
 import type { DrawCallbacks } from './types/drawState';
-import type { DrawMode, DrawOptions, DrawResult, DrawServiceOptions } from './types/drawTypes';
+import type {
+  DrawMode,
+  DrawOptions,
+  DrawResult,
+  DrawServiceOptions,
+  ResolvedMeasurementLabelStyle,
+} from './types/drawTypes';
 import { i18n as defaultI18n } from '../../../i18n';
 import {
   isClosedPolygonSelfIntersecting,
@@ -96,6 +102,18 @@ export class DrawService {
 
     const theme = resolveMeasurementTheme(options);
     const hintStyle = resolveLabelStyle(theme, 'hintBubble');
+    const invalidPolygonHintStyle = {
+      ...hintStyle,
+      textColor: Cesium.Color.RED,
+    };
+    const polygonNoIntersectionText = this.t('draw.hint.polygon_no_intersection');
+    const syncHintAtPosition = (
+      position: Cartesian3,
+      text: string,
+      style = hintStyle,
+    ): void => {
+      this.upsertHint(position, text, style);
+    };
     const syncHint = (position: Cartesian3): void => {
       if (!this.store.isDrawing()) {
         return;
@@ -104,18 +122,24 @@ export class DrawService {
       const text = buildHintText(mode, this.store.getTempPositions().length, {
         t: (key) => this.t(key),
       });
-      const currentHintEntity = this.store.getHintEntity();
       if (!text) {
-        this.store.setHintEntity(this.hintController.remove(currentHintEntity));
+        this.store.setHintEntity(this.hintController.remove(this.store.getHintEntity()));
         return;
       }
 
-      if (!currentHintEntity) {
-        this.store.setHintEntity(this.hintController.show(position, text, hintStyle));
+      syncHintAtPosition(position, text, hintStyle);
+    };
+    const showPolygonNoIntersectionHint = (position?: Cartesian3 | null): void => {
+      if (!this.store.isDrawing()) {
         return;
       }
 
-      this.hintController.update(currentHintEntity, position, text, hintStyle);
+      const hintPosition = position ?? this.store.getPreviewPosition() ?? this.store.getTempPositions().at(-1) ?? null;
+      if (!hintPosition) {
+        return;
+      }
+
+      syncHintAtPosition(hintPosition, polygonNoIntersectionText, invalidPolygonHintStyle);
     };
 
     this.interactionController.activate({
@@ -135,6 +159,7 @@ export class DrawService {
               allowTouch,
             });
             if (willSelfIntersect && !allowContinue) {
+              showPolygonNoIntersectionHint(position);
               return;
             }
           }
@@ -163,6 +188,24 @@ export class DrawService {
         }
 
         this.store.setPreviewPosition(position);
+        const currentMode = this.store.getMode();
+        const currentOptions = this.store.getOptions();
+        if (currentMode === 'polygon' && currentOptions?.selfIntersectionEnabled) {
+          const existing = this.store.getTempPositions();
+          if (existing.length >= 2) {
+            const allowTouch = !!currentOptions.selfIntersectionAllowTouch;
+            const allowContinue = !!currentOptions.selfIntersectionAllowContinue;
+            const willSelfIntersect = wouldCreatePolygonSelfIntersection(existing, position, {
+              allowTouch,
+            });
+            if (willSelfIntersect && !allowContinue) {
+              showPolygonNoIntersectionHint(position);
+              this.renderPreview();
+              return;
+            }
+          }
+        }
+
         syncHint(position);
         if (this.store.getTempPositions().length > 0) {
           this.renderPreview(position);
@@ -272,8 +315,10 @@ export class DrawService {
       if (selfIntersectionEnabled && !allowContinue) {
         const isSelfIntersecting = isClosedPolygonSelfIntersecting(positions, { allowTouch });
         if (isSelfIntersecting) {
-          this.endDrawing();
-          this.emitDrawEnd(null);
+          this.showPolygonNoIntersectionHint(
+            this.store.getPreviewPosition() ?? positions[positions.length - 1],
+            currentOptions,
+          );
           return;
         }
       }
@@ -339,6 +384,44 @@ export class DrawService {
 
   private emitDrawEnd(result: DrawResult | null): void {
     this.callbacks.onDrawEnd?.(result);
+  }
+
+  private upsertHint(
+    position: Cartesian3,
+    text: string,
+    style: ResolvedMeasurementLabelStyle,
+  ): void {
+    const currentHintEntity = this.store.getHintEntity();
+    if (!currentHintEntity) {
+      this.store.setHintEntity(this.hintController.show(position, text, style));
+      return;
+    }
+
+    this.hintController.update(currentHintEntity, position, text, style);
+  }
+
+  private getPolygonNoIntersectionHintStyle(options?: DrawOptions | null): ResolvedMeasurementLabelStyle {
+    return {
+      ...resolveLabelStyle(resolveMeasurementTheme(options ?? undefined), 'hintBubble'),
+      textColor: Cesium.Color.RED,
+    };
+  }
+
+  private showPolygonNoIntersectionHint(position?: Cartesian3 | null, options?: DrawOptions | null): void {
+    if (!this.store.isDrawing()) {
+      return;
+    }
+
+    const hintPosition = position ?? this.store.getPreviewPosition() ?? this.store.getTempPositions().at(-1) ?? null;
+    if (!hintPosition) {
+      return;
+    }
+
+    this.upsertHint(
+      hintPosition,
+      this.t('draw.hint.polygon_no_intersection'),
+      this.getPolygonNoIntersectionHintStyle(options),
+    );
   }
 
   private getOutputPositions(mode: Exclude<DrawMode, null>, positions: Cartesian3[]): Cartesian3[] {

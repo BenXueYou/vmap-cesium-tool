@@ -5,8 +5,8 @@ export type PlaygroundMapProvider = 'tdt' | 'tencent' | 'gaode' | 'baidu';
 const PLAYGROUND_MAP_SERVICES: Record<PlaygroundMapProvider, MapServiceConfig> = {
   tdt: {
     provider: 'tdt',
-    serviceKey: '0624b682cd8f7233295ed929682804b4 ',
-    secureKey: '9cf0eb485c2f1cb679a09ad000ac5797',
+    serviceKey: '9bf1c44688768ee36bfbafa00e02bb40 ',
+    secureKey: 'e5f627c86ca6ab33ce900ae479f04a2f',
   },
   tencent: {
     provider: 'tencent',

@@ -64,7 +64,7 @@ export const DEFAULT_TOTAL_AREA_LABEL_STYLE: ResolvedMeasurementLabelStyle = {
 };
 
 export const DEFAULT_HINT_OFFSET: MeasurementLabelOffset = {
-  x: 92,
+  x: 24,
   y: -16,
 };
 

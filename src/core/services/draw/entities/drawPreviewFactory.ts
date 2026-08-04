@@ -12,6 +12,41 @@ import { toCartographic } from '../geometry/drawPosition';
 import { MeasurementLabelFactory } from '../labels/measurementLabelFactory';
 import type { ResolvedMeasurementTheme } from '../types/drawTypes';
 
+const MIN_DISTINCT_VERTEX_DISTANCE_METERS = 0.001;
+const MIN_DISTINCT_VERTEX_DISTANCE_SQUARED = MIN_DISTINCT_VERTEX_DISTANCE_METERS ** 2;
+const MIN_POLYGON_AREA_SQUARE_METERS = 1e-6;
+
+function hasEnoughDistinctPolygonVertices(positions: Cartesian3[]): boolean {
+  const distinctPositions: Cartesian3[] = [];
+
+  for (const position of positions) {
+    const isDuplicate = distinctPositions.some((candidate) => (
+      Cesium.Cartesian3.distanceSquared(candidate, position) <= MIN_DISTINCT_VERTEX_DISTANCE_SQUARED
+    ));
+    if (!isDuplicate) {
+      distinctPositions.push(position);
+      if (distinctPositions.length >= 3) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+function getRenderablePolygonArea(positions: Cartesian3[]): number | null {
+  if (!hasEnoughDistinctPolygonVertices(positions)) {
+    return null;
+  }
+
+  try {
+    const area = calculatePolygonArea(positions);
+    return Number.isFinite(area) && area > MIN_POLYGON_AREA_SQUARE_METERS ? area : null;
+  } catch {
+    return null;
+  }
+}
+
 export class DrawPreviewFactory {
   constructor(
     private readonly viewer: Viewer,
@@ -45,12 +80,17 @@ export class DrawPreviewFactory {
       return entities;
     }
 
+    const area = getRenderablePolygonArea(allPositions);
+    if (area === null) {
+      return entities;
+    }
+
     entities.push(this.createPolygonFillEntity(allPositions, theme.fill.color, theme.stroke.clampToGround));
     entities.push(this.createPolylineEntity(allPositions, theme.stroke.color, theme.stroke.width, theme.stroke.clampToGround, true));
 
     const areaLabel = this.labelFactory.createAreaLabelEntity(
       allPositions,
-      calculatePolygonArea(allPositions),
+      area,
       'preview',
       theme,
     );
