@@ -72,7 +72,7 @@ export class MeasurementLabelFactory {
   }
 
   createDistanceLabelEntities(positions: Cartesian3[], theme: ResolvedMeasurementTheme): Entity[] {
-    if (positions.length < 2) {
+    if (!theme.showDistanceLabel || positions.length < 2) {
       return [];
     }
 
@@ -121,7 +121,7 @@ export class MeasurementLabelFactory {
     variant: 'preview' | 'final',
     theme: ResolvedMeasurementTheme,
   ): Entity | null {
-    if (positions.length < 3 || !Number.isFinite(area) || area <= 0) {
+    if (!theme.showAreaLabel || positions.length < 3 || !Number.isFinite(area) || area <= 0) {
       return null;
     }
 

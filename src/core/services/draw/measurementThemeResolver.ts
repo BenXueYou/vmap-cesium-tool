@@ -88,6 +88,8 @@ export function resolveMeasurementTheme(options?: DrawOptions | null): ResolvedM
       outlineColor: resolveColor(theme?.vertex?.outlineColor ?? DEFAULT_VERTEX_STYLE.outlineColor, DEFAULT_VERTEX_STYLE.outlineColor),
       outlineWidth: theme?.vertex?.outlineWidth ?? DEFAULT_VERTEX_STYLE.outlineWidth,
     },
+    showDistanceLabel: options?.showDistanceLabel ?? theme?.showDistanceLabel ?? false,
+    showAreaLabel: options?.showAreaLabel ?? theme?.showAreaLabel ?? false,
     segmentDistanceLabel: resolveLabel(options?.segmentDistanceLabelStyle ?? theme?.segmentDistanceLabel, DEFAULT_SEGMENT_DISTANCE_LABEL_STYLE),
     totalDistanceLabel: resolveLabel(options?.totalDistanceLabelStyle ?? theme?.totalDistanceLabel, DEFAULT_TOTAL_DISTANCE_LABEL_STYLE),
     previewAreaLabel: resolveLabel(options?.previewAreaLabelStyle ?? theme?.previewAreaLabel, DEFAULT_PREVIEW_AREA_LABEL_STYLE),

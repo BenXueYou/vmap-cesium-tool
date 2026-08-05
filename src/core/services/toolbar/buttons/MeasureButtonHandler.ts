@@ -67,6 +67,20 @@ export class MeasureButtonHandler extends BaseButtonHandler {
   private boundMeasurementService: MeasurementServiceLike | null = null;
   private boundDrawHelper: any = null;
 
+  private withDistanceMeasurementDefaults(drawOptions?: any): any {
+    return {
+      ...(drawOptions || {}),
+      showDistanceLabel: drawOptions?.showDistanceLabel ?? true,
+    };
+  }
+
+  private withAreaMeasurementDefaults(drawOptions?: any): any {
+    return {
+      ...(drawOptions || {}),
+      showAreaLabel: drawOptions?.showAreaLabel ?? true,
+    };
+  }
+
   /**
    * 构造函数
    * @param viewer Cesium Viewer 实例
@@ -317,7 +331,7 @@ export class MeasureButtonHandler extends BaseButtonHandler {
    */
   private startDistanceMeasurement(): void {
     const { measurementService, drawHelper, onDistanceStart, getDistanceDrawOptions } = this.options;
-    const drawOptions = getDistanceDrawOptions?.();
+    const drawOptions = this.withDistanceMeasurementDefaults(getDistanceDrawOptions?.());
     this.activeMeasurementMode = 'distance';
     
     if (measurementService) {
@@ -340,7 +354,7 @@ export class MeasureButtonHandler extends BaseButtonHandler {
    */
   private startAreaMeasurement(): void {
     const { measurementService, drawHelper, onAreaStart, getAreaDrawOptions } = this.options;
-    const drawOptions = getAreaDrawOptions?.();
+    const drawOptions = this.withAreaMeasurementDefaults(getAreaDrawOptions?.());
     this.activeMeasurementMode = 'area';
     
     if (measurementService) {

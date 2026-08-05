@@ -99,25 +99,33 @@ export class MeasurementService {
   startDistanceMeasurement(_drawOptions?: any): void {
     this.currentMode = 'distance';
     this.measurementCallback?.onMeasurementStart?.();
+    const drawOptions = {
+      ...(_drawOptions || {}),
+      showDistanceLabel: _drawOptions?.showDistanceLabel ?? true,
+    };
 
     if (typeof this.drawHelper?.startDrawingLine === 'function') {
-      this.drawHelper.startDrawingLine(_drawOptions);
+      this.drawHelper.startDrawingLine(drawOptions);
       return;
     }
 
-    this.drawHelper?.startDrawing?.('line', _drawOptions);
+    this.drawHelper?.startDrawing?.('line', drawOptions);
   }
 
   startAreaMeasurement(_drawOptions?: any): void {
     this.currentMode = 'area';
     this.measurementCallback?.onMeasurementStart?.();
+    const drawOptions = {
+      ...(_drawOptions || {}),
+      showAreaLabel: _drawOptions?.showAreaLabel ?? true,
+    };
 
     if (typeof this.drawHelper?.startDrawingPolygon === 'function') {
-      this.drawHelper.startDrawingPolygon(_drawOptions);
+      this.drawHelper.startDrawingPolygon(drawOptions);
       return;
     }
 
-    this.drawHelper?.startDrawing?.('polygon', _drawOptions);
+    this.drawHelper?.startDrawing?.('polygon', drawOptions);
   }
 
   clearMeasurements(): void {

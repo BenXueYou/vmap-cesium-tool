@@ -40,6 +40,8 @@ export interface LegacyDrawOptions {
   outlineWidth?: number;
   fillColor?: Cesium.Color | string;
   clampToGround?: boolean;
+  showAreaLabel?: boolean;
+  showDistanceLabel?: boolean;
   segmentDistanceLabelStyle?: MeasurementSummaryLabelStyle;
   totalDistanceLabelStyle?: MeasurementSummaryLabelStyle;
   previewAreaLabelStyle?: MeasurementSummaryLabelStyle;
@@ -136,6 +138,8 @@ export class DrawHelperAdapter {
       outlineColor: options.outlineColor,
       outlineWidth: options.outlineWidth,
       clampToGround: options.clampToGround,
+      showAreaLabel: options.showAreaLabel,
+      showDistanceLabel: options.showDistanceLabel,
       segmentDistanceLabelStyle: options.segmentDistanceLabelStyle,
       totalDistanceLabelStyle: options.totalDistanceLabelStyle,
       previewAreaLabelStyle: options.previewAreaLabelStyle,

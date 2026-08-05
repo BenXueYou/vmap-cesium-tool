@@ -39,6 +39,8 @@ export interface MeasurementTheme {
   stroke?: MeasurementStrokeStyle;
   fill?: MeasurementFillStyle;
   vertex?: MeasurementVertexStyle;
+  showDistanceLabel?: boolean;
+  showAreaLabel?: boolean;
   segmentDistanceLabel?: MeasurementSummaryLabelStyle;
   totalDistanceLabel?: MeasurementSummaryLabelStyle;
   previewAreaLabel?: MeasurementSummaryLabelStyle;
@@ -57,6 +59,8 @@ export interface DrawOptions {
   outlineColor?: Cesium.Color | string;
   outlineWidth?: number;
   clampToGround?: boolean;
+  showDistanceLabel?: boolean;
+  showAreaLabel?: boolean;
   segmentDistanceLabelStyle?: MeasurementSummaryLabelStyle;
   totalDistanceLabelStyle?: MeasurementSummaryLabelStyle;
   previewAreaLabelStyle?: MeasurementSummaryLabelStyle;
@@ -126,6 +130,8 @@ export interface ResolvedMeasurementTheme {
   stroke: ResolvedMeasurementStrokeStyle;
   fill: ResolvedMeasurementFillStyle;
   vertex: ResolvedMeasurementVertexStyle;
+  showDistanceLabel: boolean;
+  showAreaLabel: boolean;
   segmentDistanceLabel: ResolvedMeasurementLabelStyle;
   totalDistanceLabel: ResolvedMeasurementLabelStyle;
   previewAreaLabel: ResolvedMeasurementLabelStyle;
