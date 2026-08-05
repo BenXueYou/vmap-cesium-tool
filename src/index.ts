@@ -109,6 +109,8 @@ export {
   createToolbarService,
 } from './core/services';
 export type {
+  OverlayEditHandleOptions,
+  OverlayEditOptions,
   OverlayServiceOptions,
   OverlayPickingOptions,
   OverlaySelectionChangeEvent,

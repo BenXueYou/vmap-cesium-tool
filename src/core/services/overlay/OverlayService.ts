@@ -71,6 +71,26 @@ export interface OverlayServiceOptions {
   onOverlayEditEnd?: (entity: Entity | null) => void;
 }
 
+export interface OverlayEditHandleOptions {
+  enable?: boolean;
+  color?: Cesium.Color | string;
+  outlineColor?: Cesium.Color | string;
+  outlineWidth?: number;
+  pixelSize?: number;
+}
+
+export interface OverlayEditOptions {
+  vertex?: OverlayEditHandleOptions | boolean;
+  mid?: OverlayEditHandleOptions | boolean;
+  move?: OverlayEditHandleOptions | boolean;
+  rotate?: OverlayEditHandleOptions | boolean;
+  scale?: OverlayEditHandleOptions | boolean;
+  onChange?: (entity: Entity) => void;
+  onEnd?: (entity: Entity | null) => void;
+  onOverlayEditChange?: (entity: Entity) => void;
+  onOverlayEditEnd?: (entity: Entity | null) => void;
+}
+
 /**
  * 覆盖物拾取配置。
  *
@@ -121,10 +141,17 @@ interface ResolvedOverlayPickingOptions {
 }
 
 type OverlayEditKind = 'point' | 'polyline' | 'polygon' | 'rectangle' | 'circle';
+type OverlayEditHandleRole = 'point' | 'vertex' | 'mid' | 'move' | 'rotate' | 'scale';
+
+interface OverlayEditHandleMeta {
+  role: OverlayEditHandleRole;
+  index?: number;
+}
 
 interface OverlayEditHandleStyle {
   color: Cesium.Color;
   outlineColor: Cesium.Color;
+  outlineWidth: number;
   pixelSize: number;
 }
 
@@ -147,7 +174,10 @@ interface OverlayEditState {
   isDragging: boolean;
   cameraState: OverlayEditCameraState | null;
   previousCursor: string;
+  options: OverlayEditOptions;
 }
+
+const OVERLAY_EDIT_HANDLE_META_KEY = '__vmapOverlayEditHandleMeta';
 
 /**
  * 覆盖物服务类
@@ -209,7 +239,7 @@ export class OverlayService {
   private removeCameraMoveStartListener: (() => void) | null = null;
   private removeCameraMoveEndListener: (() => void) | null = null;
   private overlayEditEnabled = false;
-  private overlayEditOptions: Record<string, any> = {};
+  private overlayEditOptions: OverlayEditOptions = {};
   private overlayEditState: OverlayEditState | null = null;
 
   // 各种覆盖物工厂实例
@@ -685,7 +715,7 @@ export class OverlayService {
     this.resumeHoverAfterInteractionPause();
   }
 
-  setOverlayEditMode(enabled: boolean, overlayEditOptions?: Record<string, any>): void {
+  setOverlayEditMode(enabled: boolean, overlayEditOptions?: OverlayEditOptions): void {
     this.overlayEditEnabled = !!enabled;
     if (overlayEditOptions) {
       this.overlayEditOptions = {
@@ -703,7 +733,7 @@ export class OverlayService {
     return this.overlayEditEnabled;
   }
 
-  startOverlayEdit(entityOrId: OverlayEntity | Entity | string | number, overlayEditOptions?: Record<string, any>): boolean {
+  startOverlayEdit(entityOrId: OverlayEntity | Entity | string | number, overlayEditOptions?: OverlayEditOptions): boolean {
     const target = this.resolveEditableOverlay(entityOrId);
     if (!target) {
       return false;
@@ -716,12 +746,10 @@ export class OverlayService {
 
     this.stopOverlayEdit();
     this.overlayEditEnabled = true;
-    if (overlayEditOptions) {
-      this.overlayEditOptions = {
-        ...this.overlayEditOptions,
-        ...overlayEditOptions,
-      };
-    }
+    const mergedEditOptions = {
+      ...this.overlayEditOptions,
+      ...(overlayEditOptions || {}),
+    };
 
     const controlPoints = this.resolveEditableControlPoints(target, kind);
     if (controlPoints.length === 0) {
@@ -741,6 +769,7 @@ export class OverlayService {
       isDragging: false,
       cameraState: null,
       previousCursor: this.viewer.scene.canvas.style.cursor || '',
+      options: mergedEditOptions,
     };
 
     state.handles = this.createEditHandles(state);
@@ -751,6 +780,30 @@ export class OverlayService {
       const picked = this.viewer.scene.pick(click.position);
       const pickedEntity = this.resolvePickedEditHandle(picked);
       if (!pickedEntity) {
+        return;
+      }
+
+      const meta = this.getEditHandleMeta(pickedEntity);
+      if (
+        meta?.role === 'mid'
+        && state.kind === 'polyline'
+        && typeof meta.index === 'number'
+      ) {
+        const insertIndex = meta.index + 1;
+        const insertPosition = this.resolveEditHandlePosition(state, pickedEntity, click.position);
+        if (!insertPosition) {
+          return;
+        }
+
+        state.controlPoints.splice(insertIndex, 0, insertPosition.clone());
+        this.applyPolylinePositions(state.entity, state.controlPoints);
+        this.rebuildEditHandles(state);
+        this.emitOverlayEditChange(state);
+        state.activeHandleIndex = insertIndex;
+        state.isDragging = true;
+        state.cameraState = this.suspendCameraControls();
+        this.viewer.scene.canvas.style.cursor = 'grabbing';
+        this.viewer.scene.requestRender();
         return;
       }
 
@@ -775,7 +828,7 @@ export class OverlayService {
 
       this.applyDragForHandle(state, state.activeHandleIndex, position);
       this.syncEditHandles(state);
-      this.emitOverlayEditChange(state.entity);
+      this.emitOverlayEditChange(state);
       this.viewer.scene.requestRender();
     }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
 
@@ -783,6 +836,29 @@ export class OverlayService {
       this.releaseEditDrag(state);
       state.activeHandleIndex = null;
     }, Cesium.ScreenSpaceEventType.LEFT_UP);
+
+    handler.setInputAction((click: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
+      if (state.kind !== 'polyline') {
+        return;
+      }
+
+      const picked = this.viewer.scene.pick(click.position);
+      const pickedEntity = this.resolvePickedEditHandle(picked);
+      const meta = this.getEditHandleMeta(pickedEntity);
+      if (meta?.role !== 'vertex' || typeof meta.index !== 'number') {
+        return;
+      }
+
+      if (state.controlPoints.length <= 2 || meta.index < 0 || meta.index >= state.controlPoints.length) {
+        return;
+      }
+
+      state.controlPoints.splice(meta.index, 1);
+      this.applyPolylinePositions(state.entity, state.controlPoints);
+      this.rebuildEditHandles(state);
+      this.emitOverlayEditChange(state);
+      this.viewer.scene.requestRender();
+    }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
 
     handler.setInputAction(() => {
       this.stopOverlayEdit();
@@ -798,6 +874,7 @@ export class OverlayService {
     }
 
     const entity = state.entity;
+    const editOptions = state.options;
     this.releaseEditDrag(state);
     state.handles.forEach((handle) => {
       this.viewer.entities.remove(handle);
@@ -805,7 +882,7 @@ export class OverlayService {
     state.handler.destroy();
     this.overlayEditState = null;
     this.overlayEditEnabled = false;
-    this.emitOverlayEditEnd(entity);
+    this.emitOverlayEditEnd(entity, editOptions);
     this.resumeHoverAfterInteractionPause();
     this.viewer.scene.requestRender();
     return entity;
@@ -1026,34 +1103,191 @@ export class OverlayService {
   }
 
   private createEditHandles(state: OverlayEditState): Entity[] {
+    if (state.kind === 'polyline') {
+      return this.createPolylineEditHandles(state);
+    }
+
     const handles: Entity[] = [];
-    const style = this.resolveHandleStyle();
 
     state.controlPoints.forEach((position, index) => {
-      handles.push(this.viewer.entities.add({
-        id: `${String(state.entity.id)}__edit_handle_${index}`,
-        position: new Cesium.ConstantPositionProperty(position.clone()),
-        point: {
-          pixelSize: style.pixelSize,
-          color: style.color,
-          outlineColor: style.outlineColor,
-          outlineWidth: 2,
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        },
-      }));
+      const role = this.resolveHandleRole(state.kind, index);
+      const style = this.resolveHandleStyle(role, state.options);
+      handles.push(this.createEditHandleEntity(state, `${role}_${index}`, position, style, { role, index }));
     });
 
     return handles;
   }
 
-  private resolveHandleStyle(): OverlayEditHandleStyle {
-    const options = this.overlayEditOptions || {};
-    const vertex = options.vertex && typeof options.vertex === 'object' ? options.vertex : {};
+  private createPolylineEditHandles(state: OverlayEditState): Entity[] {
+    const handles: Entity[] = [];
+    const vertexStyle = this.resolveHandleStyle('vertex', state.options);
+    const midStyle = this.resolveHandleStyle('mid', state.options);
+
+    state.controlPoints.forEach((position, index) => {
+      handles.push(this.createEditHandleEntity(state, `vertex_${index}`, position, vertexStyle, { role: 'vertex', index }));
+    });
+
+    for (let index = 0; index < state.controlPoints.length - 1; index++) {
+      const midpoint = Cesium.Cartesian3.midpoint(
+        state.controlPoints[index],
+        state.controlPoints[index + 1],
+        new Cesium.Cartesian3(),
+      );
+      handles.push(this.createEditHandleEntity(state, `mid_${index}`, midpoint, midStyle, { role: 'mid', index }));
+    }
+
+    return handles;
+  }
+
+  private createEditHandleEntity(
+    state: OverlayEditState,
+    suffix: string,
+    position: Cesium.Cartesian3,
+    style: OverlayEditHandleStyle,
+    meta: OverlayEditHandleMeta,
+  ): Entity {
+    const handle = this.viewer.entities.add({
+      id: `${String(state.entity.id)}__edit_handle_${suffix}`,
+      position: new Cesium.ConstantPositionProperty(position.clone()),
+      point: {
+        pixelSize: style.pixelSize,
+        color: style.color,
+        outlineColor: style.outlineColor,
+        outlineWidth: style.outlineWidth,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      },
+    });
+
+    (handle as any)[OVERLAY_EDIT_HANDLE_META_KEY] = meta;
+    return handle;
+  }
+
+  private resolveHandleStyle(role: OverlayEditHandleRole, options: OverlayEditOptions): OverlayEditHandleStyle {
+    const handleOptions = this.resolveHandleOptions(role, options);
+    const fallback = this.getDefaultHandleStyle(role);
     return {
-      color: this.resolveHandleColor(vertex.color ?? '#1e88e5', Cesium.Color.fromCssColorString('#1e88e5')),
-      outlineColor: this.resolveHandleColor(vertex.outlineColor ?? '#ffffff', Cesium.Color.WHITE),
-      pixelSize: typeof vertex.pixelSize === 'number' ? vertex.pixelSize : 10,
+      color: this.resolveHandleColor(handleOptions?.color, fallback.color),
+      outlineColor: this.resolveHandleColor(handleOptions?.outlineColor, fallback.outlineColor),
+      outlineWidth: typeof handleOptions?.outlineWidth === 'number' ? handleOptions.outlineWidth : fallback.outlineWidth,
+      pixelSize: typeof handleOptions?.pixelSize === 'number' ? handleOptions.pixelSize : fallback.pixelSize,
     };
+  }
+
+  private resolveHandleOptions(role: OverlayEditHandleRole, options: OverlayEditOptions): OverlayEditHandleOptions | null {
+    const config = role === 'point'
+      ? options.move
+      : role === 'mid'
+        ? options.mid
+        : role === 'move'
+          ? options.move
+          : role === 'rotate'
+            ? options.rotate
+            : role === 'scale'
+              ? options.scale
+              : options.vertex;
+
+    if (config === false) {
+      return null;
+    }
+
+    return config && typeof config === 'object' ? config : null;
+  }
+
+  private getDefaultHandleStyle(role: OverlayEditHandleRole): OverlayEditHandleStyle {
+    if (role === 'point' || role === 'move') {
+      return {
+        color: Cesium.Color.fromCssColorString('#43a047'),
+        outlineColor: Cesium.Color.WHITE,
+        outlineWidth: 2,
+        pixelSize: 11,
+      };
+    }
+
+    if (role === 'mid') {
+      return {
+        color: Cesium.Color.fromCssColorString('#ec407a'),
+        outlineColor: Cesium.Color.WHITE,
+        outlineWidth: 2,
+        pixelSize: 9,
+      };
+    }
+
+    if (role === 'rotate') {
+      return {
+        color: Cesium.Color.fromCssColorString('#6d4c41'),
+        outlineColor: Cesium.Color.WHITE,
+        outlineWidth: 2,
+        pixelSize: 9,
+      };
+    }
+
+    if (role === 'scale') {
+      return {
+        color: Cesium.Color.fromCssColorString('#8e24aa'),
+        outlineColor: Cesium.Color.WHITE,
+        outlineWidth: 2,
+        pixelSize: 9,
+      };
+    }
+
+    return {
+      color: Cesium.Color.fromCssColorString('#1e88e5'),
+      outlineColor: Cesium.Color.WHITE,
+      outlineWidth: 2,
+      pixelSize: 10,
+    };
+  }
+
+  private resolveHandleRole(kind: OverlayEditKind, index: number): OverlayEditHandleRole {
+    if (kind === 'point') {
+      return 'point';
+    }
+
+    if (kind === 'circle') {
+      return index === 0 ? 'vertex' : 'mid';
+    }
+
+    return 'vertex';
+  }
+
+  private getEditHandleMeta(handle: Entity | null | undefined): OverlayEditHandleMeta | null {
+    return (handle as any)?.[OVERLAY_EDIT_HANDLE_META_KEY] ?? null;
+  }
+
+  private rebuildEditHandles(state: OverlayEditState): void {
+    state.handles.forEach((handle) => {
+      this.viewer.entities.remove(handle);
+    });
+    state.handles = this.createEditHandles(state);
+  }
+
+  private resolveEditHandlePosition(
+    state: OverlayEditState,
+    handle: Entity,
+    screenPosition?: Cesium.Cartesian2,
+  ): Cesium.Cartesian3 | null {
+    if (screenPosition) {
+      const pickedPosition = this.pickEditPosition(screenPosition);
+      if (pickedPosition) {
+        return pickedPosition;
+      }
+    }
+
+    const value = handle.position?.getValue(Cesium.JulianDate.now());
+    if (value) {
+      return value.clone();
+    }
+
+    const meta = this.getEditHandleMeta(handle);
+    if (meta?.role === 'mid' && typeof meta.index === 'number') {
+      const start = state.controlPoints[meta.index];
+      const end = state.controlPoints[meta.index + 1];
+      if (start && end) {
+        return Cesium.Cartesian3.midpoint(start, end, new Cesium.Cartesian3());
+      }
+    }
+
+    return null;
   }
 
   private resolveHandleColor(color: Cesium.Color | string | undefined, fallback: Cesium.Color): Cesium.Color {
@@ -1148,8 +1382,6 @@ export class OverlayService {
   }
 
   private syncEditHandles(state: OverlayEditState): void {
-    const style = this.resolveHandleStyle();
-
     if (state.kind === 'point') {
       if (state.handles[0]) {
         state.handles[0].position = new Cesium.ConstantPositionProperty(state.controlPoints[0].clone());
@@ -1183,19 +1415,42 @@ export class OverlayService {
       return;
     }
 
-    state.controlPoints.forEach((point, index) => {
-      if (state.handles[index]) {
-        state.handles[index].position = new Cesium.ConstantPositionProperty(point.clone());
+    state.handles.forEach((handle) => {
+      const meta = this.getEditHandleMeta(handle);
+      if (!meta) {
+        return;
+      }
+
+      if (meta.role === 'vertex' || meta.role === 'point') {
+        const point = typeof meta.index === 'number' ? state.controlPoints[meta.index] : state.controlPoints[0];
+        if (point) {
+          handle.position = new Cesium.ConstantPositionProperty(point.clone());
+        }
+        return;
+      }
+
+      if (meta.role === 'mid' && typeof meta.index === 'number') {
+        const start = state.controlPoints[meta.index];
+        const end = state.controlPoints[meta.index + 1];
+        if (start && end) {
+          handle.position = new Cesium.ConstantPositionProperty(
+            Cesium.Cartesian3.midpoint(start, end, new Cesium.Cartesian3()),
+          );
+        }
       }
     });
   }
 
-  private emitOverlayEditChange(entity: OverlayEntity): void {
-    this.options.onOverlayEditChange?.(entity);
+  private emitOverlayEditChange(state: OverlayEditState): void {
+    this.options.onOverlayEditChange?.(state.entity);
+    state.options.onOverlayEditChange?.(state.entity);
+    state.options.onChange?.(state.entity);
   }
 
-  private emitOverlayEditEnd(entity: OverlayEntity | null): void {
+  private emitOverlayEditEnd(entity: OverlayEntity | null, editOptions: OverlayEditOptions): void {
     this.options.onOverlayEditEnd?.(entity);
+    editOptions.onOverlayEditEnd?.(entity);
+    editOptions.onEnd?.(entity);
   }
 
   private applyPointPosition(entity: OverlayEntity, position: Cesium.Cartesian3): void {

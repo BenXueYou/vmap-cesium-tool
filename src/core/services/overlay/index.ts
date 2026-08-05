@@ -7,6 +7,8 @@
 // 导出覆盖物服务
 export { OverlayService } from './OverlayService';
 export type {
+  OverlayEditHandleOptions,
+  OverlayEditOptions,
   OverlayServiceOptions,
   OverlayPickingOptions,
   OverlaySelectionChangeEvent,

@@ -1,5 +1,6 @@
 import type * as Cesium from 'cesium';
 import type { CoordSystem, LngLat } from '../../mapProviders/coordinates/types';
+import type { OverlayEditOptions } from '../overlay';
 
 export type MarkDrawType = 'point' | 'polyline' | 'polygon' | 'rectangle' | 'circle';
 export type MarkWorkAreaType = 'polygon' | 'circle' | 'rectangle';
@@ -25,7 +26,7 @@ export interface MarkDrawOptions {
   onComplete?: (result: MarkDrawResult | null) => void;
 }
 
-export interface MarkEditOptions {
+export interface MarkEditOptions extends OverlayEditOptions {
   outputCoordSystem?: CoordSystem;
 }
 

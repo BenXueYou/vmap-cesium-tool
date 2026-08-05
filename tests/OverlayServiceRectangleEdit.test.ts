@@ -38,6 +38,39 @@ function createService(root: Cesium.Entity, overlay: Rectangle) {
 }
 
 describe('OverlayService rectangle edit', () => {
+  it('uses the 0.x vertex handle appearance for rectangle corners by default', () => {
+    const viewer = createViewerStub();
+    const overlay = new Rectangle(viewer, {
+      id: 'rect-style',
+      coordinates: Cesium.Rectangle.fromDegrees(0, 0, 2, 2),
+    });
+
+    const root = overlay.getEntity() as Cesium.Entity;
+    const service = createService(root, overlay);
+    const kind = service.detectEditableKind(root);
+    const controlPoints = service.resolveEditableControlPoints(root, kind);
+    const handles = service.createEditHandles({
+      kind,
+      entity: root,
+      controlPoints,
+      handles: [],
+      handler: {} as Cesium.ScreenSpaceEventHandler,
+      activeHandleIndex: null,
+      radiusMeters: undefined,
+      isDragging: false,
+      cameraState: null,
+      previousCursor: '',
+      options: {},
+    });
+
+    const now = Cesium.JulianDate.now();
+    const firstHandle = handles[0];
+    expect(firstHandle.point?.pixelSize?.getValue(now)).toBe(10);
+    expect(firstHandle.point?.outlineWidth?.getValue(now)).toBe(2);
+    expect(firstHandle.point?.color?.getValue(now)).toEqual(Cesium.Color.fromCssColorString('#1e88e5'));
+    expect(firstHandle.point?.outlineColor?.getValue(now)).toEqual(Cesium.Color.WHITE);
+  });
+
   it('treats thick rectangle overlays as rectangles and updates the whole shape when a corner is dragged', () => {
     const viewer = createViewerStub();
     const overlay = new Rectangle(viewer, {

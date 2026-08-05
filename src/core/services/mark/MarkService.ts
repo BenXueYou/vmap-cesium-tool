@@ -3,7 +3,7 @@ import { DrawService } from '../draw/DrawService';
 import { DrawInteractionController } from '../draw/DrawInteractionController';
 import { calculateDistance } from '../draw/geometry/drawGeometry';
 import { toCartographic } from '../draw/geometry/drawPosition';
-import { OverlayService } from '../overlay/OverlayService';
+import { OverlayService, type OverlayEditOptions } from '../overlay/OverlayService';
 import { cartesianToLngLat } from '../../mapProviders/coordinates/cesium';
 import { DEFAULT_MARK_COLORS } from './markDefaults';
 import { buildMarkDrawResult, exportMarkEntity } from './markResult';
@@ -27,11 +27,21 @@ interface ActiveDrawContext {
 
 interface EditState {
   entity: Cesium.Entity;
-  handleEntities: Cesium.Entity[];
-  handler: Cesium.ScreenSpaceEventHandler;
-  activeHandleIndex: number | null;
+  handleEntities?: Cesium.Entity[];
+  handler?: Cesium.ScreenSpaceEventHandler;
+  activeHandleIndex?: number | null;
   options?: MarkEditOptions;
+  delegated?: boolean;
 }
+
+type MarkEditHandleRole = 'vertex' | 'mid';
+
+interface MarkEditHandleMeta {
+  role: MarkEditHandleRole;
+  index: number;
+}
+
+const MARK_EDIT_HANDLE_META_KEY = '__vmapMarkEditHandleMeta';
 
 export class MarkService {
   private readonly drawService: DrawService;
@@ -215,9 +225,10 @@ export class MarkService {
   }
 
   disableEdit(): MarkDrawResult | null {
+    const result = this.stopEdit();
     this.editEnabled = false;
     this.overlayService.setOverlayEditMode(false);
-    return this.stopEdit();
+    return result;
   }
 
   startEdit(entityOrId: Cesium.Entity | string, options?: MarkEditOptions): boolean {
@@ -235,29 +246,47 @@ export class MarkService {
     }
 
     this.editEnabled = true;
+    if (metadata.type === 'rectangle' || metadata.type === 'circle') {
+      return this.startUnifiedOverlayEdit(entity, metadata, options);
+    }
+
     this.overlayService.setOverlayEditMode(true, options);
 
-    const handleEntities = metadata.controlPoints.map((point, index) => {
-      const handle = this.viewer.entities.add({
-        id: `${entity.id}__handle_${index}`,
-        position: point.clone(),
-        point: {
-          pixelSize: 10,
-          color: Cesium.Color.WHITE,
-          outlineColor: Cesium.Color.BLACK,
-          outlineWidth: 2,
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        },
-      });
-      return handle;
-    });
+    let handleEntities = this.createEditHandleEntities(entity, metadata);
 
     const handler = new Cesium.ScreenSpaceEventHandler(this.viewer.scene.canvas);
     let activeHandleIndex: number | null = null;
     handler.setInputAction((click: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
       const picked = this.viewer.scene.pick(click.position);
-      const pickedId = picked?.id instanceof Cesium.Entity ? String(picked.id.id) : '';
-      activeHandleIndex = handleEntities.findIndex((item) => String(item.id) === pickedId);
+      const pickedEntity = picked?.id instanceof Cesium.Entity ? picked.id : null;
+      const meta = this.getEditHandleMeta(pickedEntity);
+      if (!meta) {
+        activeHandleIndex = null;
+        return;
+      }
+
+      if (meta.role === 'mid' && metadata.type === 'polyline') {
+        const insertIndex = meta.index + 1;
+        const insertPosition = this.resolveEditHandlePosition(metadata, pickedEntity, click.position);
+        if (!insertPosition) {
+          activeHandleIndex = null;
+          return;
+        }
+
+        metadata.controlPoints.splice(insertIndex, 0, insertPosition.clone());
+        this.updateEntityGeometry(entity, metadata);
+        handleEntities = this.rebuildEditHandleEntities(entity, metadata, handleEntities);
+        activeHandleIndex = insertIndex;
+        if (this.editState) {
+          this.editState.handleEntities = handleEntities;
+          this.editState.activeHandleIndex = activeHandleIndex;
+        }
+        this.callbacks?.onEditChange?.(buildMarkDrawResult(entity, options?.outputCoordSystem || 'WGS84'));
+        this.viewer.scene.requestRender();
+        return;
+      }
+
+      activeHandleIndex = meta.role === 'vertex' ? meta.index : null;
     }, Cesium.ScreenSpaceEventType.LEFT_DOWN);
 
     handler.setInputAction((movement: Cesium.ScreenSpaceEventHandler.MotionEvent) => {
@@ -300,6 +329,32 @@ export class MarkService {
       activeHandleIndex = null;
     }, Cesium.ScreenSpaceEventType.LEFT_UP);
 
+    handler.setInputAction((click: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
+      if (metadata.type !== 'polyline') {
+        return;
+      }
+
+      const picked = this.viewer.scene.pick(click.position);
+      const pickedEntity = picked?.id instanceof Cesium.Entity ? picked.id : null;
+      const meta = this.getEditHandleMeta(pickedEntity);
+      if (!meta || meta.role !== 'vertex') {
+        return;
+      }
+
+      if (metadata.controlPoints.length <= 2 || meta.index < 0 || meta.index >= metadata.controlPoints.length) {
+        return;
+      }
+
+      metadata.controlPoints.splice(meta.index, 1);
+      this.updateEntityGeometry(entity, metadata);
+      handleEntities = this.rebuildEditHandleEntities(entity, metadata, handleEntities);
+      if (this.editState) {
+        this.editState.handleEntities = handleEntities;
+      }
+      this.callbacks?.onEditChange?.(buildMarkDrawResult(entity, options?.outputCoordSystem || 'WGS84'));
+      this.viewer.scene.requestRender();
+    }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
+
     this.editState = { entity, handleEntities, handler, activeHandleIndex, options };
     return true;
   }
@@ -308,9 +363,17 @@ export class MarkService {
     if (!this.editState) {
       return null;
     }
-    const { entity, handleEntities, handler, options } = this.editState;
-    handleEntities.forEach((item) => this.viewer.entities.remove(item));
-    handler.destroy();
+    const { entity, handleEntities, handler, options, delegated } = this.editState;
+    if (delegated) {
+      const result = buildMarkDrawResult(entity, options?.outputCoordSystem || 'WGS84');
+      this.overlayService.stopOverlayEdit();
+      if (this.editState?.entity === entity) {
+        this.editState = null;
+      }
+      return result;
+    }
+    (handleEntities || []).forEach((item) => this.viewer.entities.remove(item));
+    handler?.destroy();
     this.editState = null;
     this.overlayService.setOverlayEditMode(false);
     const result = buildMarkDrawResult(entity, options?.outputCoordSystem || 'WGS84');
@@ -387,6 +450,59 @@ export class MarkService {
     return (entity as Cesium.Entity & { _markMeta?: MarkEntityMetadata })._markMeta || null;
   }
 
+  private startUnifiedOverlayEdit(
+    entity: Cesium.Entity,
+    metadata: MarkEntityMetadata,
+    options?: MarkEditOptions,
+  ): boolean {
+    const outputCoordSystem = options?.outputCoordSystem || 'WGS84';
+    const sessionOptions: OverlayEditOptions = {
+      ...options,
+      onChange: (changedEntity) => {
+        if (changedEntity !== entity) {
+          options?.onChange?.(changedEntity);
+          options?.onOverlayEditChange?.(changedEntity);
+          return;
+        }
+        this.syncMetadataFromEntity(entity, metadata);
+        this.callbacks?.onEditChange?.(buildMarkDrawResult(entity, outputCoordSystem));
+        options?.onOverlayEditChange?.(changedEntity);
+        options?.onChange?.(changedEntity);
+      },
+      onEnd: (endedEntity) => {
+        if (endedEntity && endedEntity !== entity) {
+          options?.onEnd?.(endedEntity);
+          options?.onOverlayEditEnd?.(endedEntity);
+          return;
+        }
+        if (endedEntity) {
+          this.syncMetadataFromEntity(entity, metadata);
+        }
+        this.editState = null;
+        this.editEnabled = false;
+        const result = endedEntity ? buildMarkDrawResult(entity, outputCoordSystem) : null;
+        this.callbacks?.onEditEnd?.(result);
+        options?.onOverlayEditEnd?.(endedEntity);
+        options?.onEnd?.(endedEntity);
+      },
+    };
+
+    this.overlayService.setOverlayEditMode(true, options);
+    this.editState = {
+      entity,
+      delegated: true,
+      options,
+    };
+
+    const started = this.overlayService.startOverlayEdit(entity, sessionOptions);
+    if (!started) {
+      this.editState = null;
+      this.editEnabled = false;
+      this.overlayService.setOverlayEditMode(false);
+    }
+    return started;
+  }
+
   private applyStyle(entity: Cesium.Entity, type: MarkDrawType, color: string): void {
     const resolvedColor = Cesium.Color.fromCssColorString(color);
     if (type === 'polyline' && entity.polyline) {
@@ -450,6 +566,103 @@ export class MarkService {
     }
   }
 
+  private createEditHandleEntities(entity: Cesium.Entity, metadata: MarkEntityMetadata): Cesium.Entity[] {
+    const handles = metadata.controlPoints.map((point, index) => (
+      this.createHandleEntity(entity, point, {
+        role: 'vertex',
+        index,
+      }, {
+        color: '#1e88e5',
+        outlineColor: '#ffffff',
+        pixelSize: 10,
+      })
+    ));
+
+    if (metadata.type === 'polyline') {
+      for (let index = 0; index < metadata.controlPoints.length - 1; index++) {
+        const midpoint = Cesium.Cartesian3.midpoint(
+          metadata.controlPoints[index],
+          metadata.controlPoints[index + 1],
+          new Cesium.Cartesian3(),
+        );
+        handles.push(this.createHandleEntity(entity, midpoint, {
+          role: 'mid',
+          index,
+        }, {
+          color: '#ec407a',
+          outlineColor: '#ffffff',
+          pixelSize: 8,
+        }));
+      }
+    }
+
+    return handles;
+  }
+
+  private createHandleEntity(
+    entity: Cesium.Entity,
+    position: Cesium.Cartesian3,
+    meta: MarkEditHandleMeta,
+    style: { color: string; outlineColor: string; pixelSize: number },
+  ): Cesium.Entity {
+    const handle = this.viewer.entities.add({
+      id: `${entity.id}__handle_${meta.role}_${meta.index}`,
+      position: position.clone(),
+      point: {
+        pixelSize: style.pixelSize,
+        color: Cesium.Color.fromCssColorString(style.color),
+        outlineColor: Cesium.Color.fromCssColorString(style.outlineColor),
+        outlineWidth: 2,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      },
+    });
+
+    (handle as Cesium.Entity & Record<string, unknown>)[MARK_EDIT_HANDLE_META_KEY] = meta;
+    return handle;
+  }
+
+  private rebuildEditHandleEntities(
+    entity: Cesium.Entity,
+    metadata: MarkEntityMetadata,
+    currentHandles: Cesium.Entity[],
+  ): Cesium.Entity[] {
+    currentHandles.forEach((handle) => this.viewer.entities.remove(handle));
+    return this.createEditHandleEntities(entity, metadata);
+  }
+
+  private getEditHandleMeta(handle: Cesium.Entity | null): MarkEditHandleMeta | null {
+    return (handle as Cesium.Entity & Record<string, unknown> | null)?.[MARK_EDIT_HANDLE_META_KEY] as MarkEditHandleMeta | null;
+  }
+
+  private resolveEditHandlePosition(
+    metadata: MarkEntityMetadata,
+    handle: Cesium.Entity,
+    screenPosition?: Cesium.Cartesian2,
+  ): Cesium.Cartesian3 | null {
+    if (screenPosition) {
+      const picked = this.pickPosition(screenPosition);
+      if (picked) {
+        return picked;
+      }
+    }
+
+    const value = handle.position?.getValue(Cesium.JulianDate.now());
+    if (value) {
+      return value.clone();
+    }
+
+    const meta = this.getEditHandleMeta(handle);
+    if (meta?.role === 'mid') {
+      const start = metadata.controlPoints[meta.index];
+      const end = metadata.controlPoints[meta.index + 1];
+      if (start && end) {
+        return Cesium.Cartesian3.midpoint(start, end, new Cesium.Cartesian3());
+      }
+    }
+
+    return null;
+  }
+
   private syncEditHandlePositions(metadata: MarkEntityMetadata, handleEntities: Cesium.Entity[]): void {
     if (metadata.type === 'rectangle' && metadata.controlPoints.length >= 2) {
       const corners = this.getRectanglePositions(metadata.controlPoints);
@@ -469,9 +682,28 @@ export class MarkService {
       return;
     }
 
-    metadata.controlPoints.forEach((point, index) => {
-      if (handleEntities[index]) {
-        handleEntities[index].position = new Cesium.ConstantPositionProperty(point.clone());
+    handleEntities.forEach((handle) => {
+      const meta = this.getEditHandleMeta(handle);
+      if (!meta) {
+        return;
+      }
+
+      if (meta.role === 'vertex') {
+        const point = metadata.controlPoints[meta.index];
+        if (point) {
+          handle.position = new Cesium.ConstantPositionProperty(point.clone());
+        }
+        return;
+      }
+
+      if (meta.role === 'mid') {
+        const start = metadata.controlPoints[meta.index];
+        const end = metadata.controlPoints[meta.index + 1];
+        if (start && end) {
+          handle.position = new Cesium.ConstantPositionProperty(
+            Cesium.Cartesian3.midpoint(start, end, new Cesium.Cartesian3()),
+          );
+        }
       }
     });
   }
@@ -501,6 +733,111 @@ export class MarkService {
     const R = 6378137.0;
     const dLon = Math.max(0, radiusMeters) / (R * Math.max(Math.cos(carto.latitude), 1e-6));
     return Cesium.Cartesian3.fromRadians(carto.longitude + dLon, carto.latitude, carto.height ?? 0);
+  }
+
+  private syncMetadataFromEntity(entity: Cesium.Entity, metadata: MarkEntityMetadata): void {
+    if (metadata.type === 'rectangle') {
+      const rect = this.resolveRectangleCoordinates(entity);
+      if (!rect) {
+        return;
+      }
+      metadata.controlPoints = this.rectangleToCornerPoints(rect, this.resolveRectangleHeight(entity));
+      metadata.radius = undefined;
+      return;
+    }
+
+    if (metadata.type === 'circle') {
+      const center = this.resolveCircleCenter(entity);
+      const radius = this.resolveCircleRadius(entity);
+      if (!center || !(radius > 0)) {
+        return;
+      }
+      metadata.controlPoints = [center, this.circleRadiusHandlePosition(center, radius)];
+      metadata.radius = radius;
+      return;
+    }
+
+    if (metadata.type === 'point' && entity.position) {
+      const position = entity.position.getValue(Cesium.JulianDate.now());
+      if (position) {
+        metadata.controlPoints = [position.clone()];
+      }
+      return;
+    }
+
+    if (metadata.type === 'polyline' && entity.polyline?.positions) {
+      const positions = entity.polyline.positions.getValue(Cesium.JulianDate.now());
+      if (Array.isArray(positions)) {
+        metadata.controlPoints = positions.map((point) => point.clone());
+      }
+      return;
+    }
+
+    if (metadata.type === 'polygon' && entity.polygon?.hierarchy) {
+      const hierarchy = entity.polygon.hierarchy.getValue(Cesium.JulianDate.now());
+      const positions = Array.isArray(hierarchy) ? hierarchy : hierarchy?.positions;
+      if (Array.isArray(positions)) {
+        metadata.controlPoints = positions.map((point) => point.clone());
+      }
+    }
+  }
+
+  private resolveRectangleCoordinates(entity: Cesium.Entity): Cesium.Rectangle | null {
+    if (entity.rectangle?.coordinates) {
+      const rect = entity.rectangle.coordinates.getValue(Cesium.JulianDate.now());
+      if (rect) {
+        return Cesium.Rectangle.clone(rect);
+      }
+    }
+
+    const ringRect = (entity as Cesium.Entity & { _outerRectangle?: Cesium.Rectangle })._outerRectangle;
+    return ringRect ? Cesium.Rectangle.clone(ringRect) : null;
+  }
+
+  private rectangleToCornerPoints(rect: Cesium.Rectangle, height = 0): Cesium.Cartesian3[] {
+    return [
+      Cesium.Cartesian3.fromRadians(rect.west, rect.south, height),
+      Cesium.Cartesian3.fromRadians(rect.east, rect.south, height),
+      Cesium.Cartesian3.fromRadians(rect.east, rect.north, height),
+      Cesium.Cartesian3.fromRadians(rect.west, rect.north, height),
+    ];
+  }
+
+  private resolveRectangleHeight(entity: Cesium.Entity): number {
+    const heightValue = entity.rectangle && 'height' in entity.rectangle
+      ? (entity.rectangle as Cesium.RectangleGraphics & { height?: Cesium.Property }).height?.getValue?.(Cesium.JulianDate.now())
+      : undefined;
+    return Number.isFinite(heightValue) ? Number(heightValue) : 0;
+  }
+
+  private resolveCircleCenter(entity: Cesium.Entity): Cesium.Cartesian3 | null {
+    const entityPosition = entity.position?.getValue(Cesium.JulianDate.now());
+    if (entityPosition) {
+      return entityPosition.clone();
+    }
+
+    const centerCartographic = (entity as Cesium.Entity & { _centerCartographic?: Cesium.Cartographic })._centerCartographic;
+    if (centerCartographic) {
+      return Cesium.Cartesian3.fromRadians(
+        centerCartographic.longitude,
+        centerCartographic.latitude,
+        centerCartographic.height ?? 0,
+      );
+    }
+
+    return null;
+  }
+
+  private resolveCircleRadius(entity: Cesium.Entity): number {
+    if (entity.ellipse?.semiMajorAxis) {
+      const radius = entity.ellipse.semiMajorAxis.getValue(Cesium.JulianDate.now());
+      if (Number.isFinite(radius)) {
+        return Number(radius);
+      }
+    }
+
+    const primitiveRadius = (entity as Cesium.Entity & { _outerRadius?: number })._outerRadius;
+    return Number.isFinite(primitiveRadius) ? Number(primitiveRadius) : 0;
   }
 
   private updateRectangleControlPoints(

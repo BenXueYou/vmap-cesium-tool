@@ -128,5 +128,15 @@ describe('OverlayService circle edit', () => {
     expect(state.kind).toBe('circle');
     expect(state.handles).toHaveLength(2);
     expect(store).toHaveLength(2);
+
+    const now = Cesium.JulianDate.now();
+    const centerHandle = state.handles[0] as Cesium.Entity;
+    const radiusHandle = state.handles[1] as Cesium.Entity;
+    expect(centerHandle.point?.pixelSize?.getValue(now)).toBe(10);
+    expect(centerHandle.point?.color?.getValue(now)).toEqual(Cesium.Color.fromCssColorString('#1e88e5'));
+    expect(centerHandle.point?.outlineColor?.getValue(now)).toEqual(Cesium.Color.WHITE);
+    expect(radiusHandle.point?.pixelSize?.getValue(now)).toBe(9);
+    expect(radiusHandle.point?.color?.getValue(now)).toEqual(Cesium.Color.fromCssColorString('#ec407a'));
+    expect(radiusHandle.point?.outlineColor?.getValue(now)).toEqual(Cesium.Color.WHITE);
   });
 });

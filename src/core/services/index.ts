@@ -7,6 +7,8 @@
 // 导出覆盖物服务
 export { OverlayService, resolveOverlayPickCandidates } from './overlay';
 export type {
+  OverlayEditHandleOptions,
+  OverlayEditOptions,
   OverlayPickCandidate,
   OverlayPickReason,
   OverlayPickResolverOptions,
