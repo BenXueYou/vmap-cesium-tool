@@ -6,6 +6,7 @@ import type {
   MapServiceProvider,
   OnlineMapServiceConfig,
   OnlineMapServiceProvider,
+  PrivateMapServiceConfig,
 } from './types';
 
 const clean = (value?: string) => (value || '').trim();
@@ -115,18 +116,30 @@ export function normalizeMapServiceConfig(mapService: MapServiceConfig): MapServ
     const maximumLevel = Number.isFinite(Number(privateMapService.maximumLevel))
       ? Number(privateMapService.maximumLevel)
       : undefined;
+    const credit = clean(privateMapService.credit);
 
-    return {
+    const normalizedPrivateMapService: PrivateMapServiceConfig = {
       provider: 'private',
       offlineMapUrl,
-      rectangle: privateMapService.rectangle,
-      minimumLevel,
-      maximumLevel,
-      credit: clean(privateMapService.credit),
-      cameraBounds: privateMapService.cameraBounds
-        ? { ...privateMapService.cameraBounds }
-        : undefined,
     };
+
+    if (privateMapService.rectangle) {
+      normalizedPrivateMapService.rectangle = privateMapService.rectangle;
+    }
+    if (minimumLevel !== undefined) {
+      normalizedPrivateMapService.minimumLevel = minimumLevel;
+    }
+    if (maximumLevel !== undefined) {
+      normalizedPrivateMapService.maximumLevel = maximumLevel;
+    }
+    if (credit) {
+      normalizedPrivateMapService.credit = credit;
+    }
+    if (privateMapService.cameraBounds) {
+      normalizedPrivateMapService.cameraBounds = { ...privateMapService.cameraBounds };
+    }
+
+    return normalizedPrivateMapService;
   }
 
   const onlineMapService = mapService as OnlineMapServiceConfig;
