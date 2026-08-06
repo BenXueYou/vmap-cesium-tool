@@ -74,10 +74,20 @@ describe('MarkService point and polygon edit regression', () => {
 
     service.entities.set(String(point.id), point);
 
-    expect(service.startEdit(point, { outputCoordSystem: 'WGS84' })).toBe(true);
+    expect(service.startEdit(point, {
+      outputCoordSystem: 'WGS84',
+      move: {
+        color: '#00ff00',
+        pixelSize: 13,
+      },
+    })).toBe(true);
     expect(overlayService.startOverlayEdit).toHaveBeenCalledTimes(1);
 
     const sessionOptions = overlayService.startOverlayEdit.mock.calls[0][1];
+    expect(sessionOptions.move).toEqual({
+      color: '#00ff00',
+      pixelSize: 13,
+    });
     overlayService.stopOverlayEdit.mockImplementation(() => sessionOptions.onEnd(point));
 
     point.position = new Cesium.ConstantPositionProperty(Cesium.Cartesian3.fromDegrees(116.3985, 39.9085, 0));

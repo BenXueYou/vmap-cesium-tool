@@ -99,6 +99,25 @@ export function usePlaygroundOverlay({
     return selectedOverlayId.value;
   }
 
+  function getSelectedOverlayItem() {
+    return overlayItems.value.find((item) => item.id === selectedOverlayId.value) ?? null;
+  }
+
+  function buildEditOptionsForSelectedOverlay() {
+    const item = getSelectedOverlayItem();
+    const moveHandle = {
+      color: "#38bdf8",
+      outlineColor: "#ffffff",
+      pixelSize: 11,
+    };
+
+    if (item?.kind === "marker") {
+      return { move: moveHandle };
+    }
+
+    return { vertex: moveHandle };
+  }
+
   function addMarkerOverlay() {
     const service = getOverlayService();
     const center = getViewerCenter();
@@ -344,13 +363,7 @@ export function usePlaygroundOverlay({
       return;
     }
 
-    const started = service.startOverlayEdit(overlayId, {
-      vertex: {
-        color: "#38bdf8",
-        outlineColor: "#ffffff",
-        pixelSize: 11,
-      },
-    });
+    const started = service.startOverlayEdit(overlayId, buildEditOptionsForSelectedOverlay());
     showMessage(started ? "已进入 overlay 编辑模式" : "overlay 编辑模式启动失败");
   }
 

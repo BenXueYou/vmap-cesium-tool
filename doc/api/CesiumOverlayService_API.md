@@ -263,6 +263,7 @@ overlay.setOverlayEditMode(true);
 #### Marker/Icon/SVG 控制点说明
 
 - 绿色点：中心移动点（拖拽整体移动）
+- 点位默认走 `move` 句柄配置，不使用 `vertex` 语义。
 
 ### 编辑控制句柄配置：OverlayEditOptions
 

@@ -167,6 +167,8 @@ describe('OverlayService point and polygon edit regression', () => {
     const state = service.overlayEditState as Record<string, any>;
     expect(state.kind).toBe('point');
     expect(state.handles).toHaveLength(1);
+    expect(readHandleColor(state.handles[0])).toEqual(Cesium.Color.fromCssColorString('#43a047'));
+    expect(readHandlePixelSize(state.handles[0])).toBe(11);
 
     const handle = state.handles[0] as Cesium.Entity;
     scenePick.mockReturnValue({ id: handle });
@@ -188,6 +190,42 @@ describe('OverlayService point and polygon edit regression', () => {
     expect(onOverlayEditEnd).toHaveBeenCalledTimes(1);
     expect(onOverlayEditEnd).toHaveBeenCalledWith(point);
     expect(service.overlayEditState).toBeNull();
+  });
+
+  it('keeps point handles on move semantics even when vertex styling is provided', () => {
+    const { viewer } = createViewerStub();
+    const { service } = createService(viewer);
+    const point = new Cesium.Entity({
+      id: 'point-vertex-1',
+      position: new Cesium.ConstantPositionProperty(Cesium.Cartesian3.fromDegrees(116.397, 39.907, 0)),
+      point: {
+        pixelSize: 12,
+        color: Cesium.Color.YELLOW,
+      },
+    });
+
+    service.overlays.set('point-vertex-1', {
+      getEntity: () => point,
+      remove: vi.fn(),
+    });
+    service.creationOrderById.set('point-vertex-1', 1);
+
+    expect(service.startOverlayEdit('point-vertex-1', {
+      vertex: {
+        color: '#ff0000',
+        pixelSize: 16,
+      },
+      move: {
+        color: '#00ff00',
+        pixelSize: 13,
+      },
+    })).toBe(true);
+
+    const state = service.overlayEditState as Record<string, any>;
+    expect(state.kind).toBe('point');
+    expect(state.handles).toHaveLength(1);
+    expect(readHandleColor(state.handles[0])).toEqual(Cesium.Color.fromCssColorString('#00ff00'));
+    expect(readHandlePixelSize(state.handles[0])).toBe(13);
   });
 
   it('keeps polygon vertex dragging on the unified engine and emits the final polygon state on stop', () => {
