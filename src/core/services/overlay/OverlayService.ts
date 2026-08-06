@@ -141,7 +141,7 @@ interface ResolvedOverlayPickingOptions {
 }
 
 type OverlayEditKind = 'point' | 'polyline' | 'polygon' | 'rectangle' | 'circle';
-type OverlayEditHandleRole = 'point' | 'vertex' | 'mid' | 'move' | 'rotate' | 'scale';
+type OverlayEditHandleRole = 'point' | 'vertex' | 'mid' | 'move' | 'rotate' | 'scale' | 'center' | 'radius';
 
 interface OverlayEditHandleMeta {
   role: OverlayEditHandleRole;
@@ -1161,6 +1161,14 @@ export class OverlayService {
       return this.createLinearEditHandles(state, true);
     }
 
+    if (state.kind === 'rectangle') {
+      return this.createRectangleEditHandles(state);
+    }
+
+    if (state.kind === 'circle') {
+      return this.createCircleEditHandles(state);
+    }
+
     const handles: Entity[] = [];
 
     state.controlPoints.forEach((position, index) => {
@@ -1171,6 +1179,45 @@ export class OverlayService {
       }
       handles.push(this.createEditHandleEntity(state, `${role}_${index}`, position, style, { role, index }));
     });
+
+    return handles;
+  }
+
+  private createRectangleEditHandles(state: OverlayEditState): Entity[] {
+    const vertexStyle = this.resolveHandleStyle('vertex', state.options);
+    const moveStyle = this.resolveHandleStyle('move', state.options);
+    const handles: Entity[] = [];
+
+    if (vertexStyle) {
+      state.controlPoints.forEach((position, index) => {
+        handles.push(this.createEditHandleEntity(state, `vertex_${index}`, position, vertexStyle, { role: 'vertex', index }));
+      });
+    }
+
+    if (moveStyle) {
+      const rect = this.positionsToRectangle(state.controlPoints);
+      if (rect) {
+        const center = this.rectangleCenterPosition(rect, this.getRectangleHeight(state.entity));
+        handles.push(this.createEditHandleEntity(state, 'move', center, moveStyle, { role: 'move' }));
+      }
+    }
+
+    return handles;
+  }
+
+  private createCircleEditHandles(state: OverlayEditState): Entity[] {
+    const centerStyle = this.resolveHandleStyle('center', state.options);
+    const radiusStyle = this.resolveHandleStyle('radius', state.options);
+    const handles: Entity[] = [];
+
+    const center = state.controlPoints[0];
+    const radiusHandle = state.controlPoints[1];
+    if (centerStyle && center) {
+      handles.push(this.createEditHandleEntity(state, 'center', center, centerStyle, { role: 'center', index: 0 }));
+    }
+    if (radiusStyle && radiusHandle) {
+      handles.push(this.createEditHandleEntity(state, 'radius', radiusHandle, radiusStyle, { role: 'radius', index: 1 }));
+    }
 
     return handles;
   }
@@ -1252,17 +1299,30 @@ export class OverlayService {
   }
 
   private resolveHandleOptions(role: OverlayEditHandleRole, options: OverlayEditOptions): OverlayEditHandleOptions | false | null {
-    const config = role === 'point'
-      ? options.move
-      : role === 'mid'
-        ? options.mid
-        : role === 'move'
-          ? options.move
-          : role === 'rotate'
-            ? options.rotate
-            : role === 'scale'
-              ? options.scale
-              : options.vertex;
+    let config: OverlayEditHandleOptions | boolean | undefined;
+    switch (role) {
+      case 'point':
+      case 'move':
+        config = options.move;
+        break;
+      case 'center':
+      case 'vertex':
+        config = options.vertex;
+        break;
+      case 'radius':
+      case 'mid':
+        config = options.mid;
+        break;
+      case 'rotate':
+        config = options.rotate;
+        break;
+      case 'scale':
+        config = options.scale;
+        break;
+      default:
+        config = options.vertex;
+        break;
+    }
 
     if (config === false) {
       return false;
@@ -1285,7 +1345,7 @@ export class OverlayService {
       };
     }
 
-    if (role === 'mid') {
+    if (role === 'mid' || role === 'radius') {
       return {
         color: Cesium.Color.fromCssColorString('#ec407a'),
         outlineColor: Cesium.Color.WHITE,
@@ -1326,7 +1386,7 @@ export class OverlayService {
     }
 
     if (kind === 'circle') {
-      return index === 0 ? 'vertex' : 'mid';
+      return index === 0 ? 'center' : 'radius';
     }
 
     return 'vertex';
@@ -1438,7 +1498,13 @@ export class OverlayService {
     }
 
     if (kind === 'rectangle') {
-      state.controlPoints = this.updateRectangleControlPoints(state.controlPoints, handleIndex, position);
+      const meta = this.getEditHandleMeta(state.handles[handleIndex]);
+      if (meta?.role === 'move') {
+        state.controlPoints = this.moveRectangleControlPoints(state.controlPoints, position, this.getRectangleHeight(state.entity));
+      } else {
+        state.controlPoints = this.updateRectangleControlPoints(state.controlPoints, handleIndex, position);
+      }
+
       const rect = this.positionsToRectangle(state.controlPoints);
       if (rect) {
         this.applyRectangleCoordinates(state.entity, rect);
@@ -1447,7 +1513,8 @@ export class OverlayService {
     }
 
     if (kind === 'circle') {
-      if (handleIndex === 0) {
+      const meta = this.getEditHandleMeta(state.handles[handleIndex]);
+      if (meta?.role === 'center') {
         const radius = state.radiusMeters ?? this.resolveCircleRadius(state.entity, state.controlPoints);
         state.controlPoints[0] = position.clone();
         const nextRadius = Number.isFinite(radius) ? radius : this.calculateCircleRadiusMeters(position, state.controlPoints[1] ?? position);
@@ -1491,9 +1558,16 @@ export class OverlayService {
         return;
       }
       const corners = this.rectangleToPositions(rect, this.getRectangleHeight(state.entity));
-      corners.forEach((corner, index) => {
-        if (state.handles[index]) {
-          state.handles[index].position = new Cesium.ConstantPositionProperty(corner);
+      const center = this.rectangleCenterPosition(rect, this.getRectangleHeight(state.entity));
+      state.handles.forEach((handle) => {
+        const meta = this.getEditHandleMeta(handle);
+        if (meta?.role === 'vertex' && typeof meta.index === 'number' && corners[meta.index]) {
+          handle.position = new Cesium.ConstantPositionProperty(corners[meta.index]);
+          return;
+        }
+
+        if (meta?.role === 'move') {
+          handle.position = new Cesium.ConstantPositionProperty(center);
         }
       });
       return;
@@ -1502,12 +1576,20 @@ export class OverlayService {
     if (state.kind === 'circle') {
       const center = state.controlPoints[0];
       const radius = state.radiusMeters ?? this.resolveCircleRadius(state.entity, state.controlPoints);
-      if (state.handles[0]) {
-        state.handles[0].position = new Cesium.ConstantPositionProperty(center.clone());
-      }
-      if (state.handles[1] && Number.isFinite(radius)) {
-        state.handles[1].position = new Cesium.ConstantPositionProperty(this.circleRadiusHandlePosition(center, radius));
-      }
+      const radiusPosition = Number.isFinite(radius)
+        ? this.circleRadiusHandlePosition(center, radius)
+        : null;
+      state.handles.forEach((handle) => {
+        const meta = this.getEditHandleMeta(handle);
+        if (meta?.role === 'center') {
+          handle.position = new Cesium.ConstantPositionProperty(center.clone());
+          return;
+        }
+
+        if (meta?.role === 'radius' && radiusPosition) {
+          handle.position = new Cesium.ConstantPositionProperty(radiusPosition);
+        }
+      });
       return;
     }
 
@@ -1795,6 +1877,52 @@ export class OverlayService {
       Cesium.Cartesian3.fromRadians(rect.east, rect.north, heightMeters),
       Cesium.Cartesian3.fromRadians(rect.west, rect.north, heightMeters),
     ];
+  }
+
+  private rectangleCenterPosition(rect: Cesium.Rectangle, heightMeters: number): Cesium.Cartesian3 {
+    return Cesium.Cartesian3.fromRadians(
+      (rect.west + rect.east) / 2,
+      (rect.south + rect.north) / 2,
+      heightMeters,
+    );
+  }
+
+  private moveRectangleControlPoints(
+    controlPoints: Cesium.Cartesian3[],
+    targetCenter: Cesium.Cartesian3,
+    currentHeight: number,
+  ): Cesium.Cartesian3[] {
+    if (controlPoints.length < 4) {
+      return controlPoints.map((point) => point.clone());
+    }
+
+    const currentRect = this.positionsToRectangle(controlPoints);
+    if (!currentRect) {
+      return controlPoints.map((point) => point.clone());
+    }
+
+    const currentCenter = this.rectangleCenterPosition(currentRect, currentHeight);
+    const currentCarto = Cesium.Cartographic.fromCartesian(currentCenter);
+    const targetCarto = Cesium.Cartographic.fromCartesian(targetCenter);
+    if (!currentCarto || !targetCarto) {
+      return controlPoints.map((point) => point.clone());
+    }
+
+    const deltaLon = targetCarto.longitude - currentCarto.longitude;
+    const deltaLat = targetCarto.latitude - currentCarto.latitude;
+    const deltaHeight = (targetCarto.height ?? 0) - (currentCarto.height ?? 0);
+
+    return controlPoints.map((point) => {
+      const carto = Cesium.Cartographic.fromCartesian(point);
+      if (!carto) {
+        return point.clone();
+      }
+      return Cesium.Cartesian3.fromRadians(
+        carto.longitude + deltaLon,
+        carto.latitude + deltaLat,
+        (carto.height ?? 0) + deltaHeight,
+      );
+    });
   }
 
   private updateRectangleControlPoints(

@@ -100,6 +100,10 @@ function createService(viewer: Cesium.Viewer) {
   return service as OverlayService & Record<string, any>;
 }
 
+function readHandleMeta(entity: Cesium.Entity): Record<string, unknown> | null {
+  return (entity as Cesium.Entity & { __vmapOverlayEditHandleMeta?: Record<string, unknown> }).__vmapOverlayEditHandleMeta || null;
+}
+
 describe('OverlayService circle edit', () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -132,6 +136,8 @@ describe('OverlayService circle edit', () => {
     const now = Cesium.JulianDate.now();
     const centerHandle = state.handles[0] as Cesium.Entity;
     const radiusHandle = state.handles[1] as Cesium.Entity;
+    expect(readHandleMeta(centerHandle)?.role).toBe('center');
+    expect(readHandleMeta(radiusHandle)?.role).toBe('radius');
     expect(centerHandle.point?.pixelSize?.getValue(now)).toBe(10);
     expect(centerHandle.point?.color?.getValue(now)).toEqual(Cesium.Color.fromCssColorString('#1e88e5'));
     expect(centerHandle.point?.outlineColor?.getValue(now)).toEqual(Cesium.Color.WHITE);

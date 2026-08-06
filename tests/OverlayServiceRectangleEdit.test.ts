@@ -37,8 +37,12 @@ function createService(root: Cesium.Entity, overlay: Rectangle) {
   return service as OverlayService & Record<string, any>;
 }
 
+function readHandleMeta(entity: Cesium.Entity): Record<string, unknown> | null {
+  return (entity as Cesium.Entity & { __vmapOverlayEditHandleMeta?: Record<string, unknown> }).__vmapOverlayEditHandleMeta || null;
+}
+
 describe('OverlayService rectangle edit', () => {
-  it('uses the 0.x vertex handle appearance for rectangle corners by default', () => {
+  it('uses the 0.x rectangle handle layout by default', () => {
     const viewer = createViewerStub();
     const overlay = new Rectangle(viewer, {
       id: 'rect-style',
@@ -65,10 +69,15 @@ describe('OverlayService rectangle edit', () => {
 
     const now = Cesium.JulianDate.now();
     const firstHandle = handles[0];
+    const moveHandle = handles[4];
+    expect(handles).toHaveLength(5);
     expect(firstHandle.point?.pixelSize?.getValue(now)).toBe(10);
     expect(firstHandle.point?.outlineWidth?.getValue(now)).toBe(2);
     expect(firstHandle.point?.color?.getValue(now)).toEqual(Cesium.Color.fromCssColorString('#1e88e5'));
     expect(firstHandle.point?.outlineColor?.getValue(now)).toEqual(Cesium.Color.WHITE);
+    expect(moveHandle.point?.pixelSize?.getValue(now)).toBe(11);
+    expect(moveHandle.point?.color?.getValue(now)).toEqual(Cesium.Color.fromCssColorString('#43a047'));
+    expect(readHandleMeta(moveHandle)?.role).toBe('move');
   });
 
   it('treats thick rectangle overlays as rectangles and updates the whole shape when a corner is dragged', () => {
@@ -93,15 +102,18 @@ describe('OverlayService rectangle edit', () => {
       kind,
       entity: root,
       controlPoints,
+      handles: Array.from({ length: 5 }, (_, index) => (index === 4
+        ? ({ __vmapOverlayEditHandleMeta: { role: 'move' } } as unknown as Cesium.Entity)
+        : ({} as Cesium.Entity))),
     };
 
-    service.applyDragForHandle(state, 2, Cesium.Cartesian3.fromDegrees(1, 1, 0));
+    service.applyDragForHandle(state, 4, Cesium.Cartesian3.fromDegrees(2, 2, 0));
 
     const rect = overlay.getCoordinates();
     expect(rect).toBeTruthy();
-    expect(Cesium.Math.toDegrees(rect!.west)).toBeCloseTo(0, 6);
-    expect(Cesium.Math.toDegrees(rect!.south)).toBeCloseTo(0, 6);
-    expect(Cesium.Math.toDegrees(rect!.east)).toBeCloseTo(1, 6);
-    expect(Cesium.Math.toDegrees(rect!.north)).toBeCloseTo(1, 6);
+    expect(Cesium.Math.toDegrees(rect!.west)).toBeCloseTo(1, 6);
+    expect(Cesium.Math.toDegrees(rect!.south)).toBeCloseTo(1, 6);
+    expect(Cesium.Math.toDegrees(rect!.east)).toBeCloseTo(3, 6);
+    expect(Cesium.Math.toDegrees(rect!.north)).toBeCloseTo(3, 6);
   });
 });
