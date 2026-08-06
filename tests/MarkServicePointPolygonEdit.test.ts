@@ -181,4 +181,60 @@ describe('MarkService point and polygon edit regression', () => {
     expect(service.editState).toBeNull();
     expect(service.editEnabled).toBe(false);
   });
+
+  it('keeps polygon insert and delete edits flowing through the mark entrypoint', () => {
+    const { viewer } = createViewerStub();
+    const { service, callbacks, overlayService } = createService(viewer);
+    const polygon = new Cesium.Entity({
+      id: 'mark-polygon-edit-1',
+      polygon: {
+        hierarchy: new Cesium.ConstantProperty(new Cesium.PolygonHierarchy([
+          Cesium.Cartesian3.fromDegrees(0, 0, 0),
+          Cesium.Cartesian3.fromDegrees(2, 0, 0),
+          Cesium.Cartesian3.fromDegrees(1, 2, 0),
+        ])),
+      },
+    });
+
+    (polygon as Cesium.Entity & { _markMeta?: Record<string, unknown> })._markMeta = {
+      type: 'polygon',
+      controlPoints: [
+        Cesium.Cartesian3.fromDegrees(0, 0, 0),
+        Cesium.Cartesian3.fromDegrees(2, 0, 0),
+        Cesium.Cartesian3.fromDegrees(1, 2, 0),
+      ],
+      color: '#00A3FF',
+    };
+
+    service.entities.set(String(polygon.id), polygon);
+
+    expect(service.startEdit(polygon, { outputCoordSystem: 'WGS84' })).toBe(true);
+    const sessionOptions = overlayService.startOverlayEdit.mock.calls[0][1];
+
+    polygon.polygon!.hierarchy = new Cesium.ConstantProperty(new Cesium.PolygonHierarchy([
+      Cesium.Cartesian3.fromDegrees(0, 0, 0),
+      Cesium.Cartesian3.fromDegrees(2, 0, 0),
+      Cesium.Cartesian3.fromDegrees(1.5, 1, 0),
+      Cesium.Cartesian3.fromDegrees(1, 2, 0),
+    ]));
+    sessionOptions.onChange(polygon);
+
+    let changeResult = callbacks.onEditChange.mock.calls.at(-1)?.[0];
+    expect(changeResult?.positions).toHaveLength(4);
+
+    polygon.polygon!.hierarchy = new Cesium.ConstantProperty(new Cesium.PolygonHierarchy([
+      Cesium.Cartesian3.fromDegrees(0, 0, 0),
+      Cesium.Cartesian3.fromDegrees(2, 0, 0),
+      Cesium.Cartesian3.fromDegrees(1, 2, 0),
+    ]));
+    sessionOptions.onChange(polygon);
+
+    changeResult = callbacks.onEditChange.mock.calls.at(-1)?.[0];
+    expect(changeResult?.positions).toHaveLength(3);
+
+    overlayService.stopOverlayEdit.mockImplementation(() => sessionOptions.onEnd(polygon));
+    const endResult = service.stopEdit();
+    expect(endResult?.positions).toHaveLength(3);
+    expect(callbacks.onEditEnd).toHaveBeenCalledTimes(1);
+  });
 });
