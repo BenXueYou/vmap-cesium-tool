@@ -118,6 +118,10 @@ function readHandleColor(entity: Cesium.Entity) {
   return entity.point?.color?.getValue(Cesium.JulianDate.now());
 }
 
+function readHandleMeta(entity: Cesium.Entity): Record<string, unknown> | null {
+  return (entity as Cesium.Entity & { __vmapOverlayEditHandleMeta?: Record<string, unknown> }).__vmapOverlayEditHandleMeta || null;
+}
+
 describe('OverlayService polyline edit', () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -151,6 +155,10 @@ describe('OverlayService polyline edit', () => {
     expect(store).toHaveLength(5);
     expect(readHandleColor(state.handles[0])).toEqual(Cesium.Color.fromCssColorString('#1e88e5'));
     expect(readHandleColor(state.handles[3])).toEqual(Cesium.Color.fromCssColorString('#ec407a'));
+    expect(state.handles.every((handle: Cesium.Entity) => {
+      const role = readHandleMeta(handle)?.role;
+      return role === 'vertex' || role === 'mid';
+    })).toBe(true);
 
     const midpointHandle = state.handles[3] as Cesium.Entity;
     const inserted = Cesium.Cartesian3.fromDegrees(0.5, 0.25, 0);
@@ -168,6 +176,66 @@ describe('OverlayService polyline edit', () => {
     const positions = polyline.polyline?.positions?.getValue(Cesium.JulianDate.now()) as Cesium.Cartesian3[];
     expect(positions).toHaveLength(4);
     expect(Cesium.Cartesian3.equalsEpsilon(positions[1], inserted, 1e-8)).toBe(true);
+  });
+
+  it('creates rotate and scale handles only when explicitly enabled and applies the transform without breaking the line', () => {
+    const { viewer, scenePick, globePick } = createViewerStub();
+    const { service, onOverlayEditChange } = createService(viewer);
+    const polyline = new Cesium.Entity({
+      id: 'line-rotate-1',
+      polyline: {
+        positions: new Cesium.ConstantProperty([
+          Cesium.Cartesian3.fromDegrees(0, 0, 0),
+          Cesium.Cartesian3.fromDegrees(1, 1, 0),
+          Cesium.Cartesian3.fromDegrees(2, 0, 0),
+        ]),
+      },
+    });
+
+    service.overlays.set('line-rotate-1', {
+      getEntity: () => polyline,
+      remove: vi.fn(),
+    });
+    service.creationOrderById.set('line-rotate-1', 1);
+
+    expect(service.startOverlayEdit('line-rotate-1', { rotate: true, scale: true })).toBe(true);
+
+    let state = service.overlayEditState as Record<string, any>;
+    expect(state.handles).toHaveLength(7);
+    expect(readHandleMeta(state.handles[5])?.role).toBe('rotate');
+    expect(readHandleMeta(state.handles[6])?.role).toBe('scale');
+
+    const scaleHandle = state.handles[6] as Cesium.Entity;
+    const anchor = Cesium.Cartesian3.fromDegrees(1.3, 0.6, 0);
+    const moved = Cesium.Cartesian3.fromDegrees(1.6, 0.9, 0);
+    scenePick.mockReturnValue({ id: scaleHandle });
+    globePick.mockReturnValueOnce(anchor).mockReturnValueOnce(moved);
+
+    const handler = FakeScreenSpaceEventHandler.instances[0];
+    handler.trigger(Cesium.ScreenSpaceEventType.LEFT_DOWN, { position: { x: 20, y: 24 } });
+
+    state = service.overlayEditState as Record<string, any>;
+    const startPositions = state.transformStartPositions as Cesium.Cartesian3[];
+    const startCenter = state.transformStartCenter as Cesium.Cartesian3;
+    const startAngle = state.transformStartAngle as number;
+    const startDistance = state.transformStartDistance as number;
+    const info = service.getLocalAngleAndDistance(startCenter, moved);
+    const expected = service.applyRotateScaleToPositions(
+      startPositions,
+      startCenter,
+      info.angle - startAngle,
+      Math.max(0.2, Math.min(5, info.distance / startDistance)),
+    );
+
+    handler.trigger(Cesium.ScreenSpaceEventType.MOUSE_MOVE, { endPosition: { x: 32, y: 36 } });
+    handler.trigger(Cesium.ScreenSpaceEventType.LEFT_UP, {});
+
+    const positions = polyline.polyline?.positions?.getValue(Cesium.JulianDate.now()) as Cesium.Cartesian3[];
+    expect(positions).toHaveLength(3);
+    expect(Cesium.Cartesian3.equalsEpsilon(positions[0], expected[0], 1e-8)).toBe(true);
+    expect(Cesium.Cartesian3.equalsEpsilon(positions[1], expected[1], 1e-8)).toBe(true);
+    expect(Cesium.Cartesian3.equalsEpsilon(positions[2], expected[2], 1e-8)).toBe(true);
+    expect(onOverlayEditChange).toHaveBeenCalledTimes(1);
   });
 
   it('removes only vertex handles down to the two-point floor and keeps backtracking edits legal', () => {
@@ -190,7 +258,7 @@ describe('OverlayService polyline edit', () => {
     });
     service.creationOrderById.set('line-2', 1);
 
-    expect(service.startOverlayEdit('line-2')).toBe(true);
+    expect(service.startOverlayEdit('line-2', { rotate: true, scale: true })).toBe(true);
 
     const state = service.overlayEditState as Record<string, any>;
     const backtrackTarget = Cesium.Cartesian3.fromDegrees(0, 0, 0);
@@ -216,5 +284,7 @@ describe('OverlayService polyline edit', () => {
     positions = polyline.polyline?.positions?.getValue(Cesium.JulianDate.now()) as Cesium.Cartesian3[];
     expect(positions).toHaveLength(2);
     expect(onOverlayEditChange).toHaveBeenCalledTimes(1);
+    expect((service.overlayEditState as Record<string, any>).handles.some((handle: Cesium.Entity) => readHandleMeta(handle)?.role === 'rotate')).toBe(true);
+    expect((service.overlayEditState as Record<string, any>).handles.some((handle: Cesium.Entity) => readHandleMeta(handle)?.role === 'scale')).toBe(true);
   });
 });

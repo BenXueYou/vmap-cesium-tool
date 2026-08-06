@@ -176,6 +176,10 @@ interface OverlayEditState {
   activeHandleIndex: number | null;
   controlPoints: Cesium.Cartesian3[];
   radiusMeters?: number;
+  transformStartPositions: Cesium.Cartesian3[] | null;
+  transformStartCenter: Cesium.Cartesian3 | null;
+  transformStartAngle: number;
+  transformStartDistance: number;
   isDragging: boolean;
   cameraState: OverlayEditCameraState | null;
   previousCursor: string;
@@ -823,6 +827,10 @@ export class OverlayService {
       activeHandleIndex: null,
       controlPoints: controlPoints.map((point) => point.clone()),
       radiusMeters: kind === 'circle' ? this.resolveCircleRadius(target, controlPoints) : undefined,
+      transformStartPositions: null,
+      transformStartCenter: null,
+      transformStartAngle: 0,
+      transformStartDistance: 1,
       isDragging: false,
       cameraState: null,
       previousCursor: this.viewer.scene.canvas.style.cursor || '',
@@ -878,6 +886,12 @@ export class OverlayService {
         state.isDragging = true;
         state.cameraState = this.suspendCameraControls();
         this.viewer.scene.canvas.style.cursor = 'grabbing';
+
+        if (state.kind === 'polyline' && (meta?.role === 'rotate' || meta?.role === 'scale')) {
+          this.beginPolylineTransformDrag(state, pickedEntity, click.position);
+        } else {
+          this.clearPolylineTransformState(state);
+        }
       }
     }, Cesium.ScreenSpaceEventType.LEFT_DOWN);
 
@@ -902,6 +916,7 @@ export class OverlayService {
 
     handler.setInputAction(() => {
       this.releaseEditDrag(state);
+      this.clearPolylineTransformState(state);
       state.activeHandleIndex = null;
     }, Cesium.ScreenSpaceEventType.LEFT_UP);
 
@@ -1112,6 +1127,28 @@ export class OverlayService {
     this.viewer.scene.canvas.style.cursor = state.previousCursor;
   }
 
+  private beginPolylineTransformDrag(
+    state: OverlayEditState,
+    handle: Entity,
+    screenPosition?: Cesium.Cartesian2,
+  ): void {
+    const center = this.computePolylineCenterCartesian(state.controlPoints);
+    const startPosition = this.resolveEditHandlePosition(state, handle, screenPosition) ?? center;
+    const info = this.getLocalAngleAndDistance(center, startPosition);
+
+    state.transformStartPositions = state.controlPoints.map((point) => point.clone());
+    state.transformStartCenter = center.clone();
+    state.transformStartAngle = info.angle;
+    state.transformStartDistance = Math.max(1e-6, info.distance);
+  }
+
+  private clearPolylineTransformState(state: OverlayEditState): void {
+    state.transformStartPositions = null;
+    state.transformStartCenter = null;
+    state.transformStartAngle = 0;
+    state.transformStartDistance = 1;
+  }
+
   private resolveEditableOverlay(entityOrId: OverlayEntity | Entity | string | number): OverlayEntity | null {
     if (typeof entityOrId === 'string' || typeof entityOrId === 'number') {
       const overlay = this.overlays.get(String(entityOrId));
@@ -1247,8 +1284,10 @@ export class OverlayService {
     const handles: Entity[] = [];
     const vertexStyle = this.resolveHandleStyle('vertex', state.options);
     const midStyle = this.resolveHandleStyle('mid', state.options);
+    const rotateStyle = !closed ? this.resolveHandleStyle('rotate', state.options) : null;
+    const scaleStyle = !closed ? this.resolveHandleStyle('scale', state.options) : null;
 
-    if (!vertexStyle && !midStyle) {
+    if (!vertexStyle && !midStyle && !rotateStyle && !scaleStyle) {
       return handles;
     }
 
@@ -1259,6 +1298,16 @@ export class OverlayService {
     }
 
     if (!midStyle) {
+      if (!closed) {
+        const center = this.computePolylineCenterCartesian(state.controlPoints);
+        const handleRadius = this.computePolylineHandleRadius(state.controlPoints, center);
+        if (rotateStyle) {
+          handles.push(this.createEditHandleEntity(state, 'rotate', this.offsetByMeters(center, handleRadius, 0), rotateStyle, { role: 'rotate' }));
+        }
+        if (scaleStyle) {
+          handles.push(this.createEditHandleEntity(state, 'scale', this.offsetByMeters(center, handleRadius, 90), scaleStyle, { role: 'scale' }));
+        }
+      }
       return handles;
     }
 
@@ -1275,6 +1324,17 @@ export class OverlayService {
         new Cesium.Cartesian3(),
       );
       handles.push(this.createEditHandleEntity(state, `mid_${index}`, midpoint, midStyle, { role: 'mid', index }));
+    }
+
+    if (!closed) {
+      const center = this.computePolylineCenterCartesian(state.controlPoints);
+      const handleRadius = this.computePolylineHandleRadius(state.controlPoints, center);
+      if (rotateStyle) {
+        handles.push(this.createEditHandleEntity(state, 'rotate', this.offsetByMeters(center, handleRadius, 0), rotateStyle, { role: 'rotate' }));
+      }
+      if (scaleStyle) {
+        handles.push(this.createEditHandleEntity(state, 'scale', this.offsetByMeters(center, handleRadius, 90), scaleStyle, { role: 'scale' }));
+      }
     }
 
     return handles;
@@ -1305,6 +1365,9 @@ export class OverlayService {
 
   private resolveHandleStyle(role: OverlayEditHandleRole, options: OverlayEditOptions): OverlayEditHandleStyle | null {
     const handleOptions = this.resolveHandleOptions(role, options);
+    if ((role === 'rotate' || role === 'scale') && handleOptions === null) {
+      return null;
+    }
     if (handleOptions === false) {
       return null;
     }
@@ -1319,7 +1382,7 @@ export class OverlayService {
     };
   }
 
-  private resolveHandleOptions(role: OverlayEditHandleRole, options: OverlayEditOptions): OverlayEditHandleOptions | false | null {
+  private resolveHandleOptions(role: OverlayEditHandleRole, options: OverlayEditOptions): OverlayEditHandleOptions | boolean | false | null {
     let config: OverlayEditHandleOptions | boolean | undefined;
     switch (role) {
       case 'point':
@@ -1351,6 +1414,10 @@ export class OverlayService {
 
     if (config && typeof config === 'object' && config.enable === false) {
       return false;
+    }
+
+    if (config === true) {
+      return true;
     }
 
     return config && typeof config === 'object' ? config : null;
@@ -1507,6 +1574,25 @@ export class OverlayService {
     }
 
     if (kind === 'polyline') {
+      const meta = this.getEditHandleMeta(state.handles[handleIndex]);
+      if (meta?.role === 'rotate' || meta?.role === 'scale') {
+        if (!state.transformStartCenter || !state.transformStartPositions) {
+          return false;
+        }
+
+        const info = this.getLocalAngleAndDistance(state.transformStartCenter, position);
+        const angleDelta = info.angle - state.transformStartAngle;
+        const scale = Math.max(0.2, Math.min(5, info.distance / state.transformStartDistance));
+        state.controlPoints = this.applyRotateScaleToPositions(
+          state.transformStartPositions,
+          state.transformStartCenter,
+          angleDelta,
+          scale,
+        );
+        this.applyPolylinePositions(state.entity, state.controlPoints);
+        return true;
+      }
+
       state.controlPoints[handleIndex] = position.clone();
       this.applyPolylinePositions(state.entity, state.controlPoints);
       return true;
@@ -1617,6 +1703,46 @@ export class OverlayService {
       return;
     }
 
+    if (state.kind === 'polyline') {
+      const center = this.computePolylineCenterCartesian(state.controlPoints);
+      const handleRadius = this.computePolylineHandleRadius(state.controlPoints, center);
+      state.handles.forEach((handle) => {
+        const meta = this.getEditHandleMeta(handle);
+        if (!meta) {
+          return;
+        }
+
+        if (meta.role === 'vertex' || meta.role === 'point') {
+          const point = typeof meta.index === 'number' ? state.controlPoints[meta.index] : state.controlPoints[0];
+          if (point) {
+            handle.position = new Cesium.ConstantPositionProperty(point.clone());
+          }
+          return;
+        }
+
+        if (meta.role === 'mid' && typeof meta.index === 'number') {
+          const start = state.controlPoints[meta.index];
+          const end = state.controlPoints[meta.index + 1];
+          if (start && end) {
+            handle.position = new Cesium.ConstantPositionProperty(
+              Cesium.Cartesian3.midpoint(start, end, new Cesium.Cartesian3()),
+            );
+          }
+          return;
+        }
+
+        if (meta.role === 'rotate') {
+          handle.position = new Cesium.ConstantPositionProperty(this.offsetByMeters(center, handleRadius, 0));
+          return;
+        }
+
+        if (meta.role === 'scale') {
+          handle.position = new Cesium.ConstantPositionProperty(this.offsetByMeters(center, handleRadius, 90));
+        }
+      });
+      return;
+    }
+
     state.handles.forEach((handle) => {
       const meta = this.getEditHandleMeta(handle);
       if (!meta) {
@@ -1690,6 +1816,111 @@ export class OverlayService {
     if (entity.polygon) {
       entity.polygon.hierarchy = new Cesium.ConstantProperty(new Cesium.PolygonHierarchy(positions.map((point) => point.clone())));
     }
+  }
+
+  private computePolygonCenterCartesian(positions: Cesium.Cartesian3[]): Cesium.Cartesian3 {
+    const centerCarto = this.computePolygonCenterCartographic(positions);
+    return Cesium.Cartesian3.fromRadians(centerCarto.longitude, centerCarto.latitude, 0);
+  }
+
+  private computePolygonCenterCartographic(positions: Cesium.Cartesian3[]): Cesium.Cartographic {
+    let lonSum = 0;
+    let latSum = 0;
+    let count = 0;
+
+    positions.forEach((point) => {
+      const carto = Cesium.Cartographic.fromCartesian(point);
+      if (!carto || !Number.isFinite(carto.longitude) || !Number.isFinite(carto.latitude)) {
+        return;
+      }
+
+      lonSum += carto.longitude;
+      latSum += carto.latitude;
+      count += 1;
+    });
+
+    const divisor = Math.max(1, count);
+    return new Cesium.Cartographic(lonSum / divisor, latSum / divisor, 0);
+  }
+
+  private computePolylineCenterCartesian(positions: Cesium.Cartesian3[]): Cesium.Cartesian3 {
+    return this.computePolygonCenterCartesian(positions);
+  }
+
+  private computePolylineHandleRadius(positions: Cesium.Cartesian3[], center: Cesium.Cartesian3): number {
+    let maxDistance = 0;
+    positions.forEach((point) => {
+      const distance = this.computeSurfaceDistanceMeters(center, point);
+      if (Number.isFinite(distance) && distance > maxDistance) {
+        maxDistance = distance;
+      }
+    });
+
+    return Math.max(20, Math.min(1000, maxDistance * 0.4));
+  }
+
+  private offsetByMeters(center: Cesium.Cartesian3, meters: number, bearingDeg: number): Cesium.Cartesian3 {
+    const carto = Cesium.Cartographic.fromCartesian(center);
+    if (!carto) {
+      return center.clone();
+    }
+
+    const earthRadius = 6378137.0;
+    const bearing = Cesium.Math.toRadians(bearingDeg);
+    const deltaLatitude = (meters * Math.cos(bearing)) / earthRadius;
+    const deltaLongitude = (meters * Math.sin(bearing)) / (earthRadius * Math.max(Math.cos(carto.latitude), 1e-6));
+    return Cesium.Cartesian3.fromRadians(
+      carto.longitude + deltaLongitude,
+      carto.latitude + deltaLatitude,
+      carto.height ?? 0,
+    );
+  }
+
+  private computeSurfaceDistanceMeters(a: Cesium.Cartesian3, b: Cesium.Cartesian3): number {
+    try {
+      const geodesic = new Cesium.EllipsoidGeodesic(
+        Cesium.Cartographic.fromCartesian(a),
+        Cesium.Cartographic.fromCartesian(b),
+      );
+      return Number.isFinite(geodesic.surfaceDistance) ? geodesic.surfaceDistance : Cesium.Cartesian3.distance(a, b);
+    } catch {
+      return Cesium.Cartesian3.distance(a, b);
+    }
+  }
+
+  private getLocalAngleAndDistance(center: Cesium.Cartesian3, world: Cesium.Cartesian3): { angle: number; distance: number } {
+    const enu = Cesium.Transforms.eastNorthUpToFixedFrame(center);
+    const inv = Cesium.Matrix4.inverse(enu, new Cesium.Matrix4());
+    const local = Cesium.Matrix4.multiplyByPoint(inv, world, new Cesium.Cartesian3());
+    return {
+      angle: Math.atan2(local.y, local.x),
+      distance: Math.sqrt((local.x * local.x) + (local.y * local.y)),
+    };
+  }
+
+  private applyRotateScaleToPositions(
+    positions: Cesium.Cartesian3[],
+    center: Cesium.Cartesian3,
+    angleDelta: number,
+    scale: number,
+  ): Cesium.Cartesian3[] {
+    const enu = Cesium.Transforms.eastNorthUpToFixedFrame(center);
+    const inv = Cesium.Matrix4.inverse(enu, new Cesium.Matrix4());
+    const cosA = Math.cos(angleDelta);
+    const sinA = Math.sin(angleDelta);
+
+    return positions.map((point) => {
+      const local = Cesium.Matrix4.multiplyByPoint(inv, point, new Cesium.Cartesian3());
+      const scaledX = local.x * scale;
+      const scaledY = local.y * scale;
+      const rotatedX = scaledX * cosA - scaledY * sinA;
+      const rotatedY = scaledX * sinA + scaledY * cosA;
+      return Cesium.Matrix4.multiplyByPoint(
+        enu,
+        new Cesium.Cartesian3(rotatedX, rotatedY, local.z),
+        new Cesium.Cartesian3(),
+      );
+    });
   }
 
   private tryApplyPolygonControlPoints(
