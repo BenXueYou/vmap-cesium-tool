@@ -57,12 +57,14 @@ title: 架构说明
 - `ToolbarService`
 - `OverlayService`
 - `DrawService`
+- `MarkService`
 
 原则：
 
 - 依赖 `core` 和 `components`
 - 不直接依赖 `libs` 的运行时实现
 - 对外提供稳定能力边界
+- `OverlayService` 是统一编辑内核，`MarkService` 只负责标绘编排与结果同步
 
 ### adapters
 

@@ -8,6 +8,7 @@
 - 统一管理覆盖物 id（内部 `overlayMap`）
 - 提供点击/悬浮高亮能力（clickHighlight / hoverHighlight）
 - 内置点击与 hover 拾取处理（与绘制模块有冲突规避）
+- 编辑模式与句柄能力统一转发到新的 `OverlayService`，不维护独立编辑内核
 
 源码位于 `src/libs/CesiumOverlayService.ts`，各覆盖物工具类位于 `src/libs/overlay/*`。
 
@@ -158,7 +159,8 @@ hoverHighlight?: boolean | { color?: Cesium.Color | string; fillAlpha?: number }
 
 编辑回调：
 
-- `onOverlayEditChange`：拖拽结束后触发一次（非实时 MOUSE_MOVE），仅在几何实际变化时触发。
+- `onOverlayEditChange`：拖拽中的每次有效几何变化都会触发
+- `onOverlayEditEnd`：退出编辑时触发最终结果
 
 ### API
 

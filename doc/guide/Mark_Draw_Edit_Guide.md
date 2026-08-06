@@ -20,6 +20,7 @@ title: 标绘、绘制与编辑
 - 只有 API 显式传入 `coordSystem` / `outputCoordSystem` 时才切换
 - `gaode` / `tencent` 继续使用 `GCJ02`
 - `baidu` 使用 `BD09`
+- 编辑会话统一走 `OverlayService`，并按实时 `change` + 最终 `end` 的同一套语义回写结果
 
 ## CesiumMapMark 能力面
 
@@ -106,6 +107,14 @@ mark.startWorkAreaDraw('rectangle', 'noFly', {
 - `polygon`
 - `rectangle`
 - `circle`
+
+默认句柄语义：
+
+- `point`: `move`
+- `polyline`: `vertex + mid`，`rotate / scale` 仅显式开启时出现
+- `polygon`: `vertex + mid + move`
+- `rectangle`: `vertex + move`
+- `circle`: `center + radius`
 
 编辑入口：
 

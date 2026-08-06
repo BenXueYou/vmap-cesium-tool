@@ -97,12 +97,30 @@ interface BaseOverlayOptions {
 - `clickHighlight`: 兼容别名；和 `selectionHighlight` 同时传入时，以 `selectionHighlight` 为准
 - `hoverHighlight`: hover 样式
 - `selectable`: 是否允许参与 pointer / API selection
-- `pickPriority`: 重叠拾取优先级，数值越大越优先
+ - `pickPriority`: 重叠拾取优先级，数值越大越优先
 
 默认样式：
 
 - hover: `#FFD54F`，面透明度 `0.25`
 - selected: `#00E5FF`，面透明度 `0.40`
+
+## Editing
+
+`OverlayService` 是统一编辑内核，`MarkService` 和 `CesiumOverlayService` 只负责编排/兼容转发，不维护独立编辑器。
+
+默认编辑句柄语义：
+
+- `point`: `move`
+- `polyline`: `vertex + mid`，`rotate / scale` 仅在显式开启时出现
+- `polygon`: `vertex + mid + move`
+- `rectangle`: `vertex + move`
+- `circle`: `center + radius`
+
+编辑回调语义：
+
+- `onOverlayEditChange`：每次有效拖拽更新后触发
+- `onOverlayEditEnd`：停止编辑时触发
+- 编辑开始时会强制接管 selected，reason 为 `edit-start`
 
 ## 创建方法
 

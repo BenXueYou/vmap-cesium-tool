@@ -87,8 +87,15 @@ mark.deleteEntity(entityOrId);
 mark.clearAll();
 ```
 
-编辑模式会显示控制点。点、线、面、矩形和圆均可编辑；圆的中心与半径控制点分别可拖动。
-点位编辑默认使用绿色 move 句柄。
+编辑模式会显示控制点，但实际编辑由 `OverlayService` 统一执行；`MarkService` 只同步标绘元数据和结果回调，`CesiumMapMark` 兼容入口也走同一条链路。
+
+默认句柄语义与 `OverlayService` 保持一致：
+
+- `point`: 绿色 `move`
+- `polyline`: 蓝色 `vertex` + 粉色 `mid`，`rotate / scale` 仅在显式开启时出现
+- `polygon`: 蓝色 `vertex` + 粉色 `mid` + 绿色 `move`
+- `rectangle`: 蓝色 `vertex` + 绿色 `move`
+- `circle`: 蓝色 `center` + 粉色 `radius`
 
 ## 样式、查询与导出
 
