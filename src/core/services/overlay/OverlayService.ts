@@ -11,8 +11,13 @@ import { Rectangle, type RectangleOptions } from '../../entities/Rectangle';
 import { Circle, type CircleOptions } from '../../entities/Circle';
 import { Ring, type RingOptions } from '../../entities/Ring';
 import type { OverlayClickHighlightOptions, OverlayEntity } from '../../entities/BaseOverlay';
+import { i18n } from '../../../i18n';
 import { resolveOverlayPickCandidates } from './OverlayPickResolver';
 import { PickGovernor, type PickGovernorOptions } from '../../../utils/PickGovernor';
+import { isClosedPolygonSelfIntersecting } from '../../../utils/selfIntersection';
+import { DrawHintController } from '../draw/labels/drawHint';
+import { resolveLabelStyle, resolveMeasurementTheme } from '../draw/measurementThemeResolver';
+import type { ResolvedMeasurementLabelStyle } from '../draw/types/drawTypes';
 
 type OverlayInstance = Marker | Label | Icon | SVG | InfoWindow | Polyline | Polygon | Rectangle | Circle | Ring;
 
@@ -296,6 +301,8 @@ export class OverlayService {
   private overlayEditEnabled = false;
   private overlayEditOptions: OverlayEditOptions = {};
   private overlayEditState: OverlayEditState | null = null;
+  private polygonSelfIntersectionHintController: DrawHintController | null = null;
+  private polygonSelfIntersectionHintEntity: Entity | null = null;
 
   // 各种覆盖物工厂实例
   private markerFactory: MarkerFactory;
@@ -797,6 +804,7 @@ export class OverlayService {
     }
 
     this.stopOverlayEdit();
+    this.clearPolygonNoIntersectionHint();
     this.overlayEditEnabled = true;
     const mergedEditOptions = mergeOverlayEditOptions(this.overlayEditOptions, overlayEditOptions || {});
 
@@ -844,8 +852,16 @@ export class OverlayService {
           return;
         }
 
-        state.controlPoints.splice(insertIndex, 0, insertPosition.clone());
-        this.applyPositionsForEditableKind(state);
+        const nextControlPoints = state.controlPoints.map((point) => point.clone());
+        nextControlPoints.splice(insertIndex, 0, insertPosition.clone());
+        if (state.kind === 'polygon') {
+          if (!this.tryApplyPolygonControlPoints(state, nextControlPoints, insertPosition)) {
+            return;
+          }
+        } else {
+          state.controlPoints = nextControlPoints;
+          this.applyPositionsForEditableKind(state);
+        }
         this.rebuildEditHandles(state);
         this.emitOverlayEditChange(state);
         state.activeHandleIndex = insertIndex;
@@ -875,7 +891,10 @@ export class OverlayService {
         return;
       }
 
-      this.applyDragForHandle(state, state.activeHandleIndex, position);
+      const applied = this.applyDragForHandle(state, state.activeHandleIndex, position);
+      if (!applied) {
+        return;
+      }
       this.syncEditHandles(state);
       this.emitOverlayEditChange(state);
       this.viewer.scene.requestRender();
@@ -905,6 +924,7 @@ export class OverlayService {
 
       state.controlPoints.splice(meta.index, 1);
       this.applyPositionsForEditableKind(state);
+      this.clearPolygonNoIntersectionHint();
       this.rebuildEditHandles(state);
       this.emitOverlayEditChange(state);
       this.viewer.scene.requestRender();
@@ -932,6 +952,7 @@ export class OverlayService {
     state.handler.destroy();
     this.overlayEditState = null;
     this.overlayEditEnabled = false;
+    this.clearPolygonNoIntersectionHint();
     this.emitOverlayEditEnd(entity, editOptions);
     this.resumeHoverAfterInteractionPause();
     this.viewer.scene.requestRender();
@@ -1477,24 +1498,25 @@ export class OverlayService {
     return this.viewer.camera.pickEllipsoid(position, this.viewer.scene.globe.ellipsoid) ?? null;
   }
 
-  private applyDragForHandle(state: OverlayEditState, handleIndex: number, position: Cesium.Cartesian3): void {
+  private applyDragForHandle(state: OverlayEditState, handleIndex: number, position: Cesium.Cartesian3): boolean {
     const kind = state.kind;
     if (kind === 'point') {
       state.controlPoints[0] = position.clone();
       this.applyPointPosition(state.entity, position);
-      return;
+      return true;
     }
 
     if (kind === 'polyline') {
       state.controlPoints[handleIndex] = position.clone();
       this.applyPolylinePositions(state.entity, state.controlPoints);
-      return;
+      return true;
     }
 
     if (kind === 'polygon') {
-      state.controlPoints[handleIndex] = position.clone();
-      this.applyPolygonPositions(state.entity, state.controlPoints);
-      return;
+      const nextControlPoints = state.controlPoints.map((point, index) => (
+        index === handleIndex ? position.clone() : point.clone()
+      ));
+      return this.tryApplyPolygonControlPoints(state, nextControlPoints, position);
     }
 
     if (kind === 'rectangle') {
@@ -1509,7 +1531,7 @@ export class OverlayService {
       if (rect) {
         this.applyRectangleCoordinates(state.entity, rect);
       }
-      return;
+      return true;
     }
 
     if (kind === 'circle') {
@@ -1521,7 +1543,7 @@ export class OverlayService {
         this.applyCircle(state.entity, position, nextRadius);
         state.radiusMeters = nextRadius;
         state.controlPoints[1] = this.circleRadiusHandlePosition(position, nextRadius);
-        return;
+        return true;
       }
 
       const center = state.controlPoints[0];
@@ -1529,8 +1551,10 @@ export class OverlayService {
       state.controlPoints[1] = position.clone();
       state.radiusMeters = radius;
       this.applyCircle(state.entity, center, radius);
-      return;
+      return true;
     }
+
+    return false;
   }
 
   private applyPositionsForEditableKind(state: OverlayEditState): void {
@@ -1668,6 +1692,22 @@ export class OverlayService {
     }
   }
 
+  private tryApplyPolygonControlPoints(
+    state: OverlayEditState,
+    nextControlPoints: Cesium.Cartesian3[],
+    hintPosition?: Cesium.Cartesian3 | null,
+  ): boolean {
+    if (this.wouldSelfIntersectPolygon(nextControlPoints)) {
+      this.showPolygonNoIntersectionHint(hintPosition ?? nextControlPoints.at(-1) ?? null);
+      return false;
+    }
+
+    state.controlPoints = nextControlPoints.map((point) => point.clone());
+    this.clearPolygonNoIntersectionHint();
+    this.applyPolygonPositions(state.entity, state.controlPoints);
+    return true;
+  }
+
   private applyRectangleCoordinates(entity: OverlayEntity, rect: Cesium.Rectangle): void {
     const overlay = this.entityOverlayMap.get(entity as Entity);
     if (overlay && typeof (overlay as any).setCoordinates === 'function') {
@@ -1779,6 +1819,10 @@ export class OverlayService {
     }
 
     return [];
+  }
+
+  private wouldSelfIntersectPolygon(positions: Cesium.Cartesian3[]): boolean {
+    return isClosedPolygonSelfIntersecting(positions);
   }
 
   private getRectangleCoordinates(entity: OverlayEntity): Cesium.Rectangle | null {
@@ -1974,6 +2018,49 @@ export class OverlayService {
     const south = Math.min(...cartographics.map((item) => item.latitude));
     const north = Math.max(...cartographics.map((item) => item.latitude));
     return new Cesium.Rectangle(west, south, east, north);
+  }
+
+  private getPolygonNoIntersectionHintStyle(): ResolvedMeasurementLabelStyle {
+    return {
+      ...resolveLabelStyle(resolveMeasurementTheme(), 'hintBubble'),
+      textColor: Cesium.Color.RED,
+    };
+  }
+
+  private getPolygonNoIntersectionHintController(): DrawHintController {
+    if (!this.polygonSelfIntersectionHintController) {
+      this.polygonSelfIntersectionHintController = new DrawHintController(this.viewer);
+    }
+
+    return this.polygonSelfIntersectionHintController;
+  }
+
+  private showPolygonNoIntersectionHint(position?: Cesium.Cartesian3 | null): void {
+    if (!position) {
+      return;
+    }
+
+    const text = i18n.t('draw.hint.polygon_no_intersection');
+    const style = this.getPolygonNoIntersectionHintStyle();
+    const controller = this.getPolygonNoIntersectionHintController();
+
+    if (!this.polygonSelfIntersectionHintEntity) {
+      this.polygonSelfIntersectionHintEntity = controller.show(position, text, style);
+    } else {
+      controller.update(this.polygonSelfIntersectionHintEntity, position, text, style);
+    }
+
+    this.viewer.scene.requestRender();
+  }
+
+  private clearPolygonNoIntersectionHint(): void {
+    if (!this.polygonSelfIntersectionHintEntity) {
+      return;
+    }
+
+    this.polygonSelfIntersectionHintEntity = this.getPolygonNoIntersectionHintController().remove(
+      this.polygonSelfIntersectionHintEntity,
+    );
   }
 
   private normalizePositiveInteger(value: number | undefined, fallback: number): number {
@@ -2887,6 +2974,7 @@ export class OverlayService {
    * 销毁服务
    */
   destroy(): void {
+    this.clearPolygonNoIntersectionHint();
     this.setHighlightTargets(this.clickHighlightTargets, 'click', false);
     this.setHighlightTargets(this.hoverHighlightTargets, 'hover', false);
     this.clickHighlightTargets = [];

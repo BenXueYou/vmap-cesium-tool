@@ -85,6 +85,11 @@ function createViewerStub() {
 function createService(viewer: Cesium.Viewer) {
   const onOverlayEditChange = vi.fn();
   const onOverlayEditEnd = vi.fn();
+  const polygonHintController = {
+    show: vi.fn(() => ({ id: 'polygon-hint' } as unknown as Cesium.Entity)),
+    update: vi.fn(),
+    remove: vi.fn(() => null),
+  };
   const service = Object.create(OverlayService.prototype) as OverlayService & Record<string, any>;
   service.viewer = viewer;
   service.overlays = new Map();
@@ -105,6 +110,8 @@ function createService(viewer: Cesium.Viewer) {
   service.selectionEnabled = true;
   service.drawInteractionActive = false;
   service.cameraHoverSuspended = false;
+  service.polygonSelfIntersectionHintController = polygonHintController;
+  service.polygonSelfIntersectionHintEntity = null;
   service.options = {
     enableHoverHandler: true,
     clickPickMinIntervalMs: 250,
@@ -117,6 +124,7 @@ function createService(viewer: Cesium.Viewer) {
     service: service as OverlayService & Record<string, any>,
     onOverlayEditChange,
     onOverlayEditEnd,
+    polygonHintController,
   };
 }
 
@@ -273,6 +281,62 @@ describe('OverlayService point and polygon edit regression', () => {
     expect(onOverlayEditEnd).toHaveBeenCalledTimes(1);
     expect(onOverlayEditEnd).toHaveBeenCalledWith(polygon);
     expect(service.overlayEditState).toBeNull();
+  });
+
+  it('blocks polygon edits that would self-intersect and keeps the last legal geometry', () => {
+    const { viewer, scenePick, globePick } = createViewerStub();
+    const { service, onOverlayEditChange, onOverlayEditEnd, polygonHintController } = createService(viewer);
+    const polygon = new Cesium.Entity({
+      id: 'polygon-invalid-1',
+      polygon: {
+        hierarchy: new Cesium.ConstantProperty(new Cesium.PolygonHierarchy([
+          Cesium.Cartesian3.fromDegrees(0, 0, 0),
+          Cesium.Cartesian3.fromDegrees(2, 0, 0),
+          Cesium.Cartesian3.fromDegrees(2, 2, 0),
+          Cesium.Cartesian3.fromDegrees(0, 2, 0),
+        ])),
+      },
+    });
+
+    service.overlays.set('polygon-invalid-1', {
+      getEntity: () => polygon,
+      remove: vi.fn(),
+    });
+    service.creationOrderById.set('polygon-invalid-1', 1);
+
+    expect(service.startOverlayEdit('polygon-invalid-1')).toBe(true);
+
+    const state = service.overlayEditState as Record<string, any>;
+    expect(state.kind).toBe('polygon');
+    expect(state.handles).toHaveLength(8);
+
+    const invalidPoint = Cesium.Cartesian3.fromDegrees(-1, 1, 0);
+    const vertexHandle = state.handles[1] as Cesium.Entity;
+    scenePick.mockReturnValue({ id: vertexHandle });
+    globePick.mockReturnValue(invalidPoint);
+
+    const handler = FakeScreenSpaceEventHandler.instances[0];
+    handler.trigger(Cesium.ScreenSpaceEventType.LEFT_DOWN, { position: { x: 18, y: 22 } });
+    handler.trigger(Cesium.ScreenSpaceEventType.MOUSE_MOVE, { endPosition: { x: 40, y: 44 } });
+    handler.trigger(Cesium.ScreenSpaceEventType.LEFT_UP, {});
+
+    expect(onOverlayEditChange).toHaveBeenCalledTimes(0);
+    expect(readHierarchy(polygon)).toHaveLength(4);
+    expect(polygonHintController.show).toHaveBeenCalledTimes(1);
+
+    const midpointHandle = state.handles[5] as Cesium.Entity;
+    scenePick.mockReturnValue({ id: midpointHandle });
+    globePick.mockReturnValue(invalidPoint);
+    handler.trigger(Cesium.ScreenSpaceEventType.LEFT_DOWN, { position: { x: 20, y: 26 } });
+    handler.trigger(Cesium.ScreenSpaceEventType.LEFT_UP, {});
+
+    expect(onOverlayEditChange).toHaveBeenCalledTimes(0);
+    expect(readHierarchy(polygon)).toHaveLength(4);
+    expect(polygonHintController.update).toHaveBeenCalledTimes(1);
+
+    expect(service.stopOverlayEdit()).toBe(polygon);
+    expect(onOverlayEditEnd).toHaveBeenCalledTimes(1);
+    expect(readHierarchy(polygon)).toHaveLength(4);
   });
 
   it('restores polygon midpoint insertion on closed edges and keeps right-click deletion above the triangle floor', () => {
