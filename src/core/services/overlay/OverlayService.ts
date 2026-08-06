@@ -178,6 +178,61 @@ interface OverlayEditState {
 }
 
 const OVERLAY_EDIT_HANDLE_META_KEY = '__vmapOverlayEditHandleMeta';
+const OVERLAY_EDIT_HANDLE_ROLES: Array<keyof Pick<OverlayEditOptions, 'vertex' | 'mid' | 'move' | 'rotate' | 'scale'>> = [
+  'vertex',
+  'mid',
+  'move',
+  'rotate',
+  'scale',
+];
+
+type OverlayEditHandleConfig = OverlayEditHandleOptions | boolean | undefined;
+
+function mergeOverlayEditHandleConfig(
+  base: OverlayEditHandleConfig,
+  override: OverlayEditHandleConfig,
+): OverlayEditHandleConfig {
+  if (override === undefined) {
+    return base;
+  }
+
+  if (override === false) {
+    return false;
+  }
+
+  if (override === true) {
+    if (base && typeof base === 'object') {
+      return { ...base, enable: true };
+    }
+    return { enable: true };
+  }
+
+  if (base === undefined || base === false) {
+    return { ...override };
+  }
+
+  if (base === true) {
+    return { enable: true, ...override };
+  }
+
+  return { ...base, ...override };
+}
+
+export function mergeOverlayEditOptions(
+  base: OverlayEditOptions = {},
+  override: OverlayEditOptions = {},
+): OverlayEditOptions {
+  const merged: OverlayEditOptions = {
+    ...base,
+    ...override,
+  };
+
+  OVERLAY_EDIT_HANDLE_ROLES.forEach((role) => {
+    merged[role] = mergeOverlayEditHandleConfig(base[role], override[role]) as OverlayEditOptions[typeof role];
+  });
+
+  return merged;
+}
 
 /**
  * 覆盖物服务类
@@ -718,10 +773,7 @@ export class OverlayService {
   setOverlayEditMode(enabled: boolean, overlayEditOptions?: OverlayEditOptions): void {
     this.overlayEditEnabled = !!enabled;
     if (overlayEditOptions) {
-      this.overlayEditOptions = {
-        ...this.overlayEditOptions,
-        ...overlayEditOptions,
-      };
+      this.overlayEditOptions = mergeOverlayEditOptions(this.overlayEditOptions, overlayEditOptions);
     }
 
     if (!this.overlayEditEnabled) {
@@ -746,10 +798,7 @@ export class OverlayService {
 
     this.stopOverlayEdit();
     this.overlayEditEnabled = true;
-    const mergedEditOptions = {
-      ...this.overlayEditOptions,
-      ...(overlayEditOptions || {}),
-    };
+    const mergedEditOptions = mergeOverlayEditOptions(this.overlayEditOptions, overlayEditOptions || {});
 
     const controlPoints = this.resolveEditableControlPoints(target, kind);
     if (controlPoints.length === 0) {
@@ -1117,6 +1166,9 @@ export class OverlayService {
     state.controlPoints.forEach((position, index) => {
       const role = this.resolveHandleRole(state.kind, index);
       const style = this.resolveHandleStyle(role, state.options);
+      if (!style) {
+        return;
+      }
       handles.push(this.createEditHandleEntity(state, `${role}_${index}`, position, style, { role, index }));
     });
 
@@ -1128,9 +1180,19 @@ export class OverlayService {
     const vertexStyle = this.resolveHandleStyle('vertex', state.options);
     const midStyle = this.resolveHandleStyle('mid', state.options);
 
-    state.controlPoints.forEach((position, index) => {
-      handles.push(this.createEditHandleEntity(state, `vertex_${index}`, position, vertexStyle, { role: 'vertex', index }));
-    });
+    if (!vertexStyle && !midStyle) {
+      return handles;
+    }
+
+    if (vertexStyle) {
+      state.controlPoints.forEach((position, index) => {
+        handles.push(this.createEditHandleEntity(state, `vertex_${index}`, position, vertexStyle, { role: 'vertex', index }));
+      });
+    }
+
+    if (!midStyle) {
+      return handles;
+    }
 
     const edgeCount = closed
       ? state.controlPoints.length
@@ -1173,18 +1235,23 @@ export class OverlayService {
     return handle;
   }
 
-  private resolveHandleStyle(role: OverlayEditHandleRole, options: OverlayEditOptions): OverlayEditHandleStyle {
+  private resolveHandleStyle(role: OverlayEditHandleRole, options: OverlayEditOptions): OverlayEditHandleStyle | null {
     const handleOptions = this.resolveHandleOptions(role, options);
+    if (handleOptions === false) {
+      return null;
+    }
+
+    const styleOptions = handleOptions && typeof handleOptions === 'object' ? handleOptions : null;
     const fallback = this.getDefaultHandleStyle(role);
     return {
-      color: this.resolveHandleColor(handleOptions?.color, fallback.color),
-      outlineColor: this.resolveHandleColor(handleOptions?.outlineColor, fallback.outlineColor),
-      outlineWidth: typeof handleOptions?.outlineWidth === 'number' ? handleOptions.outlineWidth : fallback.outlineWidth,
-      pixelSize: typeof handleOptions?.pixelSize === 'number' ? handleOptions.pixelSize : fallback.pixelSize,
+      color: this.resolveHandleColor(styleOptions?.color, fallback.color),
+      outlineColor: this.resolveHandleColor(styleOptions?.outlineColor, fallback.outlineColor),
+      outlineWidth: typeof styleOptions?.outlineWidth === 'number' ? styleOptions.outlineWidth : fallback.outlineWidth,
+      pixelSize: typeof styleOptions?.pixelSize === 'number' ? styleOptions.pixelSize : fallback.pixelSize,
     };
   }
 
-  private resolveHandleOptions(role: OverlayEditHandleRole, options: OverlayEditOptions): OverlayEditHandleOptions | null {
+  private resolveHandleOptions(role: OverlayEditHandleRole, options: OverlayEditOptions): OverlayEditHandleOptions | false | null {
     const config = role === 'point'
       ? options.move
       : role === 'mid'
@@ -1198,7 +1265,11 @@ export class OverlayService {
               : options.vertex;
 
     if (config === false) {
-      return null;
+      return false;
+    }
+
+    if (config && typeof config === 'object' && config.enable === false) {
+      return false;
     }
 
     return config && typeof config === 'object' ? config : null;

@@ -16,22 +16,24 @@ describe('editing compat adapters', () => {
     adapter.hoverEnabled = true;
     adapter.bulkUpdateDepth = 0;
     adapter.overlayEditOptions = {
-      vertex: { pixelSize: 10 },
+      vertex: { color: '#aa0000', pixelSize: 10 },
+      mid: false,
     };
     adapter.resolveOverlayEntity = vi.fn((entity: unknown) => entity);
     adapter.applyHoverState = vi.fn();
 
     expect(adapter.startOverlayEdit('overlay-1', {
-      mid: { pixelSize: 9 },
+      vertex: { outlineWidth: 4 },
+      mid: { enable: true, color: '#00aa00' },
     })).toBe(true);
 
     expect(overlayService.setOverlayEditMode).toHaveBeenCalledWith(true, {
-      vertex: { pixelSize: 10 },
-      mid: { pixelSize: 9 },
+      vertex: { color: '#aa0000', pixelSize: 10, outlineWidth: 4 },
+      mid: { enable: true, color: '#00aa00' },
     });
     expect(overlayService.startOverlayEdit).toHaveBeenCalledWith('overlay-1', {
-      vertex: { pixelSize: 10 },
-      mid: { pixelSize: 9 },
+      vertex: { color: '#aa0000', pixelSize: 10, outlineWidth: 4 },
+      mid: { enable: true, color: '#00aa00' },
     });
 
     adapter.stopOverlayEdit();
@@ -49,22 +51,20 @@ describe('editing compat adapters', () => {
     legacy.hoverEnabled = true;
     legacy.bulkUpdateDepth = 0;
     legacy.overlayEditOptions = {
-      vertex: { pixelSize: 10 },
+      move: { color: '#009900', pixelSize: 8 },
     };
     legacy.resolveOverlayEntity = vi.fn((entity: unknown) => entity);
     legacy.applyHoverState = vi.fn();
 
     expect(legacy.startOverlayEdit('overlay-2', {
-      move: { pixelSize: 11 },
+      move: { outlineWidth: 3 },
     })).toBe(true);
 
     expect(overlayService.setOverlayEditMode).toHaveBeenCalledWith(true, {
-      vertex: { pixelSize: 10 },
-      move: { pixelSize: 11 },
+      move: { color: '#009900', pixelSize: 8, outlineWidth: 3 },
     });
     expect(overlayService.startOverlayEdit).toHaveBeenCalledWith('overlay-2', {
-      vertex: { pixelSize: 10 },
-      move: { pixelSize: 11 },
+      move: { color: '#009900', pixelSize: 8, outlineWidth: 3 },
     });
   });
 

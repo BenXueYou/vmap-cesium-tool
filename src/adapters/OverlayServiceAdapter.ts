@@ -1,6 +1,6 @@
 import * as Cesium from 'cesium';
 import type { Viewer, Entity } from 'cesium';
-import { OverlayService, type OverlayServiceOptions } from '../core/services/overlay/OverlayService';
+import { OverlayService, mergeOverlayEditOptions, type OverlayEditOptions, type OverlayServiceOptions } from '../core/services/overlay/OverlayService';
 import { lngLatToCartesian } from '../core/mapProviders/coordinates/cesium';
 import type {
   MarkerOptions,
@@ -52,12 +52,12 @@ export class OverlayServiceAdapter {
   private overlayService: OverlayService;
   private hoverEnabled: boolean;
   private bulkUpdateDepth = 0;
-  private overlayEditOptions: Record<string, any> | undefined;
+  private overlayEditOptions: OverlayEditOptions | undefined;
 
   constructor(viewer: Viewer, options: LegacyCesiumOverlayServiceOptions = {}) {
     this.viewer = viewer;
     this.hoverEnabled = options.picking?.hover ?? options.enableHoverHandler ?? true;
-    this.overlayEditOptions = options.overlayEditOptions;
+    this.overlayEditOptions = options.overlayEditOptions as OverlayEditOptions | undefined;
     this.overlayService = new OverlayService(viewer, {
       enableHoverHandler: this.hoverEnabled,
       clickPickMinIntervalMs: options.clickPickMinIntervalMs,
@@ -334,10 +334,10 @@ export class OverlayServiceAdapter {
    */
   setOverlayEditMode(enabled: boolean, overlayEditOptions?: Record<string, any>): void {
     if (overlayEditOptions) {
-      this.overlayEditOptions = {
-        ...(this.overlayEditOptions || {}),
-        ...overlayEditOptions,
-      };
+      this.overlayEditOptions = mergeOverlayEditOptions(
+        this.overlayEditOptions,
+        overlayEditOptions as OverlayEditOptions,
+      );
     }
     this.overlayService.setOverlayEditMode(enabled, this.overlayEditOptions);
     this.applyHoverState();
@@ -369,10 +369,10 @@ export class OverlayServiceAdapter {
     }
 
     if (options) {
-      this.overlayEditOptions = {
-        ...(this.overlayEditOptions || {}),
-        ...options,
-      };
+      this.overlayEditOptions = mergeOverlayEditOptions(
+        this.overlayEditOptions,
+        options as OverlayEditOptions,
+      );
     }
 
     this.overlayService.setOverlayEditMode(true, this.overlayEditOptions);

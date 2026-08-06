@@ -126,6 +126,18 @@ function readHierarchy(entity: Cesium.Entity): Cesium.Cartesian3[] {
   return Array.isArray(positions) ? positions : [];
 }
 
+function readHandleColor(entity: Cesium.Entity): Cesium.Color | undefined {
+  return entity.point?.color?.getValue(Cesium.JulianDate.now());
+}
+
+function readHandleOutlineWidth(entity: Cesium.Entity): number | undefined {
+  return entity.point?.outlineWidth?.getValue(Cesium.JulianDate.now());
+}
+
+function readHandlePixelSize(entity: Cesium.Entity): number | undefined {
+  return entity.point?.pixelSize?.getValue(Cesium.JulianDate.now());
+}
+
 describe('OverlayService point and polygon edit regression', () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -282,5 +294,93 @@ describe('OverlayService point and polygon edit regression', () => {
     positions = readHierarchy(polygon);
     expect(positions).toHaveLength(3);
     expect(onOverlayEditChange).toHaveBeenCalledTimes(2);
+  });
+
+  it('merges default and session handle configs by field before creating edit handles', () => {
+    const { viewer } = createViewerStub();
+    const { service } = createService(viewer);
+    const polygon = new Cesium.Entity({
+      id: 'polygon-merge-1',
+      polygon: {
+        hierarchy: new Cesium.ConstantProperty(new Cesium.PolygonHierarchy([
+          Cesium.Cartesian3.fromDegrees(0, 0, 0),
+          Cesium.Cartesian3.fromDegrees(2, 0, 0),
+          Cesium.Cartesian3.fromDegrees(1, 2, 0),
+        ])),
+      },
+    });
+
+    service.overlays.set('polygon-merge-1', {
+      getEntity: () => polygon,
+      remove: vi.fn(),
+    });
+    service.creationOrderById.set('polygon-merge-1', 1);
+    service.setOverlayEditMode(true, {
+      vertex: {
+        color: '#aa0000',
+        pixelSize: 14,
+        outlineWidth: 2,
+      },
+      mid: false,
+    });
+
+    expect(service.startOverlayEdit('polygon-merge-1', {
+      vertex: {
+        outlineWidth: 6,
+      },
+      mid: {
+        enable: true,
+        color: '#00aa00',
+      },
+    })).toBe(true);
+
+    const state = service.overlayEditState as Record<string, any>;
+    expect(state.handles).toHaveLength(6);
+
+    const vertexHandle = state.handles[0] as Cesium.Entity;
+    expect(readHandleColor(vertexHandle)).toEqual(Cesium.Color.fromCssColorString('#aa0000'));
+    expect(readHandleOutlineWidth(vertexHandle)).toBe(6);
+    expect(readHandlePixelSize(vertexHandle)).toBe(14);
+
+    const midHandle = state.handles[3] as Cesium.Entity;
+    expect(readHandleColor(midHandle)).toEqual(Cesium.Color.fromCssColorString('#00aa00'));
+    expect(readHandleOutlineWidth(midHandle)).toBe(2);
+    expect(readHandlePixelSize(midHandle)).toBe(9);
+  });
+
+  it('does not create disabled handles when enable is false', () => {
+    const { viewer, store } = createViewerStub();
+    const { service } = createService(viewer);
+    const polygon = new Cesium.Entity({
+      id: 'polygon-disable-1',
+      polygon: {
+        hierarchy: new Cesium.ConstantProperty(new Cesium.PolygonHierarchy([
+          Cesium.Cartesian3.fromDegrees(0, 0, 0),
+          Cesium.Cartesian3.fromDegrees(2, 0, 0),
+          Cesium.Cartesian3.fromDegrees(1, 2, 0),
+        ])),
+      },
+    });
+
+    service.overlays.set('polygon-disable-1', {
+      getEntity: () => polygon,
+      remove: vi.fn(),
+    });
+    service.creationOrderById.set('polygon-disable-1', 1);
+
+    expect(service.startOverlayEdit('polygon-disable-1', {
+      vertex: {
+        enable: false,
+        pixelSize: 18,
+      },
+      mid: {
+        enable: false,
+        pixelSize: 7,
+      },
+    })).toBe(true);
+
+    const state = service.overlayEditState as Record<string, any>;
+    expect(state.handles).toHaveLength(0);
+    expect(store).toHaveLength(0);
   });
 });
