@@ -246,139 +246,19 @@ export class MarkService {
     }
 
     this.editEnabled = true;
-    if (metadata.type === 'rectangle' || metadata.type === 'circle') {
-      return this.startUnifiedOverlayEdit(entity, metadata, options);
-    }
-
-    this.overlayService.setOverlayEditMode(true, options);
-
-    let handleEntities = this.createEditHandleEntities(entity, metadata);
-
-    const handler = new Cesium.ScreenSpaceEventHandler(this.viewer.scene.canvas);
-    let activeHandleIndex: number | null = null;
-    handler.setInputAction((click: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
-      const picked = this.viewer.scene.pick(click.position);
-      const pickedEntity = picked?.id instanceof Cesium.Entity ? picked.id : null;
-      const meta = this.getEditHandleMeta(pickedEntity);
-      if (!meta) {
-        activeHandleIndex = null;
-        return;
-      }
-
-      if (meta.role === 'mid' && metadata.type === 'polyline') {
-        const insertIndex = meta.index + 1;
-        const insertPosition = this.resolveEditHandlePosition(metadata, pickedEntity, click.position);
-        if (!insertPosition) {
-          activeHandleIndex = null;
-          return;
-        }
-
-        metadata.controlPoints.splice(insertIndex, 0, insertPosition.clone());
-        this.updateEntityGeometry(entity, metadata);
-        handleEntities = this.rebuildEditHandleEntities(entity, metadata, handleEntities);
-        activeHandleIndex = insertIndex;
-        if (this.editState) {
-          this.editState.handleEntities = handleEntities;
-          this.editState.activeHandleIndex = activeHandleIndex;
-        }
-        this.callbacks?.onEditChange?.(buildMarkDrawResult(entity, options?.outputCoordSystem || 'WGS84'));
-        this.viewer.scene.requestRender();
-        return;
-      }
-
-      activeHandleIndex = meta.role === 'vertex' ? meta.index : null;
-    }, Cesium.ScreenSpaceEventType.LEFT_DOWN);
-
-    handler.setInputAction((movement: Cesium.ScreenSpaceEventHandler.MotionEvent) => {
-      if (activeHandleIndex === null) {
-        return;
-      }
-      const position = this.pickPosition(movement.endPosition);
-      if (!position) {
-        return;
-      }
-
-      if (metadata.type === 'circle') {
-        if (activeHandleIndex === 0) {
-          const radius = metadata.radius ?? this.calculateCircleRadius(metadata.controlPoints[0], metadata.controlPoints[1]);
-          metadata.controlPoints[0] = position.clone();
-          metadata.radius = radius;
-          metadata.controlPoints[1] = this.circleRadiusHandlePosition(position, radius);
-        } else {
-          metadata.controlPoints[1] = position.clone();
-          metadata.radius = this.calculateCircleRadius(metadata.controlPoints[0], position);
-        }
-      } else if (metadata.type === 'rectangle') {
-        metadata.controlPoints = this.updateRectangleControlPoints(
-          metadata.controlPoints,
-          activeHandleIndex,
-          position,
-        );
-      } else {
-        metadata.controlPoints[activeHandleIndex] = position.clone();
-        handleEntities[activeHandleIndex].position = new Cesium.ConstantPositionProperty(position.clone());
-      }
-
-      this.updateEntityGeometry(entity, metadata);
-      this.syncEditHandlePositions(metadata, handleEntities);
-      this.callbacks?.onEditChange?.(buildMarkDrawResult(entity, options?.outputCoordSystem || 'WGS84'));
-      this.viewer.scene.requestRender();
-    }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
-
-    handler.setInputAction(() => {
-      activeHandleIndex = null;
-    }, Cesium.ScreenSpaceEventType.LEFT_UP);
-
-    handler.setInputAction((click: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
-      if (metadata.type !== 'polyline') {
-        return;
-      }
-
-      const picked = this.viewer.scene.pick(click.position);
-      const pickedEntity = picked?.id instanceof Cesium.Entity ? picked.id : null;
-      const meta = this.getEditHandleMeta(pickedEntity);
-      if (!meta || meta.role !== 'vertex') {
-        return;
-      }
-
-      if (metadata.controlPoints.length <= 2 || meta.index < 0 || meta.index >= metadata.controlPoints.length) {
-        return;
-      }
-
-      metadata.controlPoints.splice(meta.index, 1);
-      this.updateEntityGeometry(entity, metadata);
-      handleEntities = this.rebuildEditHandleEntities(entity, metadata, handleEntities);
-      if (this.editState) {
-        this.editState.handleEntities = handleEntities;
-      }
-      this.callbacks?.onEditChange?.(buildMarkDrawResult(entity, options?.outputCoordSystem || 'WGS84'));
-      this.viewer.scene.requestRender();
-    }, Cesium.ScreenSpaceEventType.RIGHT_CLICK);
-
-    this.editState = { entity, handleEntities, handler, activeHandleIndex, options };
-    return true;
+    return this.startUnifiedOverlayEdit(entity, metadata, options);
   }
 
   stopEdit(): MarkDrawResult | null {
     if (!this.editState) {
       return null;
     }
-    const { entity, handleEntities, handler, options, delegated } = this.editState;
-    if (delegated) {
-      const result = buildMarkDrawResult(entity, options?.outputCoordSystem || 'WGS84');
-      this.overlayService.stopOverlayEdit();
-      if (this.editState?.entity === entity) {
-        this.editState = null;
-      }
-      return result;
-    }
-    (handleEntities || []).forEach((item) => this.viewer.entities.remove(item));
-    handler?.destroy();
-    this.editState = null;
-    this.overlayService.setOverlayEditMode(false);
+    const { entity, options } = this.editState;
     const result = buildMarkDrawResult(entity, options?.outputCoordSystem || 'WGS84');
-    this.callbacks?.onEditEnd?.(result);
-    this.viewer.scene.requestRender();
+    this.overlayService.stopOverlayEdit();
+    if (this.editState?.entity === entity) {
+      this.editState = null;
+    }
     return result;
   }
 

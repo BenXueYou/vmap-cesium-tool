@@ -202,7 +202,7 @@ describe('OverlayService point and polygon edit regression', () => {
 
     const state = service.overlayEditState as Record<string, any>;
     expect(state.kind).toBe('polygon');
-    expect(state.handles).toHaveLength(3);
+    expect(state.handles).toHaveLength(6);
 
     const draggedHandle = state.handles[1] as Cesium.Entity;
     const moved = Cesium.Cartesian3.fromDegrees(2.5, 0.5, 0);
@@ -223,5 +223,64 @@ describe('OverlayService point and polygon edit regression', () => {
     expect(onOverlayEditEnd).toHaveBeenCalledTimes(1);
     expect(onOverlayEditEnd).toHaveBeenCalledWith(polygon);
     expect(service.overlayEditState).toBeNull();
+  });
+
+  it('restores polygon midpoint insertion on closed edges and keeps right-click deletion above the triangle floor', () => {
+    const { viewer, scenePick, globePick } = createViewerStub();
+    const { service, onOverlayEditChange } = createService(viewer);
+    const polygon = new Cesium.Entity({
+      id: 'polygon-2',
+      polygon: {
+        hierarchy: new Cesium.ConstantProperty(new Cesium.PolygonHierarchy([
+          Cesium.Cartesian3.fromDegrees(0, 0, 0),
+          Cesium.Cartesian3.fromDegrees(2, 0, 0),
+          Cesium.Cartesian3.fromDegrees(1, 2, 0),
+        ])),
+      },
+    });
+
+    service.overlays.set('polygon-2', {
+      getEntity: () => polygon,
+      remove: vi.fn(),
+    });
+    service.creationOrderById.set('polygon-2', 1);
+
+    expect(service.startOverlayEdit('polygon-2')).toBe(true);
+
+    let state = service.overlayEditState as Record<string, any>;
+    expect(state.kind).toBe('polygon');
+    expect(state.handles).toHaveLength(6);
+
+    const midpointHandle = state.handles[4] as Cesium.Entity;
+    const inserted = Cesium.Cartesian3.fromDegrees(1.5, 1, 0);
+    scenePick.mockReturnValue({ id: midpointHandle });
+    globePick.mockReturnValue(inserted);
+
+    const handler = FakeScreenSpaceEventHandler.instances[0];
+    handler.trigger(Cesium.ScreenSpaceEventType.LEFT_DOWN, { position: { x: 16, y: 18 } });
+    handler.trigger(Cesium.ScreenSpaceEventType.LEFT_UP, {});
+
+    state = service.overlayEditState as Record<string, any>;
+    expect(state.handles).toHaveLength(8);
+
+    let positions = readHierarchy(polygon);
+    expect(positions).toHaveLength(4);
+    expect(Cesium.Cartesian3.equalsEpsilon(positions[2], inserted, 1e-8)).toBe(true);
+
+    const insertedVertexHandle = state.handles[2] as Cesium.Entity;
+    scenePick.mockReturnValue({ id: insertedVertexHandle });
+    handler.trigger(Cesium.ScreenSpaceEventType.RIGHT_CLICK, { position: { x: 22, y: 28 } });
+
+    positions = readHierarchy(polygon);
+    expect(positions).toHaveLength(3);
+    expect(onOverlayEditChange).toHaveBeenCalledTimes(2);
+
+    const firstVertexHandle = (service.overlayEditState as Record<string, any>).handles[0] as Cesium.Entity;
+    scenePick.mockReturnValue({ id: firstVertexHandle });
+    handler.trigger(Cesium.ScreenSpaceEventType.RIGHT_CLICK, { position: { x: 24, y: 30 } });
+
+    positions = readHierarchy(polygon);
+    expect(positions).toHaveLength(3);
+    expect(onOverlayEditChange).toHaveBeenCalledTimes(2);
   });
 });

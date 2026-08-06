@@ -786,7 +786,7 @@ export class OverlayService {
       const meta = this.getEditHandleMeta(pickedEntity);
       if (
         meta?.role === 'mid'
-        && state.kind === 'polyline'
+        && (state.kind === 'polyline' || state.kind === 'polygon')
         && typeof meta.index === 'number'
       ) {
         const insertIndex = meta.index + 1;
@@ -796,7 +796,7 @@ export class OverlayService {
         }
 
         state.controlPoints.splice(insertIndex, 0, insertPosition.clone());
-        this.applyPolylinePositions(state.entity, state.controlPoints);
+        this.applyPositionsForEditableKind(state);
         this.rebuildEditHandles(state);
         this.emitOverlayEditChange(state);
         state.activeHandleIndex = insertIndex;
@@ -838,7 +838,7 @@ export class OverlayService {
     }, Cesium.ScreenSpaceEventType.LEFT_UP);
 
     handler.setInputAction((click: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
-      if (state.kind !== 'polyline') {
+      if (state.kind !== 'polyline' && state.kind !== 'polygon') {
         return;
       }
 
@@ -849,12 +849,13 @@ export class OverlayService {
         return;
       }
 
-      if (state.controlPoints.length <= 2 || meta.index < 0 || meta.index >= state.controlPoints.length) {
+      const minPoints = state.kind === 'polygon' ? 3 : 2;
+      if (state.controlPoints.length <= minPoints || meta.index < 0 || meta.index >= state.controlPoints.length) {
         return;
       }
 
       state.controlPoints.splice(meta.index, 1);
-      this.applyPolylinePositions(state.entity, state.controlPoints);
+      this.applyPositionsForEditableKind(state);
       this.rebuildEditHandles(state);
       this.emitOverlayEditChange(state);
       this.viewer.scene.requestRender();
@@ -1104,7 +1105,11 @@ export class OverlayService {
 
   private createEditHandles(state: OverlayEditState): Entity[] {
     if (state.kind === 'polyline') {
-      return this.createPolylineEditHandles(state);
+      return this.createLinearEditHandles(state, false);
+    }
+
+    if (state.kind === 'polygon') {
+      return this.createLinearEditHandles(state, true);
     }
 
     const handles: Entity[] = [];
@@ -1118,7 +1123,7 @@ export class OverlayService {
     return handles;
   }
 
-  private createPolylineEditHandles(state: OverlayEditState): Entity[] {
+  private createLinearEditHandles(state: OverlayEditState, closed: boolean): Entity[] {
     const handles: Entity[] = [];
     const vertexStyle = this.resolveHandleStyle('vertex', state.options);
     const midStyle = this.resolveHandleStyle('mid', state.options);
@@ -1127,10 +1132,16 @@ export class OverlayService {
       handles.push(this.createEditHandleEntity(state, `vertex_${index}`, position, vertexStyle, { role: 'vertex', index }));
     });
 
-    for (let index = 0; index < state.controlPoints.length - 1; index++) {
+    const edgeCount = closed
+      ? state.controlPoints.length
+      : state.controlPoints.length - 1;
+    for (let index = 0; index < edgeCount; index++) {
+      const nextIndex = closed
+        ? (index + 1) % state.controlPoints.length
+        : index + 1;
       const midpoint = Cesium.Cartesian3.midpoint(
         state.controlPoints[index],
-        state.controlPoints[index + 1],
+        state.controlPoints[nextIndex],
         new Cesium.Cartesian3(),
       );
       handles.push(this.createEditHandleEntity(state, `mid_${index}`, midpoint, midStyle, { role: 'mid', index }));
@@ -1281,7 +1292,10 @@ export class OverlayService {
     const meta = this.getEditHandleMeta(handle);
     if (meta?.role === 'mid' && typeof meta.index === 'number') {
       const start = state.controlPoints[meta.index];
-      const end = state.controlPoints[meta.index + 1];
+      const endIndex = state.kind === 'polygon'
+        ? (meta.index + 1) % state.controlPoints.length
+        : meta.index + 1;
+      const end = state.controlPoints[endIndex];
       if (start && end) {
         return Cesium.Cartesian3.midpoint(start, end, new Cesium.Cartesian3());
       }
@@ -1381,6 +1395,17 @@ export class OverlayService {
     }
   }
 
+  private applyPositionsForEditableKind(state: OverlayEditState): void {
+    if (state.kind === 'polyline') {
+      this.applyPolylinePositions(state.entity, state.controlPoints);
+      return;
+    }
+
+    if (state.kind === 'polygon') {
+      this.applyPolygonPositions(state.entity, state.controlPoints);
+    }
+  }
+
   private syncEditHandles(state: OverlayEditState): void {
     if (state.kind === 'point') {
       if (state.handles[0]) {
@@ -1431,7 +1456,10 @@ export class OverlayService {
 
       if (meta.role === 'mid' && typeof meta.index === 'number') {
         const start = state.controlPoints[meta.index];
-        const end = state.controlPoints[meta.index + 1];
+        const endIndex = state.kind === 'polygon'
+          ? (meta.index + 1) % state.controlPoints.length
+          : meta.index + 1;
+        const end = state.controlPoints[endIndex];
         if (start && end) {
           handle.position = new Cesium.ConstantPositionProperty(
             Cesium.Cartesian3.midpoint(start, end, new Cesium.Cartesian3()),

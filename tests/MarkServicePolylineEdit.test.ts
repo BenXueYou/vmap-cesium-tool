@@ -1,108 +1,44 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import * as Cesium from 'cesium';
+import { MarkService } from '../src/core/services/mark/MarkService';
 
-class FakeScreenSpaceEventHandler {
-  static instances: FakeScreenSpaceEventHandler[] = [];
-
-  private readonly actions = new Map<number, (payload: any) => void>();
-
-  constructor(_canvas: unknown) {
-    FakeScreenSpaceEventHandler.instances.push(this);
-  }
-
-  setInputAction(callback: (payload: any) => void, type: number): void {
-    this.actions.set(type, callback);
-  }
-
-  trigger(type: number, payload: any): void {
-    this.actions.get(type)?.(payload);
-  }
-
-  destroy(): void {
-    this.actions.clear();
-  }
-}
-
-vi.mock('cesium', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('cesium')>();
-  return {
-    ...actual,
-    ScreenSpaceEventHandler: FakeScreenSpaceEventHandler,
-  };
-});
-
-const Cesium = await import('cesium');
-const { MarkService } = await import('../src/core/services/mark/MarkService');
-
-function createViewerStub() {
-  const store: Cesium.Entity[] = [];
-  const scenePick = vi.fn();
-  const globePick = vi.fn();
-
-  return {
-    store,
-    scenePick,
-    globePick,
-    viewer: {
-      entities: {
-        add(entityLike: Cesium.Entity | Cesium.Entity.ConstructorOptions) {
-          const entity = entityLike instanceof Cesium.Entity ? entityLike : new Cesium.Entity(entityLike);
-          store.push(entity);
-          return entity;
-        },
-        remove(entity: Cesium.Entity) {
-          const index = store.indexOf(entity);
-          if (index >= 0) {
-            store.splice(index, 1);
-            return true;
-          }
-          return false;
-        },
-      },
-      scene: {
-        canvas: {},
-        pick: scenePick,
-        globe: {
-          ellipsoid: Cesium.Ellipsoid.WGS84,
-          pick: globePick,
-        },
-        requestRender: vi.fn(),
-      },
-      camera: {
-        getPickRay: vi.fn(() => ({})),
-        pickEllipsoid: vi.fn(() => null),
-      },
-    } as unknown as Cesium.Viewer,
-  };
-}
-
-function createService(viewer: Cesium.Viewer) {
-  const service = Object.create(MarkService.prototype) as MarkService & Record<string, any>;
-  service.viewer = viewer;
-  service.entities = new Map();
-  service.callbacks = {
+function createService() {
+  const callbacks = {
     onEditChange: vi.fn(),
+    onEditEnd: vi.fn(),
   };
+  const overlayService = {
+    setOverlayEditMode: vi.fn(),
+    startOverlayEdit: vi.fn(() => true),
+    stopOverlayEdit: vi.fn(),
+  };
+
+  const service = Object.create(MarkService.prototype) as MarkService & Record<string, any>;
+  service.viewer = {
+    scene: {
+      requestRender: vi.fn(),
+    },
+  };
+  service.entities = new Map();
+  service.callbacks = callbacks;
   service.editState = null;
   service.editEnabled = false;
-  service.overlayService = {
-    setOverlayEditMode: vi.fn(),
-  };
-  return service;
+  service.overlayService = overlayService;
+
+  return { service, callbacks, overlayService };
 }
 
-function readHandleColor(entity: Cesium.Entity) {
-  return entity.point?.color?.getValue(Cesium.JulianDate.now());
+function toDegrees(point: Cesium.Cartesian3) {
+  const cartographic = Cesium.Cartographic.fromCartesian(point);
+  return {
+    longitude: Cesium.Math.toDegrees(cartographic.longitude),
+    latitude: Cesium.Math.toDegrees(cartographic.latitude),
+  };
 }
 
 describe('MarkService polyline edit', () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-    FakeScreenSpaceEventHandler.instances.length = 0;
-  });
-
-  it('restores midpoint insertion and right-click vertex deletion for polylines', () => {
-    const { viewer, scenePick, globePick } = createViewerStub();
-    const service = createService(viewer);
+  it('routes polyline editing through OverlayService and keeps mark metadata/results in sync', () => {
+    const { service, callbacks, overlayService } = createService();
     const polyline = new Cesium.Entity({
       id: 'mark-line-1',
       polyline: {
@@ -126,32 +62,36 @@ describe('MarkService polyline edit', () => {
 
     service.entities.set(String(polyline.id), polyline);
 
-    expect(service.startEdit(polyline)).toBe(true);
+    expect(service.startEdit(polyline, { outputCoordSystem: 'WGS84' })).toBe(true);
+    expect(overlayService.startOverlayEdit).toHaveBeenCalledTimes(1);
 
-    let editState = service.editState as Record<string, any>;
-    expect(editState.handleEntities).toHaveLength(5);
-    expect(readHandleColor(editState.handleEntities[0])).toEqual(Cesium.Color.fromCssColorString('#1e88e5'));
-    expect(readHandleColor(editState.handleEntities[3])).toEqual(Cesium.Color.fromCssColorString('#ec407a'));
+    const sessionOptions = overlayService.startOverlayEdit.mock.calls[0][1];
+    overlayService.stopOverlayEdit.mockImplementation(() => sessionOptions.onEnd(polyline));
 
-    const inserted = Cesium.Cartesian3.fromDegrees(0.5, 0.3, 0);
-    scenePick.mockReturnValue({ id: editState.handleEntities[3] });
-    globePick.mockReturnValue(inserted);
+    polyline.polyline!.positions = new Cesium.ConstantProperty([
+      Cesium.Cartesian3.fromDegrees(0, 0, 0),
+      Cesium.Cartesian3.fromDegrees(0.5, 0.3, 0),
+      Cesium.Cartesian3.fromDegrees(2, 0, 0),
+    ]);
+    sessionOptions.onChange(polyline);
 
-    const handler = FakeScreenSpaceEventHandler.instances[0];
-    handler.trigger(Cesium.ScreenSpaceEventType.LEFT_DOWN, { position: { x: 14, y: 14 } });
-    handler.trigger(Cesium.ScreenSpaceEventType.LEFT_UP, {});
+    const changeResult = callbacks.onEditChange.mock.calls[0][0];
+    expect(changeResult.positions).toHaveLength(3);
+    expect(changeResult.positions[1].longitude).toBeCloseTo(0.5, 6);
+    expect(changeResult.positions[1].latitude).toBeCloseTo(0.3, 6);
 
-    editState = service.editState as Record<string, any>;
-    let metadata = (polyline as Cesium.Entity & { _markMeta?: { controlPoints: Cesium.Cartesian3[] } })._markMeta;
-    expect(editState.handleEntities).toHaveLength(7);
-    expect(metadata?.controlPoints).toHaveLength(4);
-    expect(Cesium.Cartesian3.equalsEpsilon(metadata!.controlPoints[1], inserted, 1e-8)).toBe(true);
-
-    scenePick.mockReturnValue({ id: editState.handleEntities[1] });
-    handler.trigger(Cesium.ScreenSpaceEventType.RIGHT_CLICK, { position: { x: 18, y: 18 } });
-
-    metadata = (polyline as Cesium.Entity & { _markMeta?: { controlPoints: Cesium.Cartesian3[] } })._markMeta;
+    const metadata = (polyline as Cesium.Entity & { _markMeta?: { controlPoints: Cesium.Cartesian3[] } })._markMeta;
     expect(metadata?.controlPoints).toHaveLength(3);
-    expect(service.callbacks.onEditChange).toHaveBeenCalledTimes(2);
+    expect(toDegrees(metadata!.controlPoints[1]).longitude).toBeCloseTo(0.5, 6);
+    expect(toDegrees(metadata!.controlPoints[1]).latitude).toBeCloseTo(0.3, 6);
+
+    const endResult = service.stopEdit();
+    expect(endResult?.positions).toHaveLength(3);
+    expect(endResult?.positions[1].longitude).toBeCloseTo(0.5, 6);
+    expect(endResult?.positions[1].latitude).toBeCloseTo(0.3, 6);
+    expect(overlayService.stopOverlayEdit).toHaveBeenCalledTimes(1);
+    expect(callbacks.onEditEnd).toHaveBeenCalledTimes(1);
+    expect(service.editState).toBeNull();
+    expect(service.editEnabled).toBe(false);
   });
 });
