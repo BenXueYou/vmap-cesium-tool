@@ -1178,7 +1178,7 @@ export class OverlayService {
       (entity as any)._outerRectangle !== undefined
     ) return 'rectangle';
     if (overlayType === 'polygon-primitive' || entity.polygon) return 'polygon';
-    if (entity.point) return 'point';
+    if (overlayType === 'icon' || overlayType === 'marker' || entity.billboard || entity.point) return 'point';
     if (entity.polyline) return 'polyline';
     return null;
   }

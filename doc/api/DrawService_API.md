@@ -167,6 +167,8 @@ interface DrawOptions {
   lineWidth?: number;
   fillColor?: Cesium.Color | string;
   clampToGround?: boolean;
+  showDistanceLabel?: boolean;
+  showAreaLabel?: boolean;
   segmentDistanceLabelStyle?: MeasurementSummaryLabelStyle;
   totalDistanceLabelStyle?: MeasurementSummaryLabelStyle;
   previewAreaLabelStyle?: MeasurementSummaryLabelStyle;
@@ -183,6 +185,8 @@ interface DrawOptions {
 - `lineWidth`: 线宽快捷配置
 - `fillColor`: 面填充快捷配置
 - `clampToGround`: 是否贴地
+- `showDistanceLabel`: 是否显示线的分段距离/总距离标签，默认 `false`
+- `showAreaLabel`: 是否显示面的预览面积/总面积标签，默认 `false`
 - `segmentDistanceLabelStyle`: 分段距离标签样式
 - `totalDistanceLabelStyle`: 总距离标签样式
 - `previewAreaLabelStyle`: 预览面积标签样式
@@ -193,6 +197,7 @@ interface DrawOptions {
 说明：
 
 - `measurementTheme` 是更完整的主题入口，单项样式字段可以理解为常用快捷配置
+- `DrawService` / `DrawHelper` 的普通绘制默认不展示长度、面积标签；工具栏 `measure` 流程会在内部自动开启对应标签
 - 最终样式会在内部被解析和归一化
 - `mode` 字段存在于类型中，但在 `DrawService.startDrawing(mode, options)` 的调用模式下，通常以第一个参数为准
 
@@ -205,6 +210,8 @@ interface MeasurementTheme {
   stroke?: MeasurementStrokeStyle;
   fill?: MeasurementFillStyle;
   vertex?: MeasurementVertexStyle;
+  showDistanceLabel?: boolean;
+  showAreaLabel?: boolean;
   segmentDistanceLabel?: MeasurementSummaryLabelStyle;
   totalDistanceLabel?: MeasurementSummaryLabelStyle;
   previewAreaLabel?: MeasurementSummaryLabelStyle;

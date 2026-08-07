@@ -122,11 +122,10 @@ interface DrawOptions {
     outlineWidth?: number;
   };
 
-  // polygon/rectangle/circle：是否显示面积标签（默认 true）
+  // polygon/rectangle/circle：是否显示面积标签（默认 false）
   showAreaLabel?: boolean;
 
-  // line：是否显示长度标签（默认 true）。包含“分段长度”与“总长度”标签。
-  // 说明：显式传入 false 才会关闭。
+  // line：是否显示长度标签（默认 false）。包含“分段长度”与“总长度”标签。
   showDistanceLabel?: boolean;
 
   // 多边形自相交校验
@@ -153,15 +152,14 @@ drawHelper.onDrawEnd((entity) => {
 
 drawHelper.startDrawingPolygon({
   strokeWidth: 2,
-  showAreaLabel: true,
   selfIntersectionEnabled: true,
   selfIntersectionAllowTouch: true,
 });
 
-// 画线时关闭长度标签
+// 需要测量样式时显式开启
 drawHelper.startDrawingLine({
   strokeWidth: 3,
-  showDistanceLabel: false,
+  showDistanceLabel: true,
 });
 ```
 

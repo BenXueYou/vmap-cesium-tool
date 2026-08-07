@@ -23,6 +23,7 @@ export class CirclePrimitiveBatch {
   private fillCollection: Cesium.PrimitiveCollection;
   private ownsCollections: boolean;
   private ownedRootCollection: Cesium.PrimitiveCollection | null = null;
+  private destroyed = false;
 
   private ringPrimitive: Cesium.GroundPrimitive | null = null;
   private fillPrimitive: Cesium.GroundPrimitive | null = null;
@@ -55,11 +56,21 @@ export class CirclePrimitiveBatch {
       this.ringCollection = root;
       this.fillCollection = root;
       this.ownsCollections = true;
-      this.viewer.scene.primitives.add(root);
+      this.getScene()?.primitives.add(root);
+    }
+  }
+
+  private getScene(): Cesium.Scene | null {
+    if (this.destroyed) return null;
+    try {
+      return this.viewer.scene;
+    } catch {
+      return null;
     }
   }
 
   public destroy(): void {
+    this.destroyed = true;
     try {
       if (this.ringPrimitive) this.ringCollection.remove(this.ringPrimitive);
       if (this.fillPrimitive) this.fillCollection.remove(this.fillPrimitive);
@@ -71,7 +82,7 @@ export class CirclePrimitiveBatch {
 
     if (this.ownsCollections && this.ownedRootCollection) {
       try {
-        this.viewer.scene.primitives.remove(this.ownedRootCollection);
+        this.getScene()?.primitives.remove(this.ownedRootCollection);
       } catch {
         // ignore
       }
@@ -94,6 +105,7 @@ export class CirclePrimitiveBatch {
     fillColor: Cesium.Color;
     visible: boolean;
   }): void {
+    if (this.destroyed) return;
     this.records.set(args.circleId, {
       circleId: args.circleId,
       parts: args.parts,
@@ -112,6 +124,7 @@ export class CirclePrimitiveBatch {
   }
 
   public remove(circleId: string): void {
+    if (this.destroyed) return;
     if (!this.records.has(circleId)) return;
     this.records.delete(circleId);
     this.pendingColorApplyIds.delete(circleId);
@@ -119,6 +132,7 @@ export class CirclePrimitiveBatch {
   }
 
   public setVisible(circleId: string, visible: boolean): void {
+    if (this.destroyed) return;
     const rec = this.records.get(circleId);
     if (!rec) return;
     rec.visible = visible;
@@ -126,6 +140,7 @@ export class CirclePrimitiveBatch {
   }
 
   public setColors(circleId: string, ringColor: Cesium.Color, fillColor: Cesium.Color): void {
+    if (this.destroyed) return;
     const rec = this.records.get(circleId);
     if (!rec) return;
     rec.ringColor = ringColor;
@@ -134,12 +149,14 @@ export class CirclePrimitiveBatch {
   }
 
   private scheduleApplyColors(circleId: string): void {
+    if (this.destroyed) return;
     this.pendingColorApplyIds.add(circleId);
     if (this.colorApplyScheduled) return;
     this.colorApplyScheduled = true;
 
     const raf = (globalThis as any).requestAnimationFrame as ((cb: FrameRequestCallback) => number) | undefined;
     const tick = () => {
+      if (this.destroyed) return;
       this.colorApplyScheduled = false;
       const ids = Array.from(this.pendingColorApplyIds);
       this.pendingColorApplyIds.clear();
@@ -156,12 +173,14 @@ export class CirclePrimitiveBatch {
   }
 
   private scheduleRebuild(): void {
+    if (this.destroyed) return;
     if (this.rebuildScheduled) return;
     this.rebuildScheduled = true;
 
     const raf = (globalThis as any).requestAnimationFrame as ((cb: FrameRequestCallback) => number) | undefined;
     if (typeof raf === 'function') {
       raf(() => {
+        if (this.destroyed) return;
         this.rebuildScheduled = false;
         this.rebuild();
       });
@@ -169,6 +188,7 @@ export class CirclePrimitiveBatch {
     }
 
     setTimeout(() => {
+      if (this.destroyed) return;
       this.rebuildScheduled = false;
       this.rebuild();
     }, 0);
@@ -180,6 +200,7 @@ export class CirclePrimitiveBatch {
   }
 
   private rebuild(): void {
+    if (this.destroyed) return;
     if (this.ringPrimitive) {
       try { this.ringCollection.remove(this.ringPrimitive); } catch {}
       this.ringPrimitive = null;
@@ -269,13 +290,14 @@ export class CirclePrimitiveBatch {
     }
 
     try {
-      this.viewer.scene.requestRender?.();
+      this.getScene()?.requestRender?.();
     } catch {
       // ignore
     }
   }
 
   private applyCurrentColors(circleId: string): void {
+    if (this.destroyed) return;
     const rec = this.records.get(circleId);
     if (!rec) return;
 
@@ -322,7 +344,7 @@ export class CirclePrimitiveBatch {
     }
 
     try {
-      this.viewer.scene.requestRender?.();
+      this.getScene()?.requestRender?.();
     } catch {
       // ignore
     }

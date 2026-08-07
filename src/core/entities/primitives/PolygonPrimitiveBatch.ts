@@ -23,6 +23,7 @@ export class PolygonPrimitiveBatch {
   private readonly borderCollection: Cesium.PrimitiveCollection;
   private readonly ownsCollections: boolean;
   private ownedRootCollection: Cesium.PrimitiveCollection | null = null;
+  private destroyed = false;
 
   private fillPrimitive: Cesium.GroundPrimitive | null = null;
   private borderPrimitive: Cesium.GroundPolylinePrimitive | null = null;
@@ -52,7 +53,16 @@ export class PolygonPrimitiveBatch {
       this.fillCollection = root;
       this.borderCollection = root;
       this.ownsCollections = true;
-      this.viewer.scene.primitives.add(root);
+      this.getScene()?.primitives.add(root);
+    }
+  }
+
+  private getScene(): Cesium.Scene | null {
+    if (this.destroyed) return null;
+    try {
+      return this.viewer.scene;
+    } catch {
+      return null;
     }
   }
 
@@ -66,6 +76,7 @@ export class PolygonPrimitiveBatch {
     borderColor: Cesium.Color;
     visible: boolean;
   }): void {
+    if (this.destroyed) return;
     this.records.set(args.polygonId, {
       polygonId: args.polygonId,
       parts: args.parts,
@@ -84,6 +95,7 @@ export class PolygonPrimitiveBatch {
   }
 
   public remove(polygonId: string): void {
+    if (this.destroyed) return;
     if (!this.records.has(polygonId)) return;
     this.records.delete(polygonId);
     this.pendingColorApplyIds.delete(polygonId);
@@ -91,6 +103,7 @@ export class PolygonPrimitiveBatch {
   }
 
   public setVisible(polygonId: string, visible: boolean): void {
+    if (this.destroyed) return;
     const record = this.records.get(polygonId);
     if (!record) return;
     record.visible = visible;
@@ -98,6 +111,7 @@ export class PolygonPrimitiveBatch {
   }
 
   public setColors(polygonId: string, borderColor: Cesium.Color, fillColor: Cesium.Color): void {
+    if (this.destroyed) return;
     const record = this.records.get(polygonId);
     if (!record) return;
     record.borderColor = borderColor;
@@ -106,6 +120,7 @@ export class PolygonPrimitiveBatch {
   }
 
   public setBorderWidth(polygonId: string, borderWidth: number): void {
+    if (this.destroyed) return;
     const record = this.records.get(polygonId);
     if (!record) return;
     record.borderWidth = Math.max(1, Number(borderWidth) || 1);
@@ -113,6 +128,7 @@ export class PolygonPrimitiveBatch {
   }
 
   public destroy(): void {
+    this.destroyed = true;
     try {
       if (this.fillPrimitive) this.fillCollection.remove(this.fillPrimitive);
       if (this.borderPrimitive) this.borderCollection.remove(this.borderPrimitive);
@@ -125,7 +141,7 @@ export class PolygonPrimitiveBatch {
 
     if (this.ownsCollections && this.ownedRootCollection) {
       try {
-        this.viewer.scene.primitives.remove(this.ownedRootCollection);
+        this.getScene()?.primitives.remove(this.ownedRootCollection);
       } catch {
         // ignore
       }
@@ -136,12 +152,14 @@ export class PolygonPrimitiveBatch {
   }
 
   private scheduleApplyColors(polygonId: string): void {
+    if (this.destroyed) return;
     this.pendingColorApplyIds.add(polygonId);
     if (this.colorApplyScheduled) return;
     this.colorApplyScheduled = true;
 
     const raf = (globalThis as any).requestAnimationFrame as ((cb: FrameRequestCallback) => number) | undefined;
     const tick = () => {
+      if (this.destroyed) return;
       this.colorApplyScheduled = false;
       const ids = Array.from(this.pendingColorApplyIds);
       this.pendingColorApplyIds.clear();
@@ -156,11 +174,13 @@ export class PolygonPrimitiveBatch {
   }
 
   private scheduleRebuild(): void {
+    if (this.destroyed) return;
     if (this.rebuildScheduled) return;
     this.rebuildScheduled = true;
 
     const raf = (globalThis as any).requestAnimationFrame as ((cb: FrameRequestCallback) => number) | undefined;
     const tick = () => {
+      if (this.destroyed) return;
       this.rebuildScheduled = false;
       this.rebuild();
     };
@@ -178,6 +198,7 @@ export class PolygonPrimitiveBatch {
   }
 
   private rebuild(): void {
+    if (this.destroyed) return;
     if (this.fillPrimitive) {
       try { this.fillCollection.remove(this.fillPrimitive); } catch {}
       this.fillPrimitive = null;
@@ -260,10 +281,11 @@ export class PolygonPrimitiveBatch {
     }
 
     this.records.forEach((record) => this.applyCurrentColors(record.polygonId));
-    this.viewer.scene.requestRender?.();
+    this.getScene()?.requestRender?.();
   }
 
   private applyCurrentColors(polygonId: string): void {
+    if (this.destroyed) return;
     const record = this.records.get(polygonId);
     if (!record) return;
 
@@ -316,6 +338,6 @@ export class PolygonPrimitiveBatch {
       this.scheduleApplyColors(polygonId);
     }
 
-    this.viewer.scene.requestRender?.();
+    this.getScene()?.requestRender?.();
   }
 }
