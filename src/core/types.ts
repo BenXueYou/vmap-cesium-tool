@@ -411,6 +411,8 @@ export interface LayersConfig {
 export interface MapPluginOptions {
   /** Cesium Viewer 原生配置 */
   viewerOptions?: Cesium.Viewer.ConstructorOptions;
+  /** 是否启用 Cesium FXAA 后处理抗锯齿，默认启用 */
+  fxaa?: boolean;
   /** 相机/视图配置 */
   camera?: CameraConfig;
   /** 图层配置 */
@@ -425,7 +427,7 @@ export interface MapPluginOptions {
   providerSearch?: ProviderSearchOptions;
   /** 新 mapService 模式下的标准搜索选中通知 */
   onSearchResultSelected?: (result: MapSearchResult) => void;
-  /** Cesium credit/版权区域；默认显示 */
+  /** Cesium credit/版权区域；默认隐藏，可显式设置 visible: true */
   credits?: CreditsOptions;
   /** Cesium Ion Token */
   cesiumToken?: string;

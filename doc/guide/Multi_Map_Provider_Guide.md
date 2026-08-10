@@ -304,10 +304,10 @@ mapAuth: {
 
 ## Credit / 版权区域
 
-组件默认显示 Cesium 和地图厂商 credit。仅在确认符合相关授权要求后显式关闭：
+组件默认隐藏 Cesium 和地图厂商 credit；如需展示版权信息，请显式开启：
 
 ```ts
-credits: { visible: false }
+credits: { visible: true }
 ```
 
 运行时可调用：

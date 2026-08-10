@@ -18,7 +18,7 @@ export function hideCesiumCredit(viewer: Viewer): void {
   });
 }
 
-/** 根据配置显示或隐藏 Cesium credit 区域。默认应保持显示以满足版权要求。 */
+/** 根据配置显示或隐藏 Cesium credit 区域。使用方应按地图服务授权要求决定是否显示。 */
 export function setCesiumCreditVisible(viewer: Viewer, visible: boolean): void {
   if (!visible) {
     hideCesiumCredit(viewer);

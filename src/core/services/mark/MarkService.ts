@@ -133,6 +133,7 @@ export class MarkService {
       lineColor: options.color || this.colors[type],
       fillColor: options.color || this.colors[type],
       clampToGround: options.clampToGround ?? true,
+      minPolylineLength: options.minPolylineLength,
       outputCoordSystem: options.outputCoordSystem,
     };
     this.callbacks?.onColorChange?.(options.color || this.colors[type], type);

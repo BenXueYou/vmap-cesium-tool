@@ -119,6 +119,32 @@ function finishLineDrawing(
   return entities;
 }
 
+function finishLineDrawingWithResult(
+  options?: Parameters<InstanceType<typeof DrawService>['startDrawingLine']>[0],
+  secondPoint = Cesium.Cartesian3.fromDegrees(120, 30),
+): { entities: InstanceType<typeof Cesium.Entity>[]; result: unknown } {
+  const { entities, globePick, viewer } = createViewerStub();
+  const service = new DrawService(viewer);
+  let result: unknown = undefined;
+  service.onDrawEnd((drawResult) => {
+    result = drawResult;
+  });
+  service.startDrawingLine(options);
+
+  const firstPoint = Cesium.Cartesian3.fromDegrees(120, 30);
+  globePick
+    .mockReturnValueOnce(firstPoint)
+    .mockReturnValueOnce(secondPoint)
+    .mockReturnValueOnce(secondPoint);
+
+  const handler = FakeScreenSpaceEventHandler.instances.at(-1)!;
+  handler.trigger(Cesium.ScreenSpaceEventType.LEFT_CLICK, { position: { x: 10, y: 10 } });
+  handler.trigger(Cesium.ScreenSpaceEventType.LEFT_CLICK, { position: { x: 20, y: 20 } });
+  handler.trigger(Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK, { position: { x: 20, y: 20 } });
+
+  return { entities, result };
+}
+
 function finishPolygonDrawing(
   options?: Parameters<InstanceType<typeof DrawService>['startDrawingPolygon']>[0],
 ): InstanceType<typeof Cesium.Entity>[] {
@@ -156,6 +182,26 @@ describe('DrawService measurement labels', () => {
     const entities = finishLineDrawing();
 
     expect(entities.some((entity) => !!entity.billboard)).toBe(false);
+  });
+
+  it('rejects a zero-length polyline when double-click finishes on the same point', () => {
+    installCanvasStub();
+
+    const { entities, result } = finishLineDrawingWithResult();
+
+    expect(result).toBeNull();
+    expect(entities.some((entity) => !!entity.polyline)).toBe(false);
+  });
+
+  it('rejects a polyline at or below minPolylineLength', () => {
+    installCanvasStub();
+
+    const { result } = finishLineDrawingWithResult(
+      { minPolylineLength: 2_000 },
+      Cesium.Cartesian3.fromDegrees(120.01, 30.01),
+    );
+
+    expect(result).toBeNull();
   });
 
   it('adds line distance labels when explicitly enabled', () => {

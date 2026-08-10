@@ -220,6 +220,7 @@ export class MapPlugin {
   private providerSearchConfig: ProviderSearchOptions;
   private onSearchResultSelected?: (result: MapSearchResult) => void;
   private creditsConfig: CreditsOptions;
+  private fxaa: boolean;
   private cesiumToken: string;
   
   // 工具栏和样式配置
@@ -285,7 +286,8 @@ export class MapPlugin {
 
     this.providerSearchConfig = options.providerSearch || {};
     this.onSearchResultSelected = options.onSearchResultSelected;
-    this.creditsConfig = { visible: true, ...(options.credits || {}) };
+    this.creditsConfig = { visible: false, ...(options.credits || {}) };
+    this.fxaa = options.fxaa ?? true;
     this.cesiumToken = options.cesiumToken || '';
     this.noFlyZoneConfig = this.resolveNoFlyZoneConfig(options.noFlyZone);
     this.initialCenter = this.toInitialCenter(this.cameraConfig);
@@ -1345,6 +1347,9 @@ export class MapPlugin {
         throw new Error(`找不到 ID 为"${this.containerId}"的容器元素`);
       }
       // 创建 Cesium Viewer
+      // Enable native WebGL anti-aliasing by default. Preserve every caller
+      // override, including an explicit `antialias: false`.
+      const contextOptions = this.viewerOptions.contextOptions;
       const viewerOptions: Cesium.Viewer.ConstructorOptions = {
         ...this.viewerOptions,
         animation: this.viewerOptions.animation ?? false,
@@ -1357,6 +1362,13 @@ export class MapPlugin {
         sceneModePicker: this.viewerOptions.sceneModePicker ?? false,
         infoBox: this.viewerOptions.infoBox ?? false,
         selectionIndicator: this.viewerOptions.selectionIndicator ?? false,
+        contextOptions: {
+          ...contextOptions,
+          webgl: {
+            antialias: true,
+            ...contextOptions?.webgl,
+          },
+        },
       };
 
       // 设置 Cesium Ion token
@@ -1367,6 +1379,12 @@ export class MapPlugin {
       }
 
       this.viewer = new Cesium.Viewer(container, viewerOptions);
+      // Native MSAA is applied by Viewer when supported; FXAA is the
+      // fallback that also smooths Entity/Polyline geometry.
+      this.viewer.scene.postProcessStages.fxaa.enabled = this.fxaa;
+      // Apply the credit policy before asynchronous layer/terrain loading so
+      // the default Cesium Ion logo does not flash during initialization.
+      this.syncCreditDisplay();
       this.viewer.scene.globe.enableLighting = true // 启用地形光照
       this.sceneModeListenerDispose = this.viewer.scene.morphComplete.addEventListener(() => {
         void this.syncGeoWTFS();
@@ -1595,6 +1613,7 @@ export class MapPlugin {
   getConfig(): MapPluginOptions {
     return {
       viewerOptions: { ...this.viewerOptions },
+      fxaa: this.fxaa,
       camera: { ...this.cameraConfig },
       layers: this.mapConfigMode === 'legacy' ? { ...this.layersConfig } : undefined,
       mapService: this.mapServiceConfig ? { ...this.mapServiceConfig } : undefined,

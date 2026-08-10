@@ -41,6 +41,7 @@ export interface DrawOptions {
   outlineColor?: any;
   outlineWidth?: number;
   strokeWidth?: number;
+  minPolylineLength?: number;
   showAreaLabel?: boolean;
   showDistanceLabel?: boolean;
   onClick?: (entity: any) => void;

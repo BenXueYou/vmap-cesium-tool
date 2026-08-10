@@ -124,6 +124,7 @@ createMapPlugin(
 ```ts
 interface MapPluginOptions {
   viewerOptions?: Cesium.Viewer.ConstructorOptions;
+  fxaa?: boolean;
   camera?: CameraConfig;
   layers?: LayersConfig;
   mapService?: MapServiceConfig;
@@ -141,6 +142,7 @@ interface MapPluginOptions {
 | 字段 | 必传 | 兼容性 | 说明 |
 | --- | --- | --- | --- |
 | `viewerOptions` | 否 | 推荐 | 透传给 `Cesium.Viewer` 的原生配置 |
+| `fxaa` | 否 | 推荐 | 是否启用 FXAA 后处理抗锯齿，默认 `true` |
 | `camera` | 否 | 推荐 | 初始化视角配置 |
 | `layers` | 否 | 兼容 | 旧版底图配置入口；与 `mapService` 互斥 |
 | `mapService` | 否 | 推荐 | 新版地图服务配置入口；与 `layers` / `baseMap` / `mapAuth` 互斥 |
@@ -148,7 +150,7 @@ interface MapPluginOptions {
 | `mapAuth` | 否 | 兼容 | 迁移期多厂商鉴权配置；与 `mapService` 互斥 |
 | `providerSearch` | 否 | 推荐 | 启用内置多厂商搜索 |
 | `onSearchResultSelected` | 否 | 推荐 | 地图服务搜索结果选中回调 |
-| `credits` | 否 | 推荐 | Cesium 版权区控制 |
+| `credits` | 否 | 推荐 | Cesium 版权区控制，默认隐藏 |
 | `cesiumToken` | 否 | 推荐 | Cesium Ion token |
 | `noFlyZone` | 否 | 推荐 | 禁飞区初始化配置 |
 | `services` | 否 | 推荐 | toolbar / overlay / draw 服务装配配置 |
@@ -161,6 +163,7 @@ interface MapPluginOptions {
 
 - `MapPlugin` 会补默认值，把 `animation`、`timeline`、`navigationHelpButton`、`fullscreenButton`、`geocoder`、`homeButton`、`baseLayerPicker`、`sceneModePicker`、`infoBox`、`selectionIndicator` 默认收敛为 `false`
 - 如果传入 `cesiumToken`，会同步设置 `Cesium.Ion.defaultAccessToken`
+- 初始化时默认开启 WebGL 原生抗锯齿（`contextOptions.webgl.antialias = true`，除非显式传入 `false`），并开启 FXAA；`viewerOptions.msaaSamples` 可用于调整 MSAA 采样数。
 
 ### CameraConfig
 

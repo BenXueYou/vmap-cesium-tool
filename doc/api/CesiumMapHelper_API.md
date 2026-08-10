@@ -114,6 +114,8 @@ interface DrawOptions {
   fillColor?: Cesium.Color | string;
   outlineColor?: Cesium.Color | string;
   outlineWidth?: number;
+  // 折线最小有效长度（米），默认 0；长度小于等于该值时不会完成绘制
+  minPolylineLength?: number;
   heightEpsilon?: number;
   selected?: {
     color?: Cesium.Color | string;

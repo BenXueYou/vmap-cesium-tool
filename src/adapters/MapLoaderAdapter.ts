@@ -49,6 +49,8 @@ export interface LegacyInitOptions {
   sceneModePicker?: boolean;
   baseLayerPicker?: boolean;
   selectionIndicator?: boolean;
+  /** Cesium credit/版权区域；兼容入口默认隐藏 */
+  credits?: MapPluginOptions['credits'];
   baseMap?: BaseMapConfig;
   mapAuth?: MapAuthConfig;
   [key: string]: unknown;
@@ -266,6 +268,10 @@ function buildMapPluginOptions(options: LegacyInitOptions, initialCenter: Legacy
 
   return {
     viewerOptions: buildViewerOptions(options),
+    fxaa: options.fxaa,
+    // The legacy initCesium entry point historically hid Cesium's default
+    // credit/logo. Keep that behavior while allowing callers to opt in.
+    credits: options.credits ?? { visible: false },
     cesiumToken: options.cesiumToken,
     camera: {
       center: [initialCenter.longitude, initialCenter.latitude, initialCenter.height],

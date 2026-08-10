@@ -332,6 +332,19 @@ export class DrawService {
       }
     }
 
+    if (mode === 'line') {
+      const requestedMinimumLength = Number(this.store.getOptions()?.minPolylineLength ?? 0);
+      const minPolylineLength = Number.isFinite(requestedMinimumLength)
+        ? Math.max(0, requestedMinimumLength)
+        : 0;
+      const distance = calculateTotalDistance(positions);
+      if (!Number.isFinite(distance) || distance <= minPolylineLength) {
+        this.endDrawing();
+        this.emitDrawEnd(null);
+        return;
+      }
+    }
+
     const artifacts = this.entityFactory.createFinal(mode, positions, resolveMeasurementTheme(this.store.getOptions()));
     let result: DrawResult | null = null;
     if (artifacts) {

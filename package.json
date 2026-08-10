@@ -1,6 +1,6 @@
 {
   "name": "@xingm/vmap-cesium-toolbar",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "A powerful Cesium map toolbar plugin with drawing, measurement, and interaction features",
   "type": "module",
   "main": "dist/index.es.js",

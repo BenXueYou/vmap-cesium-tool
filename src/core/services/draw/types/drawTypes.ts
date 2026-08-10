@@ -59,6 +59,11 @@ export interface DrawOptions {
   outlineColor?: Cesium.Color | string;
   outlineWidth?: number;
   clampToGround?: boolean;
+  /**
+   * 折线最小有效长度（米），默认 0。
+   * 长度小于等于该值时，绘制结果会被视为无效并且不会完成绘制。
+   */
+  minPolylineLength?: number;
   showDistanceLabel?: boolean;
   showAreaLabel?: boolean;
   segmentDistanceLabelStyle?: MeasurementSummaryLabelStyle;

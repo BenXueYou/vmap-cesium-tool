@@ -47,6 +47,7 @@ async function initCesium(
 ### 行为说明（基于当前实现）
 
 - 默认禁用一批 Cesium 内置 UI（`timeline/animation/geocoder/homeButton` 等），并隐藏 credit。
+- 默认开启 WebGL 原生抗锯齿与 FXAA；可通过 `fxaa: false` 关闭 FXAA，并通过 `viewerOptions.msaaSamples` 调整 MSAA 采样数。
 - 当 **未传 `options.terrain` 且未传 `options.terrainProvider`** 时，会自动使用 `createWorldTerrainAsync()`。
 - 当 `options.mapType === 'tiandi'` 时，会清空影像图层并使用 `TDTMapTypes` 中 `tdtMapTypeId`（默认 `imagery`）的 provider 叠加天地图影像（需要天地图 token）。
 - 初始视角：

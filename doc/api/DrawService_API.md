@@ -167,6 +167,7 @@ interface DrawOptions {
   lineWidth?: number;
   fillColor?: Cesium.Color | string;
   clampToGround?: boolean;
+  minPolylineLength?: number;
   showDistanceLabel?: boolean;
   showAreaLabel?: boolean;
   segmentDistanceLabelStyle?: MeasurementSummaryLabelStyle;
@@ -185,6 +186,7 @@ interface DrawOptions {
 - `lineWidth`: 线宽快捷配置
 - `fillColor`: 面填充快捷配置
 - `clampToGround`: 是否贴地
+- `minPolylineLength`: 折线最小有效长度（米），默认 `0`；折线长度小于等于该值时不会完成绘制
 - `showDistanceLabel`: 是否显示线的分段距离/总距离标签，默认 `false`
 - `showAreaLabel`: 是否显示面的预览面积/总面积标签，默认 `false`
 - `segmentDistanceLabelStyle`: 分段距离标签样式

@@ -40,6 +40,8 @@ export interface LegacyDrawOptions {
   outlineWidth?: number;
   fillColor?: Cesium.Color | string;
   clampToGround?: boolean;
+  /** 折线最小有效长度（米），默认 0。 */
+  minPolylineLength?: number;
   showAreaLabel?: boolean;
   showDistanceLabel?: boolean;
   segmentDistanceLabelStyle?: MeasurementSummaryLabelStyle;
@@ -138,6 +140,7 @@ export class DrawHelperAdapter {
       outlineColor: options.outlineColor,
       outlineWidth: options.outlineWidth,
       clampToGround: options.clampToGround,
+      minPolylineLength: options.minPolylineLength,
       showAreaLabel: options.showAreaLabel,
       showDistanceLabel: options.showDistanceLabel,
       segmentDistanceLabelStyle: options.segmentDistanceLabelStyle,

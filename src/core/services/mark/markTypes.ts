@@ -22,6 +22,8 @@ export interface MarkDrawOptions {
   coordSystem?: CoordSystem;
   outputCoordSystem?: CoordSystem;
   clampToGround?: boolean;
+  /** 折线最小有效长度（米），默认 0。 */
+  minPolylineLength?: number;
   workAreaKind?: MarkWorkAreaKind;
   onComplete?: (result: MarkDrawResult | null) => void;
 }
