@@ -94,6 +94,7 @@ const zhCN = {
     },
   },
   map: {
+    config_required: "请先在系统管理 -> 系统配置中完成地图配置",
     types: {
       vec: "矢量地图",
       img: "影像地图",

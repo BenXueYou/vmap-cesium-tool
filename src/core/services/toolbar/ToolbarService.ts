@@ -5,8 +5,14 @@
 
 import { Toolbar, createToolbar } from '../../../components/Toolbar';
 import { ToolbarButton, createToolbarButton } from '../../../components/ToolbarButton';
-import type { CustomButtonConfig, LayersPanelStyleConfig, SearchPanelStyleConfig, ToolbarConfig as CoreToolbarConfig } from '../../../core/types';
-import type { I18nLike } from '../../../i18n';
+import type {
+  CustomButtonConfig,
+  LayersPanelStyleConfig,
+  SearchPanelStyleConfig,
+  ToolbarConfig as CoreToolbarConfig,
+  ToolbarMeasureMenuOptions,
+} from '../../../core/types';
+import { i18n, type I18nLike } from '../../../i18n';
 
 import type {
   IButtonHandler,
@@ -34,6 +40,8 @@ export interface ToolbarServiceOptions {
   searchIdleActionIcon?: string | HTMLElement;
   /** 搜索面板清空动作图标 */
   searchClearActionIcon?: string | HTMLElement;
+  /** 测量菜单配置 */
+  measureMenu?: ToolbarMeasureMenuOptions;
   /** 图层菜单样式 */
   layersPanelStyle?: LayersPanelStyleConfig;
 }
@@ -91,7 +99,7 @@ export class ToolbarService {
    */
   constructor(config: ToolbarServiceConfig, options?: ToolbarServiceOptions) {
     this.config = config;
-    this.i18n = config.i18n;
+    this.i18n = config.i18n ?? i18n;
     this.useI18n = config.useI18n ?? true;
     this.drawHelper = config.drawHelper;
     this.options = {
@@ -214,6 +222,7 @@ export class ToolbarService {
         onAreaComplete: callbacks?.onAreaComplete,
         onMeasurementComplete: callbacks?.onMeasurementComplete,
         onClear: callbacks?.onClear,
+        menuItems: this.options.measureMenu?.items,
       },
       this.i18n,
       this.useI18n

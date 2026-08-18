@@ -448,6 +448,7 @@ interface ToolbarPluginOptions {
   useDefaultButtons?: boolean;
   buttonConfigs?: CustomButtonConfig[];
   searchMenu?: ToolbarSearchMenuOptions;
+  measureMenu?: ToolbarMeasureMenuOptions;
   layersMenu?: ToolbarLayersMenuOptions;
   callbacks?: ToolbarCallbacks;
 }
@@ -459,6 +460,7 @@ interface ToolbarPluginOptions {
 - `config`: 工具栏整体样式
 - `buttonConfigs`: 覆盖默认按钮配置
 - `searchMenu`: 搜索面板扩展配置
+- `measureMenu`: 测量弹出菜单项、文字和 icon 配置
 - `layersMenu`: 图层菜单扩展配置
 - `callbacks`: 搜索、测量、缩放、全屏、复位的业务回调
 - 多语言注入入口位于 `config.useI18n` 与 `config.i18n`

@@ -2,8 +2,42 @@ import { describe, expect, it, vi } from 'vitest';
 import { MapPlugin } from '../src/core/MapPlugin';
 import { ToolbarAdapter } from '../src/adapters/ToolbarAdapter';
 import { ToolbarService } from '../src/core/services/toolbar/ToolbarService';
+import { i18n } from '../src/i18n';
 
 describe('Toolbar runtime style APIs', () => {
+  it('passes custom measurement menu items to the measure handler', () => {
+    const customItems = [
+      {
+        id: 'measure-distance',
+        text: 'Custom distance',
+        icon: 'custom-distance.svg',
+      },
+    ];
+    const service = new ToolbarService(
+      {
+        viewer: {},
+        container: {} as HTMLElement,
+      },
+      {
+        measureMenu: { items: customItems },
+      },
+    );
+
+    (service as any).registerDefaultButtonHandlers();
+
+    expect((service.getButtonHandler('measure') as any).options.menuItems).toBe(customItems);
+  });
+
+  it('uses the built-in i18n instance when no custom instance is provided', () => {
+    const service = new ToolbarService({
+      viewer: {},
+      container: {} as HTMLElement,
+    });
+
+    expect((service as any).i18n).toBe(i18n);
+    expect((service as any).i18n.t('layers.map_type.place_name')).toBe('路网');
+  });
+
   it('updates MapPlugin toolbar style state and forwards runtime patches', () => {
     const plugin = new MapPlugin('map', {
       services: {

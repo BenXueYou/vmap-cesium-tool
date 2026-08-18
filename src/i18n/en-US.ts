@@ -94,6 +94,7 @@ const enUS = {
     },
   },
   map: {
+    config_required: "Please complete the map configuration in System Management -> System Configuration first",
     types: {
       vec: "Vector Map",
       img: "Imagery Map",

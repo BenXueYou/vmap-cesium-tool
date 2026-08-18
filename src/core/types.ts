@@ -2,7 +2,7 @@ import * as Cesium from 'cesium';
 import type { Cartesian3, Cartographic, Color, MaterialProperty, Rectangle, Entity } from 'cesium';
 import type { I18nLike } from '../i18n';
 import type { OverlayPickingOptions } from './services/overlay/OverlayService';
-import type { ToolbarCallbacks } from './services/toolbar/types';
+import type { MeasureMenuItem, ToolbarCallbacks } from './services/toolbar/types';
 import type {
   BaseMapConfig,
   BaseMapProviderId,
@@ -235,6 +235,11 @@ export interface ToolbarSearchMenuOptions {
   clearActionIcon?: string | HTMLElement;
 }
 
+export interface ToolbarMeasureMenuOptions {
+  /** 覆盖测面积、测距、清除等测量菜单项及其图标 */
+  items?: MeasureMenuItem[];
+}
+
 export interface ToolbarLayersMenuOptions {
   mapTypes?: MapType[];
   defaultPlaceNameChecked?: boolean;
@@ -431,6 +436,8 @@ export interface MapPluginOptions {
   credits?: CreditsOptions;
   /** Cesium Ion Token */
   cesiumToken?: string;
+  /** 地图配置提示使用的国际化实例，默认使用框架内置 i18n */
+  i18n?: I18nLike;
   /** 禁飞区初始化配置 */
   noFlyZone?: NoFlyZonePluginOptions;
   /** 服务装配配置 */
@@ -453,6 +460,8 @@ export interface ToolbarPluginOptions {
   buttonConfigs?: CustomButtonConfig[];
   /** 搜索菜单配置 */
   searchMenu?: ToolbarSearchMenuOptions;
+  /** 测量菜单配置 */
+  measureMenu?: ToolbarMeasureMenuOptions;
   /** 图层菜单配置 */
   layersMenu?: ToolbarLayersMenuOptions;
   /** 工具栏回调 */

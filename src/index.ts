@@ -31,6 +31,7 @@ export type {
   LayersPanelStyleConfig,
   SearchPanelStyleConfig,
   ToolbarSearchMenuOptions,
+  ToolbarMeasureMenuOptions,
   ToolbarLayersMenuOptions,
   NoFlyZonePluginOptions,
   // 新增：分层配置类型
@@ -107,6 +108,7 @@ export {
   DrawService,
   ToolbarService,
   createToolbarService,
+  DEFAULT_MEASURE_ITEMS,
 } from './core/services';
 export type {
   OverlayEditHandleOptions,
@@ -140,6 +142,7 @@ export type {
   MarkWorkAreaType,
   ToolbarServiceOptions,
   ToolbarCallbacks,
+  MeasureMenuItem,
 } from './core/services';
 export { MarkService, MarkToolbar } from './core/services';
 
@@ -182,6 +185,7 @@ export {
   Toolbar,
   ToolbarButton,
   SearchBox,
+  MapConfigHint,
 } from './components';
 
 // ==================== 样式模块 ====================

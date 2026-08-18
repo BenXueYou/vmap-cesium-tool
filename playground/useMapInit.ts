@@ -9,7 +9,7 @@ import {
   type MapPluginOptions,
 } from '../src/index';
 import { i18n } from '../src/i18n';
-import { toolbarLayersMenu, toolbarSearchMenu, toolbarButtonConfigs } from './z.const';
+import { toolbarLayersMenu, toolbarMeasureMenu, toolbarSearchMenu, toolbarButtonConfigs } from './z.const';
 import { buildPlaygroundMapService } from './mapServiceConfig';
 import { buildPlaygroundToolbarLayersMenu } from './toolbarMapTypes';
 
@@ -96,6 +96,7 @@ function createDefaultOptions(
           i18n,
         },
         searchMenu: toolbarSearchMenu,
+        measureMenu: toolbarMeasureMenu,
         layersMenu: toolbarLayersMenu,
         buttonConfigs: toolbarButtonConfigs,
       },

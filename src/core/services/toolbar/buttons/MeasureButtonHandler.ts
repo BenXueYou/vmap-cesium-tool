@@ -7,7 +7,7 @@ import { BaseButtonHandler } from './BaseButtonHandler';
 import type { ToolbarButton } from '../../../../components/ToolbarButton';
 import { MeasureMenu } from '../menus/MeasureMenu';
 import { calculatePolygonArea, calculateTotalDistance } from '../../draw/geometry/drawGeometry';
-import type { MeasurementCompleteEvent, MeasurementServiceLike } from '../types';
+import type { MeasurementCompleteEvent, MeasurementServiceLike, MeasureMenuItem } from '../types';
 
 type MeasurementMode = 'distance' | 'area' | null;
 
@@ -26,6 +26,9 @@ interface LegacyMeasureCompleteResult {
  * 测量按钮处理器配置
  */
 export interface MeasureButtonHandlerOptions {
+  /** 测量菜单项配置 */
+  menuItems?: MeasureMenuItem[];
+
   /** 测量服务实例 */
   measurementService?: MeasurementServiceLike;
   
@@ -315,6 +318,7 @@ export class MeasureButtonHandler extends BaseButtonHandler {
     this.menu = new MeasureMenu(
       this.toolbarElement,
       {
+        items: this.options.menuItems,
         onDistanceStart: () => this.startDistanceMeasurement(),
         onAreaStart: () => this.startAreaMeasurement(),
         onClear: () => this.clearMeasurements(),

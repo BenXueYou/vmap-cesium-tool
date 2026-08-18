@@ -13,13 +13,13 @@ import { DEFAULT_MEASURE_ITEMS } from '../config';
 export interface MeasureMenuOptions {
   /** 菜单项配置 */
   items?: MeasureMenuItem[];
-  
+
   /** 测距开始回调 */
   onDistanceStart?: () => void;
-  
+
   /** 测面积开始回调 */
   onAreaStart?: () => void;
-  
+
   /** 清除测量回调 */
   onClear?: () => void;
 }
@@ -78,8 +78,8 @@ export class MeasureMenu extends BaseMenu {
     this.toolbarElement!.appendChild(this.menuElement);
     this.anchorElement = anchor;
 
-  // 基于工具栏和按钮真实尺寸定位
-  this.positionMenu(anchor, { position: 'left' });
+    // 基于工具栏和按钮真实尺寸定位
+    this.positionMenu(anchor, { position: 'left' });
 
     // 调整位置避免溢出
     this.adjustPosition();

@@ -133,6 +133,7 @@ interface ToolbarServiceOptions {
   searchPanelStyle?: SearchPanelStyleConfig;
   searchIdleActionIcon?: string | HTMLElement;
   searchClearActionIcon?: string | HTMLElement;
+  measureMenu?: ToolbarMeasureMenuOptions;
   layersPanelStyle?: LayersPanelStyleConfig;
 }
 ```
@@ -143,6 +144,7 @@ interface ToolbarServiceOptions {
 - `buttonConfigs`: 覆盖默认按钮配置，或替换默认按钮样式
 - `useDefaultButtons`: 是否初始化默认按钮，默认 `true`
 - `searchPanelStyle`: 搜索面板样式细项
+- `measureMenu`: 测面积、测距、清除菜单项及 icon 配置
 - `layersPanelStyle`: 图层菜单样式细项
 
 ## 通过 MapPlugin 暴露的 toolbar 配置
@@ -157,6 +159,7 @@ interface ToolbarPluginOptions {
   useDefaultButtons?: boolean;
   buttonConfigs?: CustomButtonConfig[];
   searchMenu?: ToolbarSearchMenuOptions;
+  measureMenu?: ToolbarMeasureMenuOptions;
   layersMenu?: ToolbarLayersMenuOptions;
   callbacks?: ToolbarCallbacks;
 }
@@ -165,8 +168,48 @@ interface ToolbarPluginOptions {
 建议理解为三层：
 
 1. `config`: 工具栏壳层样式和基础按钮布局
-2. `searchMenu` / `layersMenu`: 搜索面板和图层面板的扩展配置
+2. `searchMenu` / `measureMenu` / `layersMenu`: 搜索、测量和图层面板的扩展配置
 3. `callbacks`: 业务回调入口
+
+### ToolbarMeasureMenuOptions
+
+测量弹出菜单支持覆盖菜单项、文字和 icon：
+
+```ts
+interface ToolbarMeasureMenuOptions {
+  items?: MeasureMenuItem[];
+}
+
+interface MeasureMenuItem {
+  id: 'measure-area' | 'measure-distance' | 'clear-measurement' | string;
+  text: string;
+  textKey?: string;
+  icon: string | HTMLElement;
+}
+```
+
+使用图片资源时，构建工具导入的 URL、普通图片 URL、SVG、Data URL 均可作为 `icon`。传入 `HTMLElement` 时，菜单会克隆该节点用于展示。
+
+```ts
+import areaIcon from './assets/measure-area.svg';
+import distanceIcon from './assets/measure-distance.svg';
+import clearIcon from './assets/measure-clear.svg';
+
+const mapPlugin = createMapPlugin('cesiumContainer', {
+  services: {
+    toolbar: {
+      enabled: true,
+      measureMenu: {
+        items: [
+          { id: 'measure-area', text: '测面积', textKey: 'measurement.menu.area', icon: areaIcon },
+          { id: 'measure-distance', text: '测距', textKey: 'measurement.menu.distance', icon: distanceIcon },
+          { id: 'clear-measurement', text: '清除', textKey: 'measurement.menu.clear', icon: clearIcon },
+        ],
+      },
+    },
+  },
+});
+```
 
 ## 多语言行为
 

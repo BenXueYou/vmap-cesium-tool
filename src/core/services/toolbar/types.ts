@@ -259,5 +259,5 @@ export interface MeasureMenuItem {
   id: string;
   text: string;
   textKey?: string;
-  icon: string;
+  icon: string | HTMLElement;
 }

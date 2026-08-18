@@ -1,5 +1,7 @@
 import * as Cesium from 'cesium';
 import { setCesiumCreditVisible } from '../utils/hideCesiumCredit';
+import { MapConfigHint } from '../components/MapConfigHint';
+import { i18n as defaultI18n, type I18nLike } from '../i18n';
 import type {
   BaseMapConfig,
   MapAuthConfig,
@@ -222,6 +224,10 @@ export class MapPlugin {
   private creditsConfig: CreditsOptions;
   private fxaa: boolean;
   private cesiumToken: string;
+  private readonly mapConfigI18n: I18nLike;
+  private mapConfigHint: MapConfigHint | null = null;
+  private mapConfigHintContainer: HTMLElement | null = null;
+  private mapConfigHintPreviousPosition = '';
   
   // 工具栏和样式配置
   private toolbarConfig: ToolbarConfig;
@@ -289,6 +295,9 @@ export class MapPlugin {
     this.creditsConfig = { visible: false, ...(options.credits || {}) };
     this.fxaa = options.fxaa ?? true;
     this.cesiumToken = options.cesiumToken || '';
+    const toolbarOptions = options.services?.toolbar;
+    const toolbarI18n = typeof toolbarOptions === 'object' ? toolbarOptions.config?.i18n : undefined;
+    this.mapConfigI18n = options.i18n ?? toolbarI18n ?? defaultI18n;
     this.noFlyZoneConfig = this.resolveNoFlyZoneConfig(options.noFlyZone);
     this.initialCenter = this.toInitialCenter(this.cameraConfig);
     this.noFlyZoneVisible = this.noFlyZoneConfig.visible ?? false;
@@ -1126,6 +1135,7 @@ export class MapPlugin {
     this.applyTerrainProvider(prepared.terrainProvider);
     this.applyOfflineConstraints();
     this.syncCreditDisplay();
+    this.syncMapConfigHint();
   }
 
   private async refreshLayersAndGeoWTFS(): Promise<void> {
@@ -1140,6 +1150,38 @@ export class MapPlugin {
     }
 
     setCesiumCreditVisible(this.viewer, this.creditsConfig.visible !== false);
+  }
+
+  private shouldShowMapConfigHint(): boolean {
+    return this.mapService.provider === 'tdt' && !this.mapService.credentials.serviceKey;
+  }
+
+  private syncMapConfigHint(): void {
+    if (!this.viewer) {
+      return;
+    }
+
+    if (this.shouldShowMapConfigHint() && !this.mapConfigHint) {
+      const container = this.viewer.container as HTMLElement;
+      if (getComputedStyle(container).position === 'static') {
+        this.mapConfigHintContainer = container;
+        this.mapConfigHintPreviousPosition = container.style.position;
+        container.style.position = 'relative';
+      }
+      this.mapConfigHint = new MapConfigHint({ i18n: this.mapConfigI18n });
+      this.mapConfigHint.mount(container);
+      return;
+    }
+
+    if (!this.shouldShowMapConfigHint() && this.mapConfigHint) {
+      this.mapConfigHint.destroy();
+      this.mapConfigHint = null;
+      if (this.mapConfigHintContainer) {
+        this.mapConfigHintContainer.style.position = this.mapConfigHintPreviousPosition;
+        this.mapConfigHintContainer = null;
+        this.mapConfigHintPreviousPosition = '';
+      }
+    }
   }
 
   private clearOfflineConstraints(): void {
@@ -1379,6 +1421,7 @@ export class MapPlugin {
       }
 
       this.viewer = new Cesium.Viewer(container, viewerOptions);
+      this.syncMapConfigHint();
       // Native MSAA is applied by Viewer when supported; FXAA is the
       // fallback that also smooths Entity/Polyline geometry.
       this.viewer.scene.postProcessStages.fxaa.enabled = this.fxaa;
@@ -1625,6 +1668,7 @@ export class MapPlugin {
       onSearchResultSelected: this.onSearchResultSelected,
       credits: { ...this.creditsConfig },
       cesiumToken: this.cesiumToken,
+      i18n: this.mapConfigI18n,
       noFlyZone: { ...this.noFlyZoneConfig },
       services: { ...this.servicesConfig },
     };
@@ -1975,6 +2019,7 @@ export class MapPlugin {
       searchPanelStyle: options.searchMenu?.panelStyle,
       searchIdleActionIcon: options.searchMenu?.idleActionIcon,
       searchClearActionIcon: options.searchMenu?.clearActionIcon,
+      measureMenu: options.measureMenu,
       layersPanelStyle: options.layersMenu?.panelStyle,
       useDefaultButtons: options.useDefaultButtons,
     };
@@ -2116,6 +2161,14 @@ export class MapPlugin {
 
     this.destroyGeoWTFS();
     this.clearOfflineConstraints();
+
+    this.mapConfigHint?.destroy();
+    this.mapConfigHint = null;
+    if (this.mapConfigHintContainer) {
+      this.mapConfigHintContainer.style.position = this.mapConfigHintPreviousPosition;
+      this.mapConfigHintContainer = null;
+      this.mapConfigHintPreviousPosition = '';
+    }
 
     if (this.sceneModeListenerDispose) {
       this.sceneModeListenerDispose();

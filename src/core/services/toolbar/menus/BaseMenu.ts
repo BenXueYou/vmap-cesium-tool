@@ -252,7 +252,7 @@ export abstract class BaseMenu implements IMenu {
     id: string,
     text: string,
     textKey: string | undefined,
-    icon: string,
+    icon: string | HTMLElement,
     onClick: () => void
   ): HTMLElement {
     const menuItem = document.createElement('div');
@@ -304,7 +304,11 @@ export abstract class BaseMenu implements IMenu {
     return menuItem;
   }
 
-  private createIconElement(icon: string, altText: string): HTMLElement {
+  private createIconElement(icon: string | HTMLElement, altText: string): HTMLElement {
+    if (typeof icon !== 'string') {
+      return icon.cloneNode(true) as HTMLElement;
+    }
+
     if (this.isImagePath(icon)) {
       const image = document.createElement('img');
       image.src = icon;

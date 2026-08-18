@@ -8,6 +8,7 @@ import { BaseComponent, createComponent } from './BaseComponent';
 import { ToolbarButton, createToolbarButton } from './ToolbarButton';
 import { Toolbar, createToolbar } from './Toolbar';
 import { SearchBox, createSearchBox, type SearchBoxConfig } from './SearchBox';
+import { MapConfigHint, createMapConfigHint, type MapConfigHintOptions } from './MapConfigHint';
 
 // 导出基础组件
 export { BaseComponent, createComponent } from './BaseComponent';
@@ -20,6 +21,9 @@ export { Toolbar, createToolbar } from './Toolbar';
 
 // 导出搜索框组件
 export { SearchBox, createSearchBox, type SearchBoxConfig } from './SearchBox';
+
+// 导出地图配置提示组件
+export { MapConfigHint, createMapConfigHint, type MapConfigHintOptions } from './MapConfigHint';
 
 // 导出类型
 export type { StyleConfig } from '../core/types';
@@ -44,10 +48,12 @@ const componentsModule = {
   ToolbarButton,
   Toolbar,
   SearchBox,
+  MapConfigHint,
   createComponent,
   createToolbarButton,
   createToolbar,
   createSearchBox,
+  createMapConfigHint,
 };
 
 export default componentsModule;

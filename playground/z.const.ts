@@ -1,10 +1,13 @@
-import searchIcon from "../src/assets/images/toolbar/search@3x.png";
-import measureIcon from "../src/assets/images/toolbar/measure@3x.png";
-import layersIcon from "../src/assets/images/toolbar/layers@3x.png";
-import locationIcon from "../src/assets/images/toolbar/location@3x.png";
-import zoomInIcon from "../src/assets/images/toolbar/zoom-in@3x.png";
-import zoomOutIcon from "../src/assets/images/toolbar/zoom-out@3x.png";
-import fullscreenIcon from "../src/assets/images/toolbar/fullscreen@3x.png";
+import searchIcon from "./assets/images/toolbar/search@3x.png";
+import measureIcon from "./assets/images/toolbar/measure@3x.png";
+import layersIcon from "./assets/images/toolbar/layers@3x.png";
+import locationIcon from "./assets/images/toolbar/location@3x.png";
+import zoomInIcon from "./assets/images/toolbar/zoom-in@3x.png";
+import zoomOutIcon from "./assets/images/toolbar/zoom-out@3x.png";
+import fullscreenIcon from "./assets/images/toolbar/fullscreen@3x.png";
+import measureAreaMenuIcon from "./assets/images/svg/measure_area.svg";
+import measureDistanceMenuIcon from "./assets/images/svg/measure_distance.svg";
+import measureClearMenuIcon from "./assets/images/svg/measure_clear.svg";
 
 export const defaultHeatmapData = [
     [
@@ -1214,6 +1217,29 @@ export const toolbarSearchMenu = {
     },
 };
 
+export const toolbarMeasureMenu = {
+    items: [
+        {
+            id: 'measure-area',
+            text: '测面积',
+            textKey: 'measurement.menu.area',
+            icon: measureAreaMenuIcon,
+        },
+        {
+            id: 'measure-distance',
+            text: '测距',
+            textKey: 'measurement.menu.distance',
+            icon: measureDistanceMenuIcon,
+        },
+        {
+            id: 'clear-measurement',
+            text: '清除',
+            textKey: 'measurement.menu.clear',
+            icon: measureClearMenuIcon,
+        },
+    ],
+};
+
 export const toolbarLayersMenu = {
     defaultPlaceNameChecked: true,
     defaultNoFlyZoneChecked: false,
@@ -1241,9 +1267,6 @@ export const toolbarLayersMenu = {
             background: 'rgba(8, 19, 38, 0.86)',
             border: '1px solid rgba(93, 178, 255, 0.36)',
             color: '#eff7ff',
-        },
-        noFlyZoneItemStyle: {
-
         },
     },
 };
