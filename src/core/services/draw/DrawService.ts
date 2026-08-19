@@ -141,6 +141,30 @@ export class DrawService {
 
       syncHintAtPosition(hintPosition, polygonNoIntersectionText, invalidPolygonHintStyle);
     };
+    const hasEffectiveCircleRadius = (): boolean => {
+      const positions = this.store.getSanitizedTempPositions();
+      if (positions.length < 2) {
+        return false;
+      }
+
+      const center = Cesium.Cartographic.fromCartesian(positions[0]);
+      const edge = Cesium.Cartographic.fromCartesian(positions[1]);
+      if (!center || !edge) {
+        return false;
+      }
+
+      const radius = calculateDistance(center, edge);
+      return Number.isFinite(radius) && radius > 0;
+    };
+    const hasEffectiveRectangleEndpoint = (start: Cartesian3, end: Cartesian3): boolean => {
+      const corners = getRectangleCornerPositions(start, end);
+      const area = calculateRectangleArea(corners);
+      return Number.isFinite(area) && area > 0;
+    };
+    const hasEffectiveRectangleArea = (): boolean => {
+      const positions = this.store.getSanitizedTempPositions();
+      return positions.length >= 2 && hasEffectiveRectangleEndpoint(positions[0], positions[1]);
+    };
 
     this.interactionController.activate({
       onLeftClick: (position) => {
@@ -149,6 +173,51 @@ export class DrawService {
         }
 
         const currentMode = this.store.getMode();
+        if (currentMode === 'circle') {
+          const positions = this.store.getSanitizedTempPositions();
+          if (positions.length >= 2) {
+            return;
+          }
+
+          if (positions.length === 1) {
+            const center = Cesium.Cartographic.fromCartesian(positions[0]);
+            const edge = Cesium.Cartographic.fromCartesian(position);
+            const radius = center && edge ? calculateDistance(center, edge) : 0;
+            if (!Number.isFinite(radius) || radius <= 0) {
+              this.store.setPreviewPosition(position);
+              syncHint(position);
+              this.renderPreview(position);
+              return;
+            }
+          }
+
+          this.store.setPreviewPosition(position);
+          this.store.pushTempPosition(position);
+          syncHint(position);
+          this.renderPreview(position);
+          return;
+        }
+
+        if (currentMode === 'rectangle') {
+          const positions = this.store.getSanitizedTempPositions();
+          if (positions.length >= 2) {
+            return;
+          }
+
+          if (positions.length === 1 && !hasEffectiveRectangleEndpoint(positions[0], position)) {
+            this.store.setPreviewPosition(position);
+            syncHint(position);
+            this.renderPreview(position);
+            return;
+          }
+
+          this.store.setPreviewPosition(position);
+          this.store.pushTempPosition(position);
+          syncHint(position);
+          this.renderPreview(position);
+          return;
+        }
+
         const currentOptions = this.store.getOptions();
         if (currentMode === 'polygon' && currentOptions?.selfIntersectionEnabled) {
           const existing = this.store.getTempPositions();
@@ -189,6 +258,14 @@ export class DrawService {
 
         this.store.setPreviewPosition(position);
         const currentMode = this.store.getMode();
+        if (currentMode === 'circle' || currentMode === 'rectangle') {
+          if (this.store.getTempPositions().length === 1) {
+            syncHint(position);
+            this.renderPreview(position);
+          }
+          return;
+        }
+
         const currentOptions = this.store.getOptions();
         if (currentMode === 'polygon' && currentOptions?.selfIntersectionEnabled) {
           const existing = this.store.getTempPositions();
@@ -217,6 +294,17 @@ export class DrawService {
         }
 
         this.store.setPreviewPosition(position);
+        if (this.store.getMode() === 'circle' && !hasEffectiveCircleRadius()) {
+          syncHint(position);
+          this.renderPreview(position);
+          return;
+        }
+        if (this.store.getMode() === 'rectangle' && !hasEffectiveRectangleArea()) {
+          syncHint(position);
+          this.renderPreview(position);
+          return;
+        }
+
         this.finishDrawing();
       },
     });

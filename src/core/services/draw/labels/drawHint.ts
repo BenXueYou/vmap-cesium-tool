@@ -29,6 +29,14 @@ export function buildHintText(mode: DrawMode, pointCount: number, options: DrawH
       return translateHint(t, 'draw.hint.first_point', '地图上点击，绘制第一个点');
     }
 
+    if (mode === 'circle') {
+      return translateHint(t, 'draw.hint.circle_center', '左键确定圆心');
+    }
+
+    if (mode === 'rectangle') {
+      return translateHint(t, 'draw.hint.rectangle_start', '左键确定起点');
+    }
+
     return translateHint(t, 'draw.hint.area_start', '左击绘制区域');
   }
 
@@ -50,6 +58,22 @@ export function buildHintText(mode: DrawMode, pointCount: number, options: DrawH
     }
 
     return translateHint(t, 'draw.hint.polygon_continue', '左击继续绘制，右键删除点位，双击结束测面积');
+  }
+
+  if (mode === 'circle') {
+    if (pointCount === 1) {
+      return translateHint(t, 'draw.hint.circle_radius', '移动鼠标预览半径，左击确定半径');
+    }
+
+    return translateHint(t, 'draw.hint.circle_finish', '双击完成绘制，右键重新设置半径');
+  }
+
+  if (mode === 'rectangle') {
+    if (pointCount === 1) {
+      return translateHint(t, 'draw.hint.rectangle_end', '移动鼠标预览，左键确定终点');
+    }
+
+    return translateHint(t, 'draw.hint.rectangle_finish', '双击完成绘制，右键重新设置终点');
   }
 
   return translateHint(t, 'draw.hint.area_continue', '左击绘制区域，右键删除点位，双击结束绘制');

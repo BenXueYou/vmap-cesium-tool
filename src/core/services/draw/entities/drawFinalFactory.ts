@@ -58,6 +58,10 @@ export class DrawFinalFactory {
     if (corners.length < 4) {
       return null;
     }
+    const area = calculateRectangleArea(corners);
+    if (!Number.isFinite(area) || area <= 0) {
+      return null;
+    }
 
     const startCarto = toCartographic(positions[0]);
     const endCarto = toCartographic(positions[1]);
@@ -88,7 +92,7 @@ export class DrawFinalFactory {
     const auxiliary: Entity[] = [
       ...this.labelFactory.createVertexMarkerEntities(corners, theme),
     ];
-    const areaLabel = this.labelFactory.createAreaLabelEntity(corners, calculateRectangleArea(corners), 'final', theme);
+    const areaLabel = this.labelFactory.createAreaLabelEntity(corners, area, 'final', theme);
     if (areaLabel) {
       auxiliary.push(areaLabel);
     }

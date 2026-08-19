@@ -129,6 +129,12 @@ const enUS = {
       polygon_third_point: "Click on the map to place the third point and start area calculation",
       polygon_continue: "Left click to continue, right click to remove a point, double click to finish area measurement",
       polygon_no_intersection: "Polygon self-intersection is not allowed",
+      rectangle_start: "Left click to set the start point",
+      rectangle_end: "Move to preview, left click to set the endpoint",
+      rectangle_finish: "Double click to finish, right click to reset the endpoint",
+      circle_center: "Left click to set the center",
+      circle_radius: "Move to preview the radius, left click to set it",
+      circle_finish: "Double click to finish, right click to reset the radius",
       area_continue: "Left click to draw the area, right click to remove a point, double click to finish",
     },
     measurement: {

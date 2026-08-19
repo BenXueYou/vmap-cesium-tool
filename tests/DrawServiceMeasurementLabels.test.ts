@@ -227,4 +227,160 @@ describe('DrawService measurement labels', () => {
 
     expect(entities.some((entity) => !!entity.billboard)).toBe(true);
   });
+
+  it('keeps the first distinct radius point when circle clicks repeat the center or add extra points', () => {
+    installCanvasStub();
+
+    const { entities, globePick, viewer } = createViewerStub();
+    const service = new DrawService(viewer);
+    let result: unknown = undefined;
+    service.onDrawEnd((drawResult) => {
+      result = drawResult;
+    });
+    service.startDrawingCircle();
+
+    const center = Cesium.Cartesian3.fromDegrees(120, 30);
+    const radiusPoint = Cesium.Cartesian3.fromDegrees(120.01, 30.01);
+    const ignoredPoint = Cesium.Cartesian3.fromDegrees(120.02, 30.02);
+    globePick
+      .mockReturnValueOnce(center)
+      .mockReturnValueOnce(center)
+      .mockReturnValueOnce(radiusPoint)
+      .mockReturnValueOnce(ignoredPoint)
+      .mockReturnValueOnce(ignoredPoint);
+
+    const handler = FakeScreenSpaceEventHandler.instances.at(-1)!;
+    handler.trigger(Cesium.ScreenSpaceEventType.LEFT_CLICK, { position: { x: 10, y: 10 } });
+    handler.trigger(Cesium.ScreenSpaceEventType.LEFT_CLICK, { position: { x: 10, y: 10 } });
+    handler.trigger(Cesium.ScreenSpaceEventType.LEFT_CLICK, { position: { x: 20, y: 20 } });
+    handler.trigger(Cesium.ScreenSpaceEventType.LEFT_CLICK, { position: { x: 30, y: 30 } });
+    handler.trigger(Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK, { position: { x: 30, y: 30 } });
+
+    expect(result).toMatchObject({ type: 'circle' });
+    const circleResult = result as { positions: Cesium.Cartesian3[] };
+    expect(circleResult.positions).toHaveLength(2);
+    expect(Cesium.Cartesian3.equals(circleResult.positions[0], center)).toBe(true);
+    expect(Cesium.Cartesian3.equals(circleResult.positions[1], radiusPoint)).toBe(true);
+    expect(entities.some((entity) => !!entity.ellipse)).toBe(true);
+  });
+
+  it('keeps a circle session active when double-click occurs before an effective radius is set', () => {
+    installCanvasStub();
+
+    const { entities, globePick, viewer } = createViewerStub();
+    const service = new DrawService(viewer);
+    const onDrawEnd = vi.fn();
+    service.onDrawEnd(onDrawEnd);
+    service.startDrawingCircle();
+
+    const center = Cesium.Cartesian3.fromDegrees(120, 30);
+    globePick.mockReturnValueOnce(center).mockReturnValueOnce(center);
+
+    const handler = FakeScreenSpaceEventHandler.instances.at(-1)!;
+    handler.trigger(Cesium.ScreenSpaceEventType.LEFT_CLICK, { position: { x: 10, y: 10 } });
+    handler.trigger(Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK, { position: { x: 20, y: 20 } });
+
+    expect(service.isDrawingMode()).toBe(true);
+    expect(service.getCurrentDrawMode()).toBe('circle');
+    expect(onDrawEnd).not.toHaveBeenCalled();
+    expect(entities.some((entity) => !!entity.ellipse)).toBe(false);
+  });
+
+  it('keeps a circle preview visible after an effective radius is confirmed and before completion', () => {
+    installCanvasStub();
+
+    const { entities, globePick, viewer } = createViewerStub();
+    const service = new DrawService(viewer);
+    service.startDrawingCircle();
+
+    const center = Cesium.Cartesian3.fromDegrees(120, 30);
+    const radiusPoint = Cesium.Cartesian3.fromDegrees(120.01, 30.01);
+    globePick.mockReturnValueOnce(center).mockReturnValueOnce(radiusPoint);
+
+    const handler = FakeScreenSpaceEventHandler.instances.at(-1)!;
+    handler.trigger(Cesium.ScreenSpaceEventType.LEFT_CLICK, { position: { x: 10, y: 10 } });
+    handler.trigger(Cesium.ScreenSpaceEventType.LEFT_CLICK, { position: { x: 20, y: 20 } });
+
+    expect(service.isDrawingMode()).toBe(true);
+    expect(entities.some((entity) => !!entity.ellipse)).toBe(true);
+  });
+
+  it('keeps the first distinct rectangle endpoint when clicks repeat the start or add extra points', () => {
+    installCanvasStub();
+
+    const { entities, globePick, viewer } = createViewerStub();
+    const service = new DrawService(viewer);
+    let result: unknown = undefined;
+    service.onDrawEnd((drawResult) => {
+      result = drawResult;
+    });
+    service.startDrawingRectangle();
+
+    const start = Cesium.Cartesian3.fromDegrees(120, 30);
+    const end = Cesium.Cartesian3.fromDegrees(120.01, 30.01);
+    const ignoredPoint = Cesium.Cartesian3.fromDegrees(120.02, 30.02);
+    globePick
+      .mockReturnValueOnce(start)
+      .mockReturnValueOnce(start)
+      .mockReturnValueOnce(end)
+      .mockReturnValueOnce(ignoredPoint)
+      .mockReturnValueOnce(ignoredPoint);
+
+    const handler = FakeScreenSpaceEventHandler.instances.at(-1)!;
+    handler.trigger(Cesium.ScreenSpaceEventType.LEFT_CLICK, { position: { x: 10, y: 10 } });
+    handler.trigger(Cesium.ScreenSpaceEventType.LEFT_CLICK, { position: { x: 10, y: 10 } });
+    handler.trigger(Cesium.ScreenSpaceEventType.LEFT_CLICK, { position: { x: 20, y: 20 } });
+    handler.trigger(Cesium.ScreenSpaceEventType.LEFT_CLICK, { position: { x: 30, y: 30 } });
+    handler.trigger(Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK, { position: { x: 30, y: 30 } });
+
+    expect(result).toMatchObject({ type: 'rectangle' });
+    const rectangleResult = result as { positions: Cesium.Cartesian3[]; area?: number };
+    expect(rectangleResult.positions).toHaveLength(4);
+    const rectangleEnd = Cesium.Cartographic.fromCartesian(rectangleResult.positions[2]);
+    expect(Cesium.Math.toDegrees(rectangleEnd.longitude)).toBeCloseTo(120.01, 8);
+    expect(Cesium.Math.toDegrees(rectangleEnd.latitude)).toBeCloseTo(30.01, 8);
+    expect(rectangleResult.area).toBeGreaterThan(0);
+    expect(entities.some((entity) => !!entity.rectangle)).toBe(true);
+  });
+
+  it('keeps a rectangle session active when double-click occurs before an effective endpoint is set', () => {
+    installCanvasStub();
+
+    const { entities, globePick, viewer } = createViewerStub();
+    const service = new DrawService(viewer);
+    const onDrawEnd = vi.fn();
+    service.onDrawEnd(onDrawEnd);
+    service.startDrawingRectangle();
+
+    const start = Cesium.Cartesian3.fromDegrees(120, 30);
+    globePick.mockReturnValueOnce(start).mockReturnValueOnce(start);
+
+    const handler = FakeScreenSpaceEventHandler.instances.at(-1)!;
+    handler.trigger(Cesium.ScreenSpaceEventType.LEFT_CLICK, { position: { x: 10, y: 10 } });
+    handler.trigger(Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK, { position: { x: 20, y: 20 } });
+
+    expect(service.isDrawingMode()).toBe(true);
+    expect(service.getCurrentDrawMode()).toBe('rectangle');
+    expect(onDrawEnd).not.toHaveBeenCalled();
+    expect(entities.some((entity) => !!entity.rectangle)).toBe(false);
+  });
+
+  it('keeps a rectangle preview visible after an effective endpoint is confirmed and before completion', () => {
+    installCanvasStub();
+
+    const { entities, globePick, viewer } = createViewerStub();
+    const service = new DrawService(viewer);
+    service.startDrawingRectangle();
+
+    const start = Cesium.Cartesian3.fromDegrees(120, 30);
+    const end = Cesium.Cartesian3.fromDegrees(120.01, 30.01);
+    globePick.mockReturnValueOnce(start).mockReturnValueOnce(end);
+
+    const handler = FakeScreenSpaceEventHandler.instances.at(-1)!;
+    handler.trigger(Cesium.ScreenSpaceEventType.LEFT_CLICK, { position: { x: 10, y: 10 } });
+    handler.trigger(Cesium.ScreenSpaceEventType.LEFT_CLICK, { position: { x: 20, y: 20 } });
+
+    expect(service.isDrawingMode()).toBe(true);
+    expect(entities.some((entity) => !!entity.rectangle)).toBe(true);
+  });
 });

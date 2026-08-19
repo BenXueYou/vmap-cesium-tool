@@ -106,11 +106,15 @@ export class DrawPreviewFactory {
     if (corners.length < 4) {
       return [];
     }
+    const area = calculateRectangleArea(corners);
+    if (!Number.isFinite(area) || area <= 0) {
+      return [];
+    }
 
     const entities = [
       this.createRectangleEntity(start, end, theme),
     ];
-    const areaLabel = this.labelFactory.createAreaLabelEntity(corners, calculateRectangleArea(corners), 'preview', theme);
+    const areaLabel = this.labelFactory.createAreaLabelEntity(corners, area, 'preview', theme);
     if (areaLabel) {
       entities.push(areaLabel);
     }
