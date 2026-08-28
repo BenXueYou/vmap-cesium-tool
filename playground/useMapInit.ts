@@ -64,12 +64,21 @@ function createDefaultOptions(
       navigationHelpButton: false,
     },
     camera: {
-      center: [116.3974, 39.9093, 1000] as [number, number, number],
-      pitch: -45,
+      // 这里是天安门的经纬度，但是为甚恶魔
+      // center: [116.3974, 39.9093, 1000] as [number, number, number],
+      center: [116.391156, 39.907896, 1000] as [number, number, number],
+      pitch: -90,
       heading: 0,
       roll: 0,
     },
     mapService: buildPlaygroundMapService('tdt'),
+    providerSearch: {
+      enabled: true,
+      endpoints: {
+        tencent: '/tencent-map-api/ws/place/v1/search',
+        baidu: '/baidu-map-api/place/v2/search',
+      },
+    },
     onSearchResultSelected,
     noFlyZone: {
       autoLoad: true,

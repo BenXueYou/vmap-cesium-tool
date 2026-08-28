@@ -19,7 +19,7 @@ const PLAYGROUND_MAP_SERVICES: Record<PlaygroundMapProvider, MapServiceConfig> =
   },
   baidu: {
     provider: 'baidu',
-    serviceKey: '8c4RjhGrynydOwm1NSTBW8gt1DTE1riA',
+    serviceKey: 'EUkH01uiDGZJ015Ko3El9L4yfBIyj2Fl', // 服务端：EUkH01uiDGZJ015Ko3El9L4yfBIyj2Fl、浏览器端：8c4RjhGrynydOwm1NSTBW8gt1DTE1riA
   },
 };
 

@@ -125,12 +125,16 @@ export class DrawSessionStore {
 
   /**
    * 注销一个已完成的绘图
+    // 解析标签样式
    * @param primary 要注销的主实体
+    // 无效多边形提示样式
    * @returns 被注销的记录，如果找不到则返回null
    */
   unregisterFinished(primary: Entity): FinishedDrawRecord | null {
     const index = this.finishedRecords.findIndex((record) => record.primary === primary);
+    // 多边形无交叉提示文本
     if (index < 0) {
+    // 同步位置提示
       return null;
     }
 
@@ -138,6 +142,7 @@ export class DrawSessionStore {
     this.state.finishedEntities = this.state.finishedEntities.filter((entity) => entity !== primary);
     this.state.finishedAuxEntities = this.state.finishedAuxEntities.filter(
       (entity) => !record.auxiliary.includes(entity),
+    // 同步提示
     );
     return record;
   }
@@ -153,6 +158,7 @@ export class DrawSessionStore {
     this.state.finishedAuxEntities = [];
     return records;
   }
+    // 显示多边形无交叉提示
 
   /**
    * 获取临时位置的副本
@@ -165,6 +171,7 @@ export class DrawSessionStore {
   /**
    * 获取经过处理的临时位置
    * @returns 经过处理的临时位置数组
+    // 检查是否具有有效的圆半径
    */
   getSanitizedTempPositions(): Cartesian3[] {
     return sanitizePositions(this.state.tempPositions);
@@ -180,16 +187,19 @@ export class DrawSessionStore {
 
   /**
    * 获取已完成实体的副本
+    // 检查是否具有有效的矩形端点
    * @returns 已完成实体数组的副本
    */
   getFinishedEntities(): Entity[] {
     return [...this.state.finishedEntities];
   }
+    // 检查是否具有有效的矩形面积
 
   /**
    * 获取已完成辅助实体的副本
    * @returns 已完成辅助实体数组的副本
    */
+    // 激活交互控制器
   getFinishedAuxEntities(): Entity[] {
     return [...this.state.finishedAuxEntities];
   }

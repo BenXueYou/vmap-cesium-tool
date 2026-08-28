@@ -46,17 +46,30 @@ export type {
   MeasurementVertexStyle,
 } from './types/drawTypes';
 
+/**
+ * DrawService 类提供绘图相关的功能，包括创建、管理和交互各种绘图实体
+ */
 export class DrawService {
+  // 私有属性：存储绘图会话数据
   private readonly store = new DrawSessionStore();
+  // 私有属性：交互控制器，处理绘图过程中的用户交互
   private readonly interactionController: DrawInteractionController;
+  // 私有属性：标签工厂，用于创建测量标签
   private readonly labelFactory: MeasurementLabelFactory;
+  // 私有属性：提示控制器，用于显示绘图提示信息
   private readonly hintController: DrawHintController;
+  // 私有属性：实体工厂，用于创建各种绘图实体
   private readonly entityFactory: DrawEntityFactory;
+  // 私有属性：实体注册表，管理所有绘图实体
   private readonly entityRegistry = new DrawEntityRegistry();
+  // 私有属性：绘图服务的配置选项
   private readonly options: DrawServiceOptions;
+  // 私有属性：国际化实例
   private readonly i18n;
+  // 私有属性：是否使用国际化
   private readonly useI18n: boolean;
 
+  // 回调函数集合
   private callbacks: DrawCallbacks = {};
 
   /**
@@ -84,6 +97,11 @@ export class DrawService {
     this.entityFactory = new DrawEntityFactory(viewer, this.labelFactory);
   }
 
+  /**
+   * 国际化翻译函数
+   * @param key - 翻译键
+   * @returns 翻译后的文本
+   */
   private t(key: string): string {
     if (!this.useI18n) {
       return key;
@@ -92,6 +110,11 @@ export class DrawService {
     return this.i18n.t(key);
   }
 
+  /**
+   * 开始绘图
+   * @param mode - 绘图模式
+   * @param options - 绘图选项
+   */
   startDrawing(mode: DrawMode, options: DrawOptions = {}): void {
     if (this.store.isDrawing()) {
       this.endDrawing();
@@ -100,6 +123,7 @@ export class DrawService {
     this.resetCurrentSession();
     this.store.start(mode, options);
 
+    // 解析测量主题
     const theme = resolveMeasurementTheme(options);
     const hintStyle = resolveLabelStyle(theme, 'hintBubble');
     const invalidPolygonHintStyle = {

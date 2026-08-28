@@ -753,6 +753,7 @@ function buildMapOverrides(): Partial<MapPluginOptions> {
   return {
     mapService: buildPlaygroundMapService(toolbarForm.mapProvider),
     onSearchResultSelected: (result) => {
+      console.log("地图搜索定位", result);
       showMessage(`地图搜索定位: ${result.name} (${result.provider})`);
     },
     noFlyZone: {
