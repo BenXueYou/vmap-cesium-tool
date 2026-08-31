@@ -5,8 +5,10 @@ export type PlaygroundMapProvider = 'tdt' | 'tencent' | 'gaode' | 'baidu';
 const PLAYGROUND_MAP_SERVICES: Record<PlaygroundMapProvider, MapServiceConfig> = {
   tdt: {
     provider: 'tdt',
-    serviceKey: '9bf1c44688768ee36bfbafa00e02bb40 ',
-    secureKey: 'e5f627c86ca6ab33ce900ae479f04a2f',
+    serviceKey: '94632fe2163bed5a6cc9ad83cf481573',
+    // serviceKey: '9bf1c44688768ee36bfbafa00e02bb40',
+    // secureKey: 'e5f627c86ca6ab33ce900ae479f04a2f',
+    // secureKey: 'e5f627c86ca6ab33ce900ae479f04a2f',
   },
   tencent: {
     provider: 'tencent',
@@ -19,7 +21,7 @@ const PLAYGROUND_MAP_SERVICES: Record<PlaygroundMapProvider, MapServiceConfig> =
   },
   baidu: {
     provider: 'baidu',
-    serviceKey: 'EUkH01uiDGZJ015Ko3El9L4yfBIyj2Fl', // 服务端：EUkH01uiDGZJ015Ko3El9L4yfBIyj2Fl、浏览器端：8c4RjhGrynydOwm1NSTBW8gt1DTE1riA
+    serviceKey: '1O1Qf7Uo8XJUifsZdtVZ0e5ogGiMRFB1', // 服务端：EUkH01uiDGZJ015Ko3El9L4yfBIyj2Fl、浏览器端：8c4RjhGrynydOwm1NSTBW8gt1DTE1riA
   },
 };
 
