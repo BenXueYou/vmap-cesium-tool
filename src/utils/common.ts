@@ -18,7 +18,7 @@ export function getViteCesiumToken() {
 /**
  * 将相机高度转换为地图层级
  * @param height 相机高度（米）
- * @returns 地图层级（1-18）
+ * @returns 地图层级（1-20）
  */
 export function heightToZoomLevel(height: number): number {
   // Cesium中层级和高度的关系
@@ -39,17 +39,17 @@ export function heightToZoomLevel(height: number): number {
   const zoomLevel = Math.log2(earthCircumference / (clampedHeight * 2)) + 1;
 
   // 限制在1-18之间，并四舍五入
-  return Math.max(1, Math.min(18, Math.round(zoomLevel)));
+  return Math.max(1, Math.min(20, Math.round(zoomLevel)));
 }
 
 /**
  * 将地图层级转换为相机高度
- * @param zoomLevel 地图层级（1-18）
+ * @param zoomLevel 地图层级（1-20）
  * @returns 相机高度（米）
  */
 export function zoomLevelToHeight(zoomLevel: number): number {
   // 限制层级范围
-  const clampedLevel = Math.max(1, Math.min(18, Math.round(zoomLevel)));
+  const clampedLevel = Math.max(1, Math.min(20, Math.round(zoomLevel)));
 
   // 地球半径（米）
   const earthRadius = 6378137;

@@ -1,7 +1,7 @@
 import * as Cesium from 'cesium';
 import type { Viewer } from 'cesium';
 import { createMapPlugin, type MapPlugin } from '../core/MapPlugin';
-import type { BaseMapConfig, LayersConfig, MapAuthConfig, MapPluginOptions, TDTMapTypeId } from '../core/types';
+import type { BaseMapConfig, CameraConfig, LayersConfig, MapAuthConfig, MapPluginOptions, TDTMapTypeId } from '../core/types';
 import { buildDefaultBaseMap, normalizeProviderId } from '../core/mapProviders/registry';
 import { lngLatToCartesian } from '../core/mapProviders/coordinates/cesium';
 
@@ -33,6 +33,8 @@ export interface LegacyInitOptions {
   resolutionScale?: number;
   depthTestAgainstTerrain?: boolean;
   fxaa?: boolean;
+  /** 相机交互缩放范围；中心点仍由 mapCenter 参数控制。 */
+  camera?: Omit<Partial<CameraConfig>, 'center'>;
   loadNoFlyZonesOnInit?: boolean;
   mapCenter?: LegacyMapCenter;
   isFly?: boolean;
@@ -277,6 +279,7 @@ function buildMapPluginOptions(options: LegacyInitOptions, initialCenter: Legacy
       center: [initialCenter.longitude, initialCenter.latitude, initialCenter.height],
       pitch: initialCenter.pitch ?? -45,
       heading: initialCenter.heading ?? 0,
+      ...options.camera,
     },
     noFlyZone: typeof options.loadNoFlyZonesOnInit === 'boolean'
       ? {

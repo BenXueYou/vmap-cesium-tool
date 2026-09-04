@@ -174,6 +174,8 @@ interface CameraConfig {
   heading?: number;
   roll?: number;
   coordSystem?: CoordSystem;
+  minZoomLevel?: number;
+  maxZoomLevel?: number;
 }
 ```
 
@@ -184,6 +186,12 @@ interface CameraConfig {
 | `heading` | 否 | 推荐 | 朝向角，默认 `0` |
 | `roll` | 否 | 推荐 | 翻滚角，默认 `0` |
 | `coordSystem` | 否 | 推荐 | 输入中心点坐标系，默认 `WGS84` |
+| `minZoomLevel` | 否 | 推荐 | 允许拉远的最小逻辑缩放级别，默认 `1` |
+| `maxZoomLevel` | 否 | 推荐 | 允许拉近的最大逻辑缩放级别，默认 `20` |
+
+`minZoomLevel` / `maxZoomLevel` 会转换为 Cesium 的相机交互距离并设置到
+`screenSpaceCameraController`，因此滚轮、触控和组件工具栏缩放都受限。该约束不拦截业务方直接调用
+`viewer.camera.flyTo()` 或 `viewer.camera.setView()`，避免影响业务定位和场景切换。
 
 ### LayersConfig
 

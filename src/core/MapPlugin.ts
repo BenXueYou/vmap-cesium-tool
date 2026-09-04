@@ -1,5 +1,6 @@
 import * as Cesium from 'cesium';
 import { setCesiumCreditVisible } from '../utils/hideCesiumCredit';
+import { zoomLevelToHeight } from '../utils/common';
 import { MapConfigHint } from '../components/MapConfigHint';
 import { i18n as defaultI18n, type I18nLike } from '../i18n';
 import type {
@@ -164,14 +165,18 @@ class PluginMapController {
 
   zoomIn(): void {
     const beforeHeight = this.viewer.camera.positionCartographic.height || 1000;
-    this.viewer.camera.zoomIn(Math.max(beforeHeight * 0.5, 100));
+    const requestedAmount = Math.max(beforeHeight * 0.5, 100);
+    const minimumDistance = this.viewer.scene.screenSpaceCameraController.minimumZoomDistance;
+    this.viewer.camera.zoomIn(Math.min(requestedAmount, Math.max(0, beforeHeight - minimumDistance)));
     const afterHeight = this.viewer.camera.positionCartographic.height || 0;
     this.callbacks?.onZoomIn?.(beforeHeight, afterHeight);
   }
 
   zoomOut(): void {
     const beforeHeight = this.viewer.camera.positionCartographic.height || 1000;
-    this.viewer.camera.zoomOut(Math.max(beforeHeight * 0.5, 100));
+    const requestedAmount = Math.max(beforeHeight * 0.5, 100);
+    const maximumDistance = this.viewer.scene.screenSpaceCameraController.maximumZoomDistance;
+    this.viewer.camera.zoomOut(Math.min(requestedAmount, Math.max(0, maximumDistance - beforeHeight)));
     const afterHeight = this.viewer.camera.positionCartographic.height || 0;
     this.callbacks?.onZoomOut?.(beforeHeight, afterHeight);
   }
@@ -452,10 +457,43 @@ export class MapPlugin {
    * 合并相机配置
    */
   private mergeCameraConfig(config?: Partial<CameraConfig>): CameraConfig {
-    return {
+    const merged = {
       ...DEFAULT_CAMERA_CONFIG,
       ...config,
     };
+    const { minZoomLevel, maxZoomLevel } = merged;
+    if (!Number.isFinite(minZoomLevel) || !Number.isFinite(maxZoomLevel) || minZoomLevel! < 1 || maxZoomLevel! < 1 || minZoomLevel! > maxZoomLevel!) {
+      throw new RangeError('camera.minZoomLevel 和 camera.maxZoomLevel 必须是大于等于 1 的数字，且 minZoomLevel 不得大于 maxZoomLevel');
+    }
+    return merged;
+  }
+
+  /**
+   * 将组件的逻辑缩放级别转换为 Cesium 相机交互距离。
+   * 仅作用于 ScreenSpaceCameraController，不拦截业务方直接调用 camera.flyTo/setView。
+   */
+  private applyCameraZoomConstraints(): void {
+    if (!this.viewer) return;
+
+    const controller = this.viewer.scene.screenSpaceCameraController;
+    const minZoomLevel = this.cameraConfig.minZoomLevel ?? DEFAULT_CAMERA_CONFIG.minZoomLevel;
+    const maxZoomLevel = this.cameraConfig.maxZoomLevel ?? DEFAULT_CAMERA_CONFIG.maxZoomLevel;
+    let minimumZoomDistance = zoomLevelToHeight(maxZoomLevel);
+    let maximumZoomDistance = zoomLevelToHeight(minZoomLevel);
+
+    // 离线地图已有相机距离约束时，取二者交集，避免新默认值放宽离线地图边界。
+    if (this.baseMapConfig?.provider === 'custom' && this.baseMapConfig.mode === 'offline') {
+      const offlineBounds = this.baseMapConfig.cameraBounds;
+      minimumZoomDistance = Math.max(minimumZoomDistance, offlineBounds?.minimumZoomDistance ?? 0);
+      maximumZoomDistance = Math.min(maximumZoomDistance, offlineBounds?.maximumZoomDistance ?? Number.POSITIVE_INFINITY);
+    }
+
+    if (minimumZoomDistance > maximumZoomDistance) {
+      throw new RangeError('相机缩放范围与离线地图 cameraBounds 没有交集');
+    }
+
+    controller.minimumZoomDistance = minimumZoomDistance;
+    controller.maximumZoomDistance = maximumZoomDistance;
   }
 
   /**
@@ -1192,6 +1230,7 @@ export class MapPlugin {
   private applyOfflineConstraints(): void {
     this.clearOfflineConstraints();
     if (!this.viewer || this.baseMapConfig.provider !== 'custom' || this.baseMapConfig.mode !== 'offline' || !this.baseMapConfig.rectangle) {
+      this.applyCameraZoomConstraints();
       return;
     }
 
@@ -1211,8 +1250,7 @@ export class MapPlugin {
 
     viewer.scene.globe.cartographicLimitRectangle = rectangle;
     controller.enableTilt = cameraBounds.enableTilt ?? false;
-    controller.minimumZoomDistance = cameraBounds.minimumZoomDistance ?? 50;
-    controller.maximumZoomDistance = cameraBounds.maximumZoomDistance ?? 1000000;
+    this.applyCameraZoomConstraints();
 
     const clampCamera = () => {
       const position = viewer.camera.positionCartographic;
@@ -1421,6 +1459,7 @@ export class MapPlugin {
       }
 
       this.viewer = new Cesium.Viewer(container, viewerOptions);
+      this.applyCameraZoomConstraints();
       this.syncMapConfigHint();
       // Native MSAA is applied by Viewer when supported; FXAA is the
       // fallback that also smooths Entity/Polyline geometry.
@@ -1682,6 +1721,7 @@ export class MapPlugin {
     this.initialCenter = this.toInitialCenter(this.cameraConfig);
     // 如果已初始化，立即应用新配置
     if (this.isInitialized) {
+      this.applyCameraZoomConstraints();
       this.setCameraView();
     }
   }

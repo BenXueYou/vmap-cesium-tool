@@ -281,6 +281,10 @@ export interface CameraConfig {
   roll?: number;
   /** 输入中心点坐标系，默认 WGS84 */
   coordSystem?: CoordSystem;
+  /** 最小逻辑缩放级别，默认 1（对应允许拉远的最远距离） */
+  minZoomLevel?: number;
+  /** 最大逻辑缩放级别，默认 20（对应允许拉近的最近距离） */
+  maxZoomLevel?: number;
 }
 
 /**

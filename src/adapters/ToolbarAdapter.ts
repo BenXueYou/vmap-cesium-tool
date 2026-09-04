@@ -78,14 +78,18 @@ class ToolbarAdapterMapController {
 
   zoomIn(): void {
     const beforeHeight = this.viewer.camera.positionCartographic.height || 0;
-    this.viewer.camera.zoomIn(Math.max(beforeHeight * 0.5, 100));
+    const requestedAmount = Math.max(beforeHeight * 0.5, 100);
+    const minimumDistance = this.viewer.scene.screenSpaceCameraController.minimumZoomDistance;
+    this.viewer.camera.zoomIn(Math.min(requestedAmount, Math.max(0, beforeHeight - minimumDistance)));
     const afterHeight = this.viewer.camera.positionCartographic.height || 0;
     this.callbacks?.zoom?.onZoomIn?.(beforeHeight, afterHeight, 0);
   }
 
   zoomOut(): void {
     const beforeHeight = this.viewer.camera.positionCartographic.height || 0;
-    this.viewer.camera.zoomOut(Math.max(beforeHeight * 0.5, 100));
+    const requestedAmount = Math.max(beforeHeight * 0.5, 100);
+    const maximumDistance = this.viewer.scene.screenSpaceCameraController.maximumZoomDistance;
+    this.viewer.camera.zoomOut(Math.min(requestedAmount, Math.max(0, maximumDistance - beforeHeight)));
     const afterHeight = this.viewer.camera.positionCartographic.height || 0;
     this.callbacks?.zoom?.onZoomOut?.(beforeHeight, afterHeight, 0);
   }

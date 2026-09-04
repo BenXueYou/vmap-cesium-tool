@@ -18,6 +18,8 @@ export const DEFAULT_CAMERA_CONFIG = {
   pitch: -45,
   heading: 0,
   roll: 0,
+  minZoomLevel: 1,
+  maxZoomLevel: 20,
 };
 
 // ==================== 默认图层配置 ====================
