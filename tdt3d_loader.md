@@ -115,7 +115,7 @@ MapPlugin.setMapType 的关键动作：
 
 1. 更新 currentMapTypeId
 2. mapType.forcePlaceName 为 true 时，强制 placeNameVisible = true
-3. 调用 updateLayers(...)，将 layers.tdt.mapTypeId 更新为 tdt3d
+3. 调用 updateBaseMap(...)，将 baseMap.type 更新为 tdt3d
 4. updateLayers 在已初始化场景会执行 addLayers() + syncGeoWTFS()
 5. setMapType 末尾再次执行 syncGeoWTFS()，确保路网状态与最终 mapType 对齐
 

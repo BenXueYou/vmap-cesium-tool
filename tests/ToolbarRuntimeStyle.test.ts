@@ -5,6 +5,59 @@ import { ToolbarService } from '../src/core/services/toolbar/ToolbarService';
 import { i18n } from '../src/i18n';
 
 describe('Toolbar runtime style APIs', () => {
+  const collectInitializedButtonIds = (service: ToolbarService): string[] => {
+    const addedIds: string[] = [];
+    const configs = (service as any).buttonConfigs as Array<{ id: string }>;
+
+    (service as any).toolbar = {
+      addButton: vi.fn((config: { id: string }) => addedIds.push(config.id)),
+      getButton: vi.fn(() => undefined),
+    };
+    (service as any).buttonHandlers = new Map(
+      configs.map(({ id }) => [id, { handleClick: vi.fn() }]),
+    );
+    (service as any).initializeButtons();
+
+    return addedIds;
+  };
+
+  it('sorts initialized buttons by sort and treats sort zero as the first position', () => {
+    const service = new ToolbarService(
+      {
+        viewer: {},
+        container: {} as HTMLElement,
+      },
+      {
+        buttonConfigs: [
+          { id: 'measure', icon: false, sort: 1 },
+          { id: 'search', icon: false, sort: 0 },
+        ],
+      },
+    );
+
+    expect(collectInitializedButtonIds(service)).toEqual(['search', 'measure']);
+  });
+
+  it('initializes and displays buttons in buttonConfigs order when buttonOrder is input', () => {
+    const service = new ToolbarService(
+      {
+        viewer: {},
+        container: {} as HTMLElement,
+      },
+      {
+        buttonOrder: 'input',
+        buttonConfigs: [
+          { id: 'fullscreen', icon: false },
+          { id: 'search', icon: false },
+          { id: 'layers', icon: false },
+        ],
+      },
+    );
+
+    expect(collectInitializedButtonIds(service)).toEqual(['fullscreen', 'search', 'layers']);
+    expect((service as any).buttonConfigs.map((config: { sort?: number }) => config.sort)).toEqual([0, 1, 2]);
+  });
+
   it('passes custom measurement menu items to the measure handler', () => {
     const customItems = [
       {

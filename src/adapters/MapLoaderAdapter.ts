@@ -1,7 +1,7 @@
 import * as Cesium from 'cesium';
 import type { Viewer } from 'cesium';
 import { createMapPlugin, type MapPlugin } from '../core/MapPlugin';
-import type { BaseMapConfig, CameraConfig, LayersConfig, MapAuthConfig, MapPluginOptions, TDTMapTypeId } from '../core/types';
+import type { BaseMapConfig, CameraConfig, MapAuthConfig, MapPluginOptions } from '../core/types';
 import { buildDefaultBaseMap, normalizeProviderId } from '../core/mapProviders/registry';
 import { lngLatToCartesian } from '../core/mapProviders/coordinates/cesium';
 
@@ -91,14 +91,6 @@ function resolveCesiumToken(
     || cesiumToken;
 }
 
-function resolveTdtToken(options: LegacyInitOptions): string {
-  return options.token || options.TD_Token || '';
-}
-
-function resolveTdtSk(options: LegacyInitOptions): string | undefined {
-  return options.sk || options.TD_SK || undefined;
-}
-
 function resolveBaseMapFromLegacyMapType(mapType: string, options: LegacyInitOptions): BaseMapConfig | undefined {
   switch (normalizeProviderId(mapType)) {
     case 'gaode':
@@ -175,83 +167,6 @@ function buildViewerOptions(options: LegacyInitOptions): Cesium.Viewer.Construct
   } as Cesium.Viewer.ConstructorOptions;
 }
 
-function baseMapToLegacyLayers(baseMap: BaseMapConfig | undefined, options: LegacyInitOptions): LayersConfig | undefined {
-  if (!baseMap) return undefined;
-
-  const showLabel = baseMap.showLabel;
-  switch (baseMap.provider) {
-    case 'tdt':
-      return {
-        type: 'tdt',
-        tdt: {
-          mapTypeId: (baseMap.type as TDTMapTypeId | undefined) || 'img',
-          token: baseMap.token || resolveTdtToken(options),
-          sk: baseMap.sk || resolveTdtSk(options),
-          showLabel: showLabel ?? true,
-        },
-      };
-    case 'gaode':
-      return {
-        type: 'gaode',
-        gaode: {
-          mapTypeId: (baseMap.type as 'vector' | 'satellite' | 'terrain' | undefined) || 'satellite',
-          token: baseMap.key || baseMap.token,
-          sk: baseMap.sk,
-          showLabel: showLabel ?? true,
-        },
-      };
-    case 'tencent':
-      return {
-        type: 'tencent',
-        tencent: {
-          mapTypeId: (baseMap.type as 'vector' | 'satellite' | undefined) || 'satellite',
-          key: baseMap.key,
-          token: baseMap.token,
-          showLabel: showLabel ?? true,
-        },
-      };
-    case 'baidu':
-      return {
-        type: 'baidu',
-        baidu: {
-          mapTypeId: (baseMap.type as 'normal' | 'satellite' | 'terrain' | undefined) || 'satellite',
-          token: baseMap.ak || baseMap.key || baseMap.token,
-          sk: baseMap.sk,
-          showLabel: showLabel ?? true,
-        },
-      };
-    case 'google':
-      return {
-        type: 'google',
-        google: {
-          mapTypeId: (baseMap.type as 'roadmap' | 'satellite' | undefined) || 'roadmap',
-          apiKey: baseMap.key || baseMap.token,
-          showLabel: showLabel ?? false,
-        },
-      };
-    case 'custom':
-      return {
-        type: 'custom',
-        custom: {
-          providers: baseMap.providers || [],
-          type: baseMap.type as 'xyz' | 'wmts' | 'imageryProviders' | undefined,
-          mode: baseMap.mode,
-          customUrl: baseMap.customUrl,
-          urlTemplate: baseMap.urlTemplate,
-          rectangle: baseMap.rectangle,
-          minimumLevel: baseMap.minimumLevel,
-          maximumLevel: baseMap.maximumLevel,
-          credit: baseMap.credit,
-          cameraBounds: baseMap.cameraBounds,
-          wmtsLayer: baseMap.wmtsLayer,
-          wmtsStyle: baseMap.wmtsStyle,
-          wmtsFormat: baseMap.wmtsFormat,
-          tileMatrixSetId: baseMap.tileMatrixSetId,
-        },
-      };
-  }
-}
-
 function buildMapPluginOptions(options: LegacyInitOptions, initialCenter: LegacyMapCenter): Partial<MapPluginOptions> {
   const mapType = options.mapType || (options.tdtMapTypeId ? 'tiandi' : '');
   const normalizedProvider = options.baseMap?.provider
@@ -289,7 +204,6 @@ function buildMapPluginOptions(options: LegacyInitOptions, initialCenter: Legacy
       : undefined,
     baseMap,
     mapAuth: options.mapAuth,
-    layers: baseMapToLegacyLayers(baseMap, options),
   };
 }
 

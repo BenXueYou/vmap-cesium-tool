@@ -117,7 +117,7 @@ createMapPlugin(
   - `推荐`：当前推荐写法
   - `兼容`：为旧版入口或迁移场景保留
   - `保留`：类型已声明，但当前运行时能力未作为主路径提供
-- `mapService` 与 `layers` / `baseMap` / `mapAuth` **不能混用**
+- `mapService` 与 `baseMap` / `mapAuth` **不能混用**
 
 ### MapPluginOptions
 
@@ -126,7 +126,6 @@ interface MapPluginOptions {
   viewerOptions?: Cesium.Viewer.ConstructorOptions;
   fxaa?: boolean;
   camera?: CameraConfig;
-  layers?: LayersConfig;
   mapService?: MapServiceConfig;
   baseMap?: BaseMapConfig;
   mapAuth?: MapAuthConfig;
@@ -268,7 +267,7 @@ type MapServiceConfig =
 说明：
 
 - 新项目优先使用 `mapService`
-- `mapService` 不能与旧 `layers`、`baseMap`、`mapAuth` 混用
+- `mapService` 不能与 `baseMap`、`mapAuth` 混用
 - 在线地图切换成功后自动接管工具栏搜索；私有地图自动隐藏搜索按钮
 - 旧 `services.toolbar.callbacks.onSearch` 在 `mapService` 模式下不再允许覆盖组件搜索
 
@@ -608,22 +607,7 @@ updateCamera(config: Partial<CameraConfig>): void
 - 修改 `pitch`
 - 修改 `heading`
 
-### updateLayers
-
-```ts
-updateLayers(config: Partial<LayersConfig>): void
-```
-
-更新图层配置，并在已经初始化的情况下重新应用底图。
-
-同时会同步：
-
-- 当前地图类型状态
-- 注记/路网显隐状态
-- 三维路网实例状态
-- 工具栏图层菜单状态
-
-> `mapService` 模式下不要再调用 `updateLayers()`、`updateBaseMap()`、`updateMapAuth()` 或 `setMapAuth()`。
+> `mapService` 模式下不要调用 `updateBaseMap()`、`updateMapAuth()` 或 `setMapAuth()`。
 
 ### validateMapService
 
@@ -931,13 +915,10 @@ const mapPlugin = createMapPlugin('cesiumContainer', {
 
 await mapPlugin.initialize();
 
-mapPlugin.updateLayers({
-  type: 'tdt',
-  tdt: {
-    mapTypeId: 'vec',
-    token: 'your-tianditu-token',
-    showLabel: true,
-  },
+mapPlugin.updateBaseMap({
+  provider: 'tdt',
+  type: 'vec',
+  showLabel: true,
 });
 
 mapPlugin.updateToolbarStyle({

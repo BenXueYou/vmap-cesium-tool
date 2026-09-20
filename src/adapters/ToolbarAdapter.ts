@@ -212,28 +212,6 @@ export class ToolbarAdapter {
       this.currentMapType = resolveMapTypeId(pluginConfig.baseMap);
       this.placeNameVisible = pluginConfig.baseMap.showLabel ?? this.placeNameVisible;
     }
-    // baseMap 是新版唯一可信底图状态；仅在旧配置没有 baseMap 时读取 layers。
-    if (!pluginConfig?.baseMap && pluginConfig?.layers) {
-      switch (pluginConfig.layers.type) {
-        case 'tdt':
-          this.currentMapType = pluginConfig.layers.tdt?.mapTypeId || 'img';
-          this.TD_Token = pluginConfig.layers.tdt?.token || this.TD_Token;
-          this.TD_SK = pluginConfig.layers.tdt?.sk || this.TD_SK;
-          this.placeNameVisible = pluginConfig.layers.tdt?.showLabel ?? true;
-          break;
-        case 'gaode':
-          this.currentMapType = pluginConfig.layers.gaode?.mapTypeId || 'satellite';
-          this.placeNameVisible = pluginConfig.layers.gaode?.showLabel ?? true;
-          break;
-        case 'baidu':
-          this.currentMapType = pluginConfig.layers.baidu?.mapTypeId || 'satellite';
-          this.placeNameVisible = pluginConfig.layers.baidu?.showLabel ?? true;
-          break;
-        default:
-          break;
-      }
-    }
-
     this.noFlyZoneVisible = this.mapPlugin?.getNoFlyZoneVisible?.() ?? false;
 
     this.toolbarService = new ToolbarService(

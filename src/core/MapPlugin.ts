@@ -8,18 +8,12 @@ import type {
   MapAuthConfig,
   CameraConfig,
   DrawPluginOptions,
-  GaodeLayerConfig,
-  BaiduLayerConfig,
-  CustomLayerConfig,
-  LayersConfig,
   MapServiceConfig,
   MapType,
   MapPluginOptions,
   MapPluginServicesOptions,
   NoFlyZonePluginOptions,
-  OSMLayerConfig,
   OverlayPluginOptions,
-  TDTLayerConfig,
   ToolbarLayersMenuOptions,
   ToolbarConfig,
   ToolbarPluginOptions,
@@ -39,10 +33,6 @@ import { ToolbarService } from './services/toolbar/ToolbarService';
 import type { ToolbarServiceOptions } from './services/toolbar/ToolbarService';
 import type { ToolbarCallbacks } from './services/toolbar/types';
 import { ensureTDT3DExtensionLoaded } from './layers/TDTMapLayer';
-import { createTDT3DTerrainProvider, createTDT3DImageryConfig, createTDTImageryConfig, createTDTTerrainConfig, createTDTVectorConfig } from './layers/TDTMapLayer';
-import { createGaodeImageryConfig, createGaodeVectorConfig } from './layers/GaodeMapLayer';
-import { createBaiduImageryConfig } from './layers/BaiduMapLayer';
-import { createOSMConfig } from './layers/OSMMapLayer';
 import { loadAllAirportNoFlyZones, geojsonCoordinatesToCartesian3 } from '../utils/geojson';
 import {
   baseMapRegistry,
@@ -87,7 +77,6 @@ interface ResolvedMapRuntimeState {
   mapService: ResolvedMapService;
   baseMapConfig: BaseMapConfig;
   mapAuthConfig: MapAuthConfig | undefined;
-  layersConfig: LayersConfig;
   toolbarMapTypes: MapType[];
   currentMapTypeId: string;
   placeNameVisible: boolean;
@@ -207,7 +196,6 @@ class PluginMapController {
  */
 export class MapPlugin {
   private static readonly LEGACY_MAP_SERVICE_FIELDS: ReadonlyArray<keyof MapPluginOptions> = [
-    'layers',
     'baseMap',
     'mapAuth',
   ];
@@ -218,7 +206,6 @@ export class MapPlugin {
   // 分层配置
   private viewerOptions: Cesium.Viewer.ConstructorOptions;
   private cameraConfig: CameraConfig;
-  private layersConfig!: LayersConfig;
   private baseMapConfig!: BaseMapConfig;
   private mapAuthConfig: MapAuthConfig | undefined;
   private mapService!: ResolvedMapService;
@@ -496,111 +483,6 @@ export class MapPlugin {
     controller.maximumZoomDistance = maximumZoomDistance;
   }
 
-  /**
-   * 合并图层配置
-   */
-  private mergeLayersConfig(config?: Partial<LayersConfig>): LayersConfig {
-    const providerType = config?.type || DEFAULT_PROVIDER_TYPE;
-    
-    const result: LayersConfig = {
-      type: providerType,
-      tdt: config?.tdt,
-      gaode: config?.gaode,
-      tencent: config?.tencent,
-      google: config?.google,
-      baidu: config?.baidu,
-      arcgis: config?.arcgis,
-      osm: config?.osm,
-      custom: config?.custom,
-    };
-
-    // 如果没有提供具体配置，使用默认值
-    if (providerType === 'tdt' && !result.tdt) {
-      result.tdt = {
-        mapTypeId: 'img',
-        token: '',
-        sk: '',
-        showLabel: true,
-      };
-    }
-
-    return result;
-  }
-
-  private buildLayersConfigForBaseMap(baseMap: BaseMapConfig): LayersConfig {
-    switch (baseMap.provider) {
-      case 'gaode':
-        return {
-          type: 'gaode',
-          gaode: {
-            mapTypeId: (baseMap.type as 'vector' | 'satellite' | 'terrain' | undefined) || 'satellite',
-            token: baseMap.key || baseMap.token,
-            sk: baseMap.sk,
-            showLabel: baseMap.showLabel ?? true,
-          },
-        };
-      case 'tencent':
-        return {
-          type: 'tencent',
-          tencent: {
-            mapTypeId: (baseMap.type as 'vector' | 'satellite' | undefined) || 'satellite',
-            key: baseMap.key,
-            token: baseMap.token,
-            showLabel: baseMap.showLabel ?? true,
-          },
-        };
-      case 'google':
-        return {
-          type: 'google',
-          google: {
-            mapTypeId: (baseMap.type as 'roadmap' | 'satellite' | undefined) || 'roadmap',
-            apiKey: baseMap.key || baseMap.token,
-            showLabel: baseMap.showLabel ?? false,
-          },
-        };
-      case 'baidu':
-        return {
-          type: 'baidu',
-          baidu: {
-            mapTypeId: (baseMap.type as 'normal' | 'satellite' | 'terrain' | undefined) || 'satellite',
-            token: baseMap.ak || baseMap.key || baseMap.token,
-            sk: baseMap.sk,
-            showLabel: baseMap.showLabel ?? true,
-          },
-        };
-      case 'custom':
-        return {
-          type: 'custom',
-          custom: {
-            providers: baseMap.providers || [],
-            type: baseMap.type as 'xyz' | 'wmts' | 'imageryProviders' | undefined,
-            mode: baseMap.mode,
-            customUrl: baseMap.customUrl,
-            urlTemplate: baseMap.urlTemplate,
-            rectangle: baseMap.rectangle,
-            minimumLevel: baseMap.minimumLevel,
-            maximumLevel: baseMap.maximumLevel,
-            credit: baseMap.credit,
-            cameraBounds: baseMap.cameraBounds,
-            wmtsLayer: baseMap.wmtsLayer,
-            wmtsStyle: baseMap.wmtsStyle,
-            wmtsFormat: baseMap.wmtsFormat,
-            tileMatrixSetId: baseMap.tileMatrixSetId,
-          },
-        };
-      default:
-        return {
-          type: 'tdt',
-          tdt: {
-            mapTypeId: (baseMap.type as 'vec' | 'img' | 'ter' | 'tdt3d' | undefined) || 'img',
-            token: baseMap.token || baseMap.key || '',
-            sk: baseMap.sk,
-            showLabel: baseMap.showLabel ?? true,
-          },
-        };
-    }
-  }
-
   private resolveBaseMapConfig(options: Partial<MapPluginOptions>): BaseMapConfig {
     if (options.baseMap) {
       const provider = normalizeProviderId(options.baseMap.provider);
@@ -611,66 +493,7 @@ export class MapPlugin {
       };
     }
 
-    const layers = this.mergeLayersConfig(options.layers);
-    switch (layers.type) {
-      case 'gaode':
-        return {
-          provider: 'gaode',
-          type: layers.gaode?.mapTypeId || 'satellite',
-          key: layers.gaode?.token,
-          sk: layers.gaode?.sk,
-          showLabel: layers.gaode?.showLabel ?? true,
-        };
-      case 'tencent':
-        return {
-          provider: 'tencent',
-          type: layers.tencent?.mapTypeId || 'satellite',
-          key: layers.tencent?.key || layers.tencent?.token,
-          showLabel: layers.tencent?.showLabel ?? true,
-        };
-      case 'google':
-        return {
-          provider: 'google',
-          type: layers.google?.mapTypeId || 'roadmap',
-          key: layers.google?.apiKey || layers.google?.key || layers.google?.token,
-          showLabel: layers.google?.showLabel ?? false,
-        };
-      case 'baidu':
-        return {
-          provider: 'baidu',
-          type: layers.baidu?.mapTypeId || 'satellite',
-          ak: layers.baidu?.token,
-          sk: layers.baidu?.sk,
-          showLabel: layers.baidu?.showLabel ?? true,
-        };
-      case 'custom':
-        return {
-          provider: 'custom',
-          type: layers.custom?.type || 'imageryProviders',
-          mode: layers.custom?.mode || 'online',
-          providers: layers.custom?.providers,
-          customUrl: layers.custom?.customUrl,
-          urlTemplate: layers.custom?.urlTemplate,
-          rectangle: layers.custom?.rectangle,
-          minimumLevel: layers.custom?.minimumLevel,
-          maximumLevel: layers.custom?.maximumLevel,
-          credit: layers.custom?.credit,
-          cameraBounds: layers.custom?.cameraBounds,
-          wmtsLayer: layers.custom?.wmtsLayer,
-          wmtsStyle: layers.custom?.wmtsStyle,
-          wmtsFormat: layers.custom?.wmtsFormat,
-          tileMatrixSetId: layers.custom?.tileMatrixSetId,
-          showLabel: false,
-        };
-      default:
-        return {
-          provider: 'tdt',
-          type: layers.tdt?.mapTypeId || 'img',
-          token: layers.tdt?.token,
-          sk: layers.tdt?.sk,
-          showLabel: layers.tdt?.showLabel ?? true,
-        };
-    }
+    return buildDefaultBaseMap(DEFAULT_PROVIDER_TYPE);
   }
 
   private resolveCurrentMapTypeId(baseMapConfig: BaseMapConfig = this.baseMapConfig): string {
@@ -721,7 +544,6 @@ export class MapPlugin {
       mapService,
       baseMapConfig,
       mapAuthConfig: mapService.auth,
-      layersConfig: this.buildLayersConfigForBaseMap(baseMapConfig),
       toolbarMapTypes,
       currentMapTypeId,
       placeNameVisible,
@@ -735,7 +557,6 @@ export class MapPlugin {
     this.mapService = state.mapService;
     this.baseMapConfig = state.baseMapConfig;
     this.mapAuthConfig = state.mapAuthConfig;
-    this.layersConfig = state.layersConfig;
     this.toolbarMapTypes = state.toolbarMapTypes;
     this.currentMapTypeId = state.currentMapTypeId;
     this.placeNameVisible = state.placeNameVisible;
@@ -1509,7 +1330,6 @@ export class MapPlugin {
         mapService: this.mapService,
         baseMapConfig: this.baseMapConfig,
         mapAuthConfig: this.mapAuthConfig,
-        layersConfig: this.layersConfig,
         toolbarMapTypes: this.toolbarMapTypes,
         currentMapTypeId: this.currentMapTypeId,
         placeNameVisible: this.placeNameVisible,
@@ -1524,140 +1344,6 @@ export class MapPlugin {
     this.applyPreparedMapServiceSwitch(prepared);
   }
 
-  /**
-   * 添加天地图图层
-   */
-  private async addTDTLayers(config?: TDTLayerConfig): Promise<void> {
-    if (!this.viewer) return;
-
-    const token = config?.token || '';
-    const sk = config?.sk || '';
-    const mapTypeId = config?.mapTypeId || 'img';
-    const showLabel = config?.showLabel ?? true;
-    const mapType = this.getCurrentToolbarMapType();
-
-    let providers: Cesium.ImageryProvider[] = [];
-
-    switch (mapTypeId) {
-      case 'vec':
-        providers = createTDTVectorConfig(token, sk);
-        break;
-      case 'img':
-        providers = createTDTImageryConfig(token, sk);
-        break;
-      case 'ter':
-        providers = createTDTTerrainConfig(token, sk);
-        break;
-      case 'tdt3d':
-        providers = createTDT3DImageryConfig(token, sk);
-        break;
-      default:
-        providers = createTDTImageryConfig(token, sk);
-    }
-
-    if (mapTypeId === 'tdt3d') {
-      await ensureTDT3DExtensionLoaded();
-    }
-
-    const terrainProvider = mapTypeId === 'tdt3d'
-      ? createTDT3DTerrainProvider(token, sk)
-      : await Promise.resolve(
-        mapType?.terrainProvider
-          ? mapType.terrainProvider({
-            viewer: this.viewer,
-            baseMap: this.baseMapConfig,
-            auth: this.mapAuthConfig,
-          })
-          : null,
-      );
-
-    this.applyTerrainProvider(terrainProvider);
-
-    if (mapTypeId === 'tdt3d' && this.viewer.scene.mode !== Cesium.SceneMode.SCENE3D) {
-      this.viewer.scene.morphTo3D(0);
-    }
-
-    // 如果不显示注记，只添加底图
-    if (!showLabel && providers.length > 1) {
-      providers = [providers[0]];
-    }
-
-    providers.forEach(provider => {
-      this.viewer!.imageryLayers.addImageryProvider(provider);
-    });
-  }
-
-  /**
-   * 添加高德地图图层
-   */
-  private addGaodeLayers(config?: GaodeLayerConfig): void {
-    if (!this.viewer) return;
-
-    const token = config?.token;
-    const mapTypeId = config?.mapTypeId || 'satellite';
-    const showLabel = config?.showLabel ?? true;
-
-    let providers: Cesium.ImageryProvider[] = [];
-
-    switch (mapTypeId) {
-      case 'vector':
-        providers = createGaodeVectorConfig(token);
-        break;
-      case 'satellite':
-        providers = createGaodeImageryConfig(token);
-        break;
-      default:
-        providers = createGaodeImageryConfig(token);
-    }
-
-    // 如果不显示注记，只添加底图
-    if (!showLabel && providers.length > 1) {
-      providers = [providers[0]];
-    }
-
-    providers.forEach(provider => {
-      this.viewer!.imageryLayers.addImageryProvider(provider);
-    });
-  }
-
-  /**
-   * 添加百度地图图层
-   */
-  private addBaiduLayers(config?: BaiduLayerConfig): void {
-    if (!this.viewer) return;
-
-    const token = config?.token;
-    const mapTypeId = config?.mapTypeId || 'satellite';
-
-    // 目前只提供影像图层
-    const providers = createBaiduImageryConfig(token);
-    providers.forEach(provider => {
-      this.viewer!.imageryLayers.addImageryProvider(provider);
-    });
-  }
-
-  /**
-   * 添加 OSM 图层
-   */
-  private addOSMLayers(config?: OSMLayerConfig): void {
-    if (!this.viewer) return;
-
-    const providers = createOSMConfig();
-    providers.forEach(provider => {
-      this.viewer!.imageryLayers.addImageryProvider(provider);
-    });
-  }
-
-  /**
-   * 添加自定义图层
-   */
-  private addCustomLayers(config?: CustomLayerConfig): void {
-    if (!this.viewer || !config?.providers) return;
-
-    config.providers.forEach(provider => {
-      this.viewer!.imageryLayers.addImageryProvider(provider);
-    });
-  }
 
   /**
    * 设置相机视图
@@ -1697,7 +1383,6 @@ export class MapPlugin {
       viewerOptions: { ...this.viewerOptions },
       fxaa: this.fxaa,
       camera: { ...this.cameraConfig },
-      layers: this.mapConfigMode === 'legacy' ? { ...this.layersConfig } : undefined,
       mapService: this.mapServiceConfig ? { ...this.mapServiceConfig } : undefined,
       baseMap: this.mapConfigMode === 'legacy' ? { ...this.baseMapConfig } : undefined,
       mapAuth: this.mapConfigMode === 'legacy' && this.mapAuthConfig
@@ -1724,37 +1409,6 @@ export class MapPlugin {
       this.applyCameraZoomConstraints();
       this.setCameraView();
     }
-  }
-
-  /**
-   * 更新图层配置
-   */
-  updateLayers(config: Partial<LayersConfig>): void {
-    this.assertLegacyMutationAllowed('updateLayers');
-    this.layersConfig = this.mergeLayersConfig(config);
-    this.baseMapConfig = this.resolveBaseMapConfig({
-      layers: this.layersConfig,
-      mapAuth: this.mapAuthConfig,
-    });
-    this.syncMapServiceState();
-    this.currentMapTypeId = this.resolveCurrentMapTypeId();
-    const mapType = this.getCurrentToolbarMapType();
-    const isForcedMapType = !!mapType?.forcePlaceName;
-    const resolvedPlaceNameVisible = this.resolvePlaceNameVisible();
-
-    if (!isForcedMapType) {
-      this.nonForcedPlaceNameVisible = resolvedPlaceNameVisible;
-    }
-
-    this.placeNameVisible = isForcedMapType ? true : resolvedPlaceNameVisible;
-
-    // 如果已初始化，立即应用新配置
-    if (this.isInitialized) {
-      void this.refreshLayersAndGeoWTFS();
-    }
-
-    this.updateToolbarLayerState();
-    this.syncOfflineToolbarState();
   }
 
   /** @deprecated mapService 模式请使用 setMapService()。 */
@@ -2056,6 +1710,7 @@ export class MapPlugin {
         ...options.config,
       },
       buttonConfigs: options.buttonConfigs,
+      buttonOrder: options.buttonOrder,
       searchPanelStyle: options.searchMenu?.panelStyle,
       searchIdleActionIcon: options.searchMenu?.idleActionIcon,
       searchClearActionIcon: options.searchMenu?.clearActionIcon,

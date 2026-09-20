@@ -19,6 +19,7 @@ export type {
   ToolbarConfig,
   ButtonConfig,
   CustomButtonConfig,
+  ToolbarButtonOrder,
   SearchCallback,
   SearchResult,
   MapSearchResult,
@@ -37,7 +38,6 @@ export type {
   // 新增：分层配置类型
   MapPluginOptions,
   CameraConfig,
-  LayersConfig,
   CapabilityStatus,
   MapServiceConfig,
   MapServiceProvider,
@@ -59,14 +59,6 @@ export type {
   CoordSystem,
   CoordinateAwareInput,
   CoordinateAwareOutput,
-  TDTLayerConfig,
-  GaodeLayerConfig,
-  TencentLayerConfig,
-  GoogleLayerConfig,
-  BaiduLayerConfig,
-  ArcGISLayerConfig,
-  OSMLayerConfig,
-  CustomLayerConfig,
 } from './core/types';
 
 // ==================== 实体模块 ====================

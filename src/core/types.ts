@@ -107,6 +107,9 @@ export interface CustomButtonConfig {
   onClick?: (buttonId: string, buttonElement: HTMLElement) => void;
 }
 
+/** 工具栏按钮排序方式 */
+export type ToolbarButtonOrder = 'sort' | 'input';
+
 /**
  * 解析后的按钮配置
  */
@@ -288,133 +291,6 @@ export interface CameraConfig {
 }
 
 /**
- * 天地图图层配置
- */
-export interface TDTLayerConfig {
-  /** 天地图子类型：矢量/影像/地形/三维地图 */
-  mapTypeId?: TDTMapTypeId;
-  /** 天地图 token */
-  token: string;
-  sk?: string; // 天地图 sk（可选，提供后可启用部分安全防盗链功能）
-  /** 是否显示注记层，默认 true */
-  showLabel?: boolean;
-}
-
-/**
- * 高德地图图层配置
- */
-export interface GaodeLayerConfig {
-  /** 高德地图子类型：矢量/卫星/地形 */
-  mapTypeId?: 'vector' | 'satellite' | 'terrain';
-  /** 高德 key */
-  token?: string;
-  sk?: string; // 高德 sk（可选，提供后可启用部分安全防盗链功能）
-  /** 是否显示注记层，默认 true */
-  showLabel?: boolean;
-}
-
-/**
- * 百度地图图层配置
- */
-export interface BaiduLayerConfig {
-  /** 百度地图子类型：普通/卫星/地形 */
-  mapTypeId?: 'normal' | 'satellite' | 'terrain';
-  /** 百度 ak */
-  token?: string;
-  sk?: string;
-  /** 是否显示注记层，默认 true */
-  showLabel?: boolean;
-}
-
-/**
- * ArcGIS 地图图层配置
- */
-export interface ArcGISLayerConfig {
-  /** ArcGIS 服务 URL */
-  url: string;
-  /** 是否使用动态图层 */
-  dynamic?: boolean;
-}
-
-/**
- * OSM 地图图层配置
- */
-export interface OSMLayerConfig {
-  /** OSM 风格 URL 模板，默认使用标准 OSM */
-  urlTemplate?: string;
-  /** 最大层级，默认 19 */
-  maximumLevel?: number;
-}
-
-/**
- * 自定义图层配置
- */
-export interface CustomLayerConfig {
-  /** 自定义影像图层提供者数组 */
-  providers: Cesium.ImageryProvider[];
-  type?: 'xyz' | 'wmts' | 'imageryProviders';
-  mode?: 'online' | 'offline';
-  customUrl?: string;
-  urlTemplate?: string;
-  rectangle?: BaseMapRectangle;
-  minimumLevel?: number;
-  maximumLevel?: number;
-  credit?: string;
-  cameraBounds?: OfflineCameraBoundsConfig;
-  wmtsLayer?: string;
-  wmtsStyle?: string;
-  wmtsFormat?: string;
-  tileMatrixSetId?: string;
-}
-
-/**
- * 腾讯地图图层配置（兼容旧版 layers 配置入口）
- */
-export interface TencentLayerConfig {
-  /** 腾讯地图 Key */
-  key?: string;
-  /** @deprecated 兼容旧版以 token 传入腾讯 Key */
-  token?: string;
-  /** 地图类型 */
-  mapTypeId?: 'vector' | 'satellite';
-  /** 是否显示注记 */
-  showLabel?: boolean;
-}
-
-/** Google 地图图层配置（兼容旧版 layers 配置入口） */
-export interface GoogleLayerConfig {
-  apiKey?: string;
-  key?: string;
-  token?: string;
-  mapTypeId?: 'roadmap' | 'satellite';
-  showLabel?: boolean;
-}
-
-/**
- * 图层配置 - 支持多种地图提供商
- */
-export interface LayersConfig {
-  /** 地图提供商类型，默认 'tdt' */
-  type?: ProviderType;
-  /** 天地图配置 */
-  tdt?: TDTLayerConfig;
-  /** 高德地图配置 */
-  gaode?: GaodeLayerConfig;
-  /** 腾讯地图配置 */
-  tencent?: TencentLayerConfig;
-  /** 谷歌地图配置 */
-  google?: GoogleLayerConfig;
-  /** 百度地图配置 */
-  baidu?: BaiduLayerConfig;
-  /** ArcGIS 配置 */
-  arcgis?: ArcGISLayerConfig;
-  /** OSM 配置 */
-  osm?: OSMLayerConfig;
-  /** 自定义图层配置 */
-  custom?: CustomLayerConfig;
-}
-
-/**
  * 地图插件配置选项
  */
 export interface MapPluginOptions {
@@ -424,8 +300,6 @@ export interface MapPluginOptions {
   fxaa?: boolean;
   /** 相机/视图配置 */
   camera?: CameraConfig;
-  /** 图层配置 */
-  layers?: LayersConfig;
   /** 新地图服务配置 */
   mapService?: MapServiceConfig;
   /** 新版底图配置 */
@@ -462,6 +336,8 @@ export interface ToolbarPluginOptions {
   useDefaultButtons?: boolean;
   /** 自定义按钮配置 */
   buttonConfigs?: CustomButtonConfig[];
+  /** 按钮排序方式：sort 按 sort 字段排序，input 按 buttonConfigs 入参顺序排序，默认 sort */
+  buttonOrder?: ToolbarButtonOrder;
   /** 搜索菜单配置 */
   searchMenu?: ToolbarSearchMenuOptions;
   /** 测量菜单配置 */
@@ -527,12 +403,12 @@ export interface MapToolsConfig {
   zoomLevels?: number[]; // 缩放级别数组
   defaultZoom?: number; // 默认缩放级别索引
   
-  // === 以下字段用于兼容旧的 API，实际使用 layers 配置 ===
-  /** @deprecated 使用 layers.type 代替 */
+  // === 以下字段用于兼容旧的 API，请迁移到 baseMap + mapAuth ===
+  /** @deprecated 使用 baseMap.provider 代替 */
   mapType?: 'tdt' | 'ion';
-  /** @deprecated 使用 layers.tdt.mapTypeId 代替 */
+  /** @deprecated 使用 baseMap.type 代替 */
   tdtMapTypeId?: TDTMapTypeId;
-  /** @deprecated 使用 layers.tdt.token 代替 */
+  /** @deprecated 使用 mapAuth.tdt.token 代替 */
   token?: string;
 }
 

@@ -298,6 +298,7 @@
 
           <div class="action-row wrap">
             <button class="primary" @click="addMarkerOverlay">addMarker</button>
+            <button @click="addIconOverlay">addIcon</button>
             <button @click="addCircleOverlay">addCircle</button>
             <button @click="addRectangleOverlay">addRectangle</button>
             <button @click="addPolylineOverlay">addPolyline</button>
@@ -658,6 +659,7 @@ const {
   resetOverlayState,
   syncOverlayInventory,
   addMarkerOverlay,
+  addIconOverlay,
   addCircleOverlay,
   addRectangleOverlay,
   addPolylineOverlay,

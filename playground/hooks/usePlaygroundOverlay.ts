@@ -1,6 +1,7 @@
 import { computed, reactive, ref, type ShallowRef } from "vue";
 import * as Cesium from "cesium";
 import type { MapPlugin, OverlayService } from "../../src/index";
+import iconImage from "../assets/images/toolbar/location.png";
 import type {
   OverlayFormState,
   OverlayInventoryItem,
@@ -149,6 +150,30 @@ export function usePlaygroundOverlay({
     rememberOverlay(marker.getId(), "marker");
     rememberOverlay(label.getId(), "label");
     showMessage("Marker 已创建");
+  }
+
+  function addIconOverlay() {
+    const service = getOverlayService();
+    const center = getViewerCenter();
+    if (!service || !center) {
+      return;
+    }
+
+    const icon = service.addIcon({
+      position: [center.lon, center.lat],
+      image: iconImage,
+      width: 32,
+      height: 32,
+      clickHighlight: true,
+      selectable: true,
+      onClick: (entity) => {
+        const isSelected = service.getSelectedOverlayId() === String(entity.id);
+        showMessage(isSelected ? "Icon 已高亮并放大" : "Icon 已取消高亮并恢复大小");
+      },
+    });
+
+    rememberOverlay(icon.getId(), "icon");
+    showMessage("Icon 已创建：再次点击可验证取消高亮");
   }
 
   function addCircleOverlay() {
@@ -421,6 +446,7 @@ export function usePlaygroundOverlay({
     resetOverlayState,
     syncOverlayInventory,
     addMarkerOverlay,
+    addIconOverlay,
     addCircleOverlay,
     addRectangleOverlay,
     addPolylineOverlay,

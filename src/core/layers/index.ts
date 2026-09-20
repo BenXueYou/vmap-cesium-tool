@@ -4,16 +4,6 @@
  * @packageDocumentation
  */
 
-// 导出基础图层类
-export { MapLayer } from './MapLayer';
-
-// 导出地图图层类
-export { TDTMapLayer } from './TDTMapLayer';
-export { GaodeMapLayer } from './GaodeMapLayer';
-export { BaiduMapLayer } from './BaiduMapLayer';
-export { OSMMapLayer } from './OSMMapLayer';
-export { CustomMapLayer } from './CustomMapLayer';
-
 // 导出天地图相关工具函数
 export {
   setTDTPlugin,

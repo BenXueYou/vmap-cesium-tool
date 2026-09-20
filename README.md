@@ -78,7 +78,7 @@ await mapPlugin.setMapService({
 
 ### 2. 类型与样式能力
 
-- MapPluginOptions、ToolbarConfig、LayersConfig 等统一从顶层导出
+- MapPluginOptions、ToolbarConfig 等统一从顶层导出
 - i18n 与样式系统继续保留顶层导出，供组件与业务侧接入
 
 ### 3. 兼容 API

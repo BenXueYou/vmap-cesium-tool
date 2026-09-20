@@ -122,7 +122,6 @@ title: 架构说明
 
 - `MapPluginOptions`
 - `ToolbarConfig`
-- `LayersConfig`
 - `Marker`、`Polygon`、`Circle` 等实体类
 - `HeatmapLayer`、`PointClusterLayer` 等图层能力
 

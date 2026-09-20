@@ -223,7 +223,7 @@ drawService.startDrawing('polygon');
 
 ### 3. 图层切换怎么做？
 
-旧 `layers/baseMap` 模式统一通过 `mapPlugin.updateLayers()`。
+兼容的 `baseMap` 模式通过 `mapPlugin.updateBaseMap()` 切换底图。
 
 如果已经迁到 `mapService`，请改用：
 

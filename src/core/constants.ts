@@ -1,4 +1,3 @@
-import type { TDTLayerConfig, GaodeLayerConfig, BaiduLayerConfig, OSMLayerConfig } from './types';
 export {
   DEFAULT_BUTTON_SORTS,
   DEFAULT_BUTTON_CONFIGS,
@@ -28,16 +27,6 @@ export const DEFAULT_CAMERA_CONFIG = {
  * 默认图层提供商类型
  */
 export const DEFAULT_PROVIDER_TYPE: 'tdt' = 'tdt';
-
-/**
- * 默认天地图配置
- */
-export const DEFAULT_TDT_CONFIG: TDTLayerConfig = {
-  mapTypeId: 'img',
-  token: '',
-  showLabel: true,
-};
-
 
 // ==================== 默认地图中心点 ====================
 

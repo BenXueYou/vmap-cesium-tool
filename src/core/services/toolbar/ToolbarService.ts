@@ -9,6 +9,7 @@ import type {
   CustomButtonConfig,
   LayersPanelStyleConfig,
   SearchPanelStyleConfig,
+  ToolbarButtonOrder,
   ToolbarConfig as CoreToolbarConfig,
   ToolbarMeasureMenuOptions,
 } from '../../../core/types';
@@ -32,6 +33,8 @@ export interface ToolbarServiceOptions {
   toolbarStyle?: Partial<CoreToolbarConfig>;
   /** 按钮配置列表（覆盖默认配置） */
   buttonConfigs?: CustomButtonConfig[];
+  /** 按钮排序方式，默认按 sort 字段排序 */
+  buttonOrder?: ToolbarButtonOrder;
   /** 是否使用默认按钮 */
   useDefaultButtons?: boolean;
   /** 搜索面板样式 */
@@ -104,12 +107,16 @@ export class ToolbarService {
     this.drawHelper = config.drawHelper;
     this.options = {
       useDefaultButtons: true,
+      buttonOrder: 'sort',
       ...options,
     };
     this.buttonConfigs = this.options.buttonConfigs
-      ? this.options.buttonConfigs.map((config) => {
+      ? this.options.buttonConfigs.map((config, index) => {
           const defaultConfig = DEFAULT_BUTTON_CONFIGS.find((btn) => btn.id === config.id);
-          return deepMerge(defaultConfig || config, config) as CustomButtonConfig;
+          const mergedConfig = deepMerge(defaultConfig || config, config) as CustomButtonConfig;
+          return this.options.buttonOrder === 'input'
+            ? { ...mergedConfig, sort: index }
+            : mergedConfig;
         })
       : DEFAULT_BUTTON_CONFIGS;
     
@@ -304,7 +311,7 @@ export class ToolbarService {
     const buttonConfigs = this.buttonConfigs || DEFAULT_BUTTON_CONFIGS;
     
     // 按排序号排序
-    const sortedConfigs = [...buttonConfigs].sort((a, b) => (a.sort || 999) - (b.sort || 999));
+    const sortedConfigs = [...buttonConfigs].sort((a, b) => (a.sort ?? 999) - (b.sort ?? 999));
 
     sortedConfigs.forEach(btnConfig => {
       const handler = this.getButtonHandler(btnConfig.id);
