@@ -98,7 +98,7 @@ export class LayersButtonHandler extends BaseMenu {
       titleKey: 'layers.base_maps',
     }, styles);
 
-    const mapTypesGrid = document.createElement('div');
+    const mapTypesGrid = this.ownerDocument.createElement('div');
     Object.assign(mapTypesGrid.style, styles.mapTypesGrid);
 
     const currentType = this.options.currentMapType || 'img';
@@ -142,13 +142,7 @@ export class LayersButtonHandler extends BaseMenu {
   handleMouseEnter(): void {}
 
   handleMouseLeave(): void {
-    if (this.menuElement) {
-      setTimeout(() => {
-        if (this.menuElement && !this.menuElement.matches(':hover')) {
-          this.hide();
-        }
-      }, 100);
-    }
+    this.scheduleAutoClose();
   }
 
   destroy(): void {
@@ -174,10 +168,10 @@ export class LayersButtonHandler extends BaseMenu {
   }
 
   private createSection(options: LayersPanelSectionOptions, styles: ResolvedPanelStyles): HTMLElement {
-    const section = document.createElement('section');
+    const section = this.ownerDocument.createElement('section');
     Object.assign(section.style, styles.section);
 
-    const title = document.createElement('div');
+    const title = this.ownerDocument.createElement('div');
     Object.assign(title.style, styles.sectionTitle);
     if (options.titleKey && this.useI18n && this.i18n) {
       this.i18n.bindElement(title, options.titleKey, 'textContent');
@@ -196,14 +190,14 @@ export class LayersButtonHandler extends BaseMenu {
   ): HTMLElement {
     const isSelected = mapType.id === currentType;
     const { forcePlaceName=true } = mapType;
-    const item = document.createElement('div');
+    const item = this.ownerDocument.createElement('div');
     item.setAttribute('data-map-type', mapType.id);
     Object.assign(item.style, styles.mapTypeCard);
     if (isSelected && forcePlaceName) {
       Object.assign(item.style, styles.mapTypeCardSelected);
     }
 
-    const thumbnail = document.createElement('div');
+    const thumbnail = this.ownerDocument.createElement('div');
     Object.assign(thumbnail.style, styles.mapTypeThumbnail);
     if (mapType.thumbnail) {
       thumbnail.style.backgroundImage = `url("${mapType.thumbnail}")`;
@@ -216,7 +210,7 @@ export class LayersButtonHandler extends BaseMenu {
       }
     }
 
-    const checkmark = document.createElement('span');
+    const checkmark = this.ownerDocument.createElement('span');
     checkmark.textContent = isSelected ? '✓' : '';
     Object.assign(checkmark.style, styles.mapTypeCheckmark);
     if (isSelected) {
@@ -224,7 +218,7 @@ export class LayersButtonHandler extends BaseMenu {
     }
     thumbnail.appendChild(checkmark);
 
-    const label = document.createElement('div');
+    const label = this.ownerDocument.createElement('div');
     const resolvedName = this.resolveMapTypeName(mapType);
     if (mapType.nameKey && this.useI18n && this.i18n) {
       this.i18n.bindElement(label, mapType.nameKey, 'textContent');
@@ -263,10 +257,10 @@ export class LayersButtonHandler extends BaseMenu {
       || (mapType.placeNameLabelKey ? this.t(mapType.placeNameLabelKey) : this.t('layers.map_type.place_name'));
     const labelKey = mapType.placeNameLabelKey || 'layers.map_type.place_name';
 
-    const wrapper = document.createElement('label');
+    const wrapper = this.ownerDocument.createElement('label');
     Object.assign(wrapper.style, styles.placeNameBadge);
 
-    const checkbox = document.createElement('input');
+    const checkbox = this.ownerDocument.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = checked;
     checkbox.disabled = forceChecked;
@@ -279,7 +273,7 @@ export class LayersButtonHandler extends BaseMenu {
       this.togglePlaceName((event.target as HTMLInputElement).checked);
     });
 
-    const text = document.createElement('span');
+    const text = this.ownerDocument.createElement('span');
     if (!mapType.placeNameLabel && this.useI18n && this.i18n) {
       this.i18n.bindElement(text, labelKey, 'textContent');
     } else {
@@ -293,16 +287,16 @@ export class LayersButtonHandler extends BaseMenu {
   }
 
   private createNoFlyZoneItem(styles: ResolvedPanelStyles): HTMLElement {
-    const item = document.createElement('label');
+    const item = this.ownerDocument.createElement('label');
     item.setAttribute('data-no-fly-zone', 'true');
     Object.assign(item.style, styles.noFlyZoneItem);
 
-    const left = document.createElement('div');
+    const left = this.ownerDocument.createElement('div');
     left.style.display = 'flex';
     left.style.alignItems = 'center';
     left.style.gap = '8px';
 
-    const checkbox = document.createElement('input');
+    const checkbox = this.ownerDocument.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = this.options.isNoFlyZoneChecked ?? false;
     Object.assign(checkbox.style, styles.noFlyZoneCheckbox);
@@ -311,10 +305,10 @@ export class LayersButtonHandler extends BaseMenu {
       this.toggleNoFlyZone((event.target as HTMLInputElement).checked);
     });
 
-    const dot = document.createElement('span');
+    const dot = this.ownerDocument.createElement('span');
     Object.assign(dot.style, styles.noFlyZoneDot);
 
-    const label = document.createElement('span');
+    const label = this.ownerDocument.createElement('span');
     if (this.useI18n && this.i18n) {
       this.i18n.bindElement(label, 'layers.no_fly_zone', 'textContent');
     } else {

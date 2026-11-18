@@ -6,7 +6,7 @@
  */
 
 import { createMapPlugin } from './core/MapPlugin';
-import type { ToolbarConfig } from './core/types';
+import type { MapContainer, ToolbarConfig } from './core/types';
 import { initStyleSystem } from './styles';
 
 // ==================== 核心模块 ====================
@@ -16,6 +16,7 @@ export { MapPlugin, createMapPlugin } from './core/MapPlugin';
  * @deprecated 使用 MapPluginOptions 代替
  */
 export type {
+  MapContainer,
   ToolbarConfig,
   ButtonConfig,
   CustomButtonConfig,
@@ -38,6 +39,15 @@ export type {
   // 新增：分层配置类型
   MapPluginOptions,
   CameraConfig,
+  LayersConfig,
+  TDTLayerConfig,
+  GaodeLayerConfig,
+  TencentLayerConfig,
+  GoogleLayerConfig,
+  BaiduLayerConfig,
+  ArcGISLayerConfig,
+  OSMLayerConfig,
+  CustomLayerConfig,
   CapabilityStatus,
   MapServiceConfig,
   MapServiceProvider,
@@ -229,7 +239,7 @@ export {
  * 快速创建地图插件实例
  */
 export function createVMap(
-  containerId: string,
+  containerId: MapContainer,
   config?: Parameters<typeof createMapPlugin>[1],
   toolbarConfig?: ToolbarConfig,
 ) {

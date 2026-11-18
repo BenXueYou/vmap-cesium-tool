@@ -52,6 +52,10 @@ export default defineConfig(({ mode }) => {
           ],
           outDir: "dist",
           insertTypesEntry: true,
+          // Keep peer imports portable instead of resolving tsconfig paths
+          // into relative paths to this checkout's node_modules.
+          pathsToAliases: false,
+          rollupTypes: true,
         }),
         // 注意：GeoJSON 文件的复制由 build-plugin.js 处理
         // 因为 vite-plugin-static-copy 在库模式下可能不工作

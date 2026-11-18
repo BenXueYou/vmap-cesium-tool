@@ -25,7 +25,7 @@ export class ToolbarButton extends BaseComponent {
    * @param config 按钮配置
    * @param styleConfig 样式配置
    */
-  constructor(config: CustomButtonConfig, styleConfig: StyleConfig = {}) {
+  constructor(config: CustomButtonConfig, styleConfig: StyleConfig = {}, ownerDocument: Document = document) {
     super('button', {
       className: 'vmap-toolbar-button',
       style: {
@@ -46,7 +46,7 @@ export class ToolbarButton extends BaseComponent {
         padding: config.padding || '0',
         ...styleConfig.style,
       },
-    });
+    }, ownerDocument);
 
     this.config = config;
     this.onClickHandler = config.onClick;
@@ -84,7 +84,7 @@ export class ToolbarButton extends BaseComponent {
 
     if (icon === false) {
       // 无图标，只显示文字
-      const text = document.createElement('span');
+      const text = this.element.ownerDocument.createElement('span');
       text.textContent = this.getResolvedTitle();
       text.style.fontSize = '12px';
       this.element.appendChild(text);
@@ -94,7 +94,7 @@ export class ToolbarButton extends BaseComponent {
     if (typeof icon === 'string') {
       if (this.isImagePath(icon)) {
         // 图片图标
-        const img = document.createElement('img');
+        const img = this.element.ownerDocument.createElement('img');
         img.src = icon;
         img.alt = this.getResolvedTitle();
         img.style.width = '70%';
@@ -105,7 +105,7 @@ export class ToolbarButton extends BaseComponent {
         // 文字图标
         this.element.textContent = icon;
       }
-    } else if (icon instanceof HTMLElement) {
+    } else if (icon && icon.nodeType === 1 && icon.namespaceURI === 'http://www.w3.org/1999/xhtml') {
       // HTML元素图标
       this.element.appendChild(icon);
     }
@@ -330,6 +330,6 @@ export class ToolbarButton extends BaseComponent {
 /**
  * 创建工具栏按钮的工厂函数
  */
-export function createToolbarButton(config: CustomButtonConfig, styleConfig?: StyleConfig): ToolbarButton {
-  return new ToolbarButton(config, styleConfig);
+export function createToolbarButton(config: CustomButtonConfig, styleConfig?: StyleConfig, ownerDocument?: Document): ToolbarButton {
+  return new ToolbarButton(config, styleConfig, ownerDocument);
 }

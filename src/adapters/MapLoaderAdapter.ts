@@ -1,7 +1,13 @@
 import * as Cesium from 'cesium';
 import type { Viewer } from 'cesium';
 import { createMapPlugin, type MapPlugin } from '../core/MapPlugin';
-import type { BaseMapConfig, CameraConfig, MapAuthConfig, MapPluginOptions } from '../core/types';
+import type {
+  BaseMapConfig,
+  CameraConfig,
+  MapAuthConfig,
+  MapContainer,
+  MapPluginOptions,
+} from '../core/types';
 import { buildDefaultBaseMap, normalizeProviderId } from '../core/mapProviders/registry';
 import { lngLatToCartesian } from '../core/mapProviders/coordinates/cesium';
 
@@ -15,6 +21,7 @@ export interface LegacyMapCenter {
 }
 
 export interface LegacyInitOptions {
+  signal?: AbortSignal;
   viewerOptions?: Cesium.Viewer.ConstructorOptions;
   mapType?: string;
   tdtMapTypeId?: string;
@@ -241,7 +248,7 @@ function applyLegacyRuntimeOptions(viewer: Viewer, options: LegacyInitOptions): 
  * 旧函数签名保持不变，内部切换到 MapPlugin。
  */
 export async function initCesium(
-  containerId: string,
+  containerId: MapContainer,
   options: LegacyInitOptions = {},
   mapCenterOrCesiumToken?: LegacyMapCenter | string,
   cesiumToken?: string,
@@ -253,7 +260,8 @@ export async function initCesium(
     cesiumToken: resolvedCesiumToken,
   });
 
-  const viewer = await mapPlugin.initialize();
+  const viewer = await mapPlugin.initialize(options.signal);
+  const isActive = () => !options.signal?.aborted && mapPlugin.getViewer() === viewer && !viewer.isDestroyed();
   applyLegacyRuntimeOptions(viewer, options);
 
   if (options.isFly) {
@@ -272,11 +280,13 @@ export async function initCesium(
       complete: () => {
         if (typeof legacySuccess === 'function') {
           setTimeout(() => {
-            legacySuccess();
+            if (isActive()) legacySuccess();
           }, 0);
         }
       },
-      cancel: options.cancel,
+      cancel: () => {
+        if (isActive()) options.cancel?.();
+      },
     });
   }
 

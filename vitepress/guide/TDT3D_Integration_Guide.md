@@ -542,4 +542,4 @@ async function initMap() {
 | GeoWTFS 创建 | `src/core/layers/TDTMapLayer.ts` L275–L296 |
 | 图层切换应用地形 | `src/core/MapPlugin.ts` L820–L840 |
 | GeoWTFS 销毁/重建 | `src/core/MapPlugin.ts` L479–L530 |
-| 插件原始用法 | `plugin/tdt-cesium-plugin/README.md` |
+| 插件使用方式 | npm 包 `tdt-terrain-cesium-plugin` 的 README |

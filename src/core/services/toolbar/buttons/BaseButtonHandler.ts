@@ -29,6 +29,16 @@ export abstract class BaseButtonHandler implements IButtonHandler {
   /** 工具栏容器元素 */
   protected toolbarElement: HTMLElement | null = null;
 
+  protected get ownerDocument(): Document {
+    return this.toolbarElement?.ownerDocument ?? this.viewer?.container?.ownerDocument ?? document;
+  }
+
+  protected get ownerWindow(): Window {
+    const ownerWindow = this.ownerDocument.defaultView;
+    if (!ownerWindow) throw new Error('Toolbar requires a document with a window');
+    return ownerWindow;
+  }
+
   /**
    * 构造函数
    * @param id 按钮 ID
@@ -162,7 +172,7 @@ export abstract class BaseButtonHandler implements IButtonHandler {
     icon: string,
     onClick: () => void
   ): HTMLElement {
-    const menuItem = document.createElement('div');
+    const menuItem = this.ownerDocument.createElement('div');
     menuItem.style.cssText = `
       padding: 8px 12px;
       cursor: pointer;
@@ -174,13 +184,13 @@ export abstract class BaseButtonHandler implements IButtonHandler {
     `;
 
     // 图标
-    const iconEl = document.createElement('span');
+    const iconEl = this.ownerDocument.createElement('span');
     iconEl.textContent = icon;
     iconEl.style.fontSize = '14px';
     menuItem.appendChild(iconEl);
 
     // 文本
-    const label = document.createElement('span');
+    const label = this.ownerDocument.createElement('span');
     label.textContent = text;
     menuItem.appendChild(label);
 
@@ -244,8 +254,8 @@ export abstract class BaseButtonHandler implements IButtonHandler {
    */
   protected adjustMenuPosition(menu: HTMLElement): void {
     const menuRect = menu.getBoundingClientRect();
-    const viewportHeight = window.innerHeight;
-    const viewportWidth = window.innerWidth;
+    const viewportHeight = this.ownerWindow.innerHeight;
+    const viewportWidth = this.ownerWindow.innerWidth;
 
     // 底部溢出调整
     if (menuRect.bottom > viewportHeight) {

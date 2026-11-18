@@ -16,7 +16,7 @@ export class Toolbar extends BaseComponent {
    * @param config 工具栏配置
    * @param styleConfig 样式配置
    */
-  constructor(config: Partial<ToolbarConfig> = {}, styleConfig: StyleConfig = {}) {
+  constructor(config: Partial<ToolbarConfig> = {}, styleConfig: StyleConfig = {}, ownerDocument: Document = document) {
     const mergedConfig = { ...DEFAULT_TOOLBAR_STYLE, ...config };
     const position = mergedConfig.position;
     const direction = mergedConfig.direction ?? 'column';
@@ -38,10 +38,10 @@ export class Toolbar extends BaseComponent {
         ...styleConfig.style,
       },
       ...styleConfig,
-    });
+    }, ownerDocument);
 
     this.config = mergedConfig;
-    this.buttonContainer = document.createElement('div');
+    this.buttonContainer = this.element.ownerDocument.createElement('div');
     this.buttonContainer.style.display = 'flex';
     this.buttonContainer.style.flexDirection = direction;
     this.buttonContainer.style.gap = `${this.config.buttonSpacing}px`;
@@ -132,7 +132,7 @@ export class Toolbar extends BaseComponent {
         width: `${this.config.buttonSize}px`,
         height: `${this.config.buttonSize}px`,
       },
-    });
+    }, this.element.ownerDocument);
 
     this.buttons.set(buttonConfig.id, button);
     this.buttonContainer.appendChild(button.getElement());
@@ -338,6 +338,6 @@ export class Toolbar extends BaseComponent {
 /**
  * 创建工具栏的工厂函数
  */
-export function createToolbar(config?: Partial<ToolbarConfig>, styleConfig?: StyleConfig): Toolbar {
-  return new Toolbar(config, styleConfig);
+export function createToolbar(config?: Partial<ToolbarConfig>, styleConfig?: StyleConfig, ownerDocument?: Document): Toolbar {
+  return new Toolbar(config, styleConfig, ownerDocument);
 }

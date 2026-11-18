@@ -11,7 +11,7 @@
 1. **强耦合依赖**：主项目通过相对路径直接引用插件源码
    ```javascript
    // 原代码（问题）
-   import TdtPlug from '../../../plugin/tdt-cesium-plugin/dist/tdtplug.es.js';
+   import TdtPlug from './path/to/local/tdtplug.es.js';
    ```
 
 2. **无法独立发布**：插件不能作为独立 npm 包使用
@@ -92,19 +92,7 @@ const map = createMapPlugin('map-container', {
 });
 ```
 
-### 方式二：使用本地插件（开发环境）
-
-保持原有方式，使用本地插件：
-
-```javascript
-import { createMapPlugin, setTDTPlugin } from '@xingm/vmap-cesium-toolbar';
-// 从本地路径导入
-import TdtPlug from './path/to/plugin/dist/tdtplug.es.js';
-
-setTDTPlugin(TdtPlug);
-```
-
-### 方式三：不使用插件（基础功能）
+### 方式二：不使用插件（基础功能）
 
 如果不需要天地图三维功能，可以不安装插件，主项目仍可正常使用其他图层。
 
@@ -148,10 +136,9 @@ setTDTPlugin(TdtPlug);
 
 ### 插件独立发布
 
-天地图插件可以独立发布到 npm：
+天地图插件在其独立仓库中维护并发布到 npm：
 
 ```bash
-cd plugin/tdt-cesium-plugin
 npm version patch  # 或 minor/major
 npm publish
 ```
@@ -169,11 +156,6 @@ npm publish
 
 ```
 vmap-cesium-tool/
-├── plugin/
-│   └── tdt-cesium-plugin/          # 独立的天地图插件（可单独发布）
-│       ├── src/
-│       ├── dist/
-│       └── package.json
 ├── src/
 │   ├── core/
 │   │   └── layers/

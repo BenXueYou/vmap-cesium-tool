@@ -1,12 +1,15 @@
 import * as Cesium from 'cesium';
+import { resolveMapContainer } from './mapContainer';
 import { setCesiumCreditVisible } from '../utils/hideCesiumCredit';
 import { zoomLevelToHeight } from '../utils/common';
 import { MapConfigHint } from '../components/MapConfigHint';
 import { i18n as defaultI18n, type I18nLike } from '../i18n';
 import type {
   BaseMapConfig,
+  MapContainer,
   MapAuthConfig,
   CameraConfig,
+  LayersConfig,
   DrawPluginOptions,
   MapServiceConfig,
   MapType,
@@ -172,11 +175,12 @@ class PluginMapController {
 
   toggleFullscreen(): void {
     const container = this.viewer.container as HTMLElement;
-    const willEnterFullscreen = !document.fullscreenElement;
+    const ownerDocument = container.ownerDocument;
+    const willEnterFullscreen = !ownerDocument.fullscreenElement;
     if (willEnterFullscreen) {
       void container.requestFullscreen?.();
     } else {
-      void document.exitFullscreen?.();
+      void ownerDocument.exitFullscreen?.();
     }
     this.callbacks?.onFullscreenChange?.(willEnterFullscreen);
   }
@@ -196,12 +200,13 @@ class PluginMapController {
  */
 export class MapPlugin {
   private static readonly LEGACY_MAP_SERVICE_FIELDS: ReadonlyArray<keyof MapPluginOptions> = [
+    'layers',
     'baseMap',
     'mapAuth',
   ];
 
   private viewer: Cesium.Viewer | null = null;
-  private containerId: string;
+  private containerId: MapContainer;
   
   // 分层配置
   private viewerOptions: Cesium.Viewer.ConstructorOptions;
@@ -239,6 +244,9 @@ export class MapPlugin {
   private sceneModeListenerDispose: (() => void) | null = null;
   private offlineCleanup: (() => void) | null = null;
   private layerRequestVersion = 0;
+  private lifecycleVersion = 0;
+  private initializationPromise: Promise<Cesium.Viewer> | null = null;
+  private initializationSignal: AbortSignal | undefined;
   private mapServiceSearchGeneration = 0;
 
   private toolbarService: ToolbarService | null = null;
@@ -249,11 +257,11 @@ export class MapPlugin {
 
   /**
    * 构造函数
-   * @param containerId 地图容器 ID
+   * @param containerId 地图容器 ID 或 HTML 元素
    * @param options 地图插件配置选项
    */
   constructor(
-    containerId: string,
+    containerId: MapContainer,
     options: Partial<MapPluginOptions> = {}
   ) {
     this.containerId = containerId;
@@ -483,6 +491,108 @@ export class MapPlugin {
     controller.maximumZoomDistance = maximumZoomDistance;
   }
 
+  private mergeLayersConfig(config?: Partial<LayersConfig>): LayersConfig {
+    const providerType = config?.type || DEFAULT_PROVIDER_TYPE;
+    
+    const result: LayersConfig = {
+      type: providerType,
+      tdt: config?.tdt,
+      gaode: config?.gaode,
+      tencent: config?.tencent,
+      google: config?.google,
+      baidu: config?.baidu,
+      arcgis: config?.arcgis,
+      osm: config?.osm,
+      custom: config?.custom,
+    };
+
+    // 如果没有提供具体配置，使用默认值
+    if (providerType === 'tdt' && !result.tdt) {
+      result.tdt = {
+        mapTypeId: 'img',
+        token: '',
+        sk: '',
+        showLabel: true,
+      };
+    }
+
+    return result;
+  }
+
+  private buildLayersConfigForBaseMap(baseMap: BaseMapConfig): LayersConfig {
+    switch (baseMap.provider) {
+      case 'gaode':
+        return {
+          type: 'gaode',
+          gaode: {
+            mapTypeId: (baseMap.type as 'vector' | 'satellite' | 'terrain' | undefined) || 'satellite',
+            token: baseMap.key || baseMap.token,
+            sk: baseMap.sk,
+            showLabel: baseMap.showLabel ?? true,
+          },
+        };
+      case 'tencent':
+        return {
+          type: 'tencent',
+          tencent: {
+            mapTypeId: (baseMap.type as 'vector' | 'satellite' | undefined) || 'satellite',
+            key: baseMap.key,
+            token: baseMap.token,
+            showLabel: baseMap.showLabel ?? true,
+          },
+        };
+      case 'google':
+        return {
+          type: 'google',
+          google: {
+            mapTypeId: (baseMap.type as 'roadmap' | 'satellite' | undefined) || 'roadmap',
+            apiKey: baseMap.key || baseMap.token,
+            showLabel: baseMap.showLabel ?? false,
+          },
+        };
+      case 'baidu':
+        return {
+          type: 'baidu',
+          baidu: {
+            mapTypeId: (baseMap.type as 'normal' | 'satellite' | 'terrain' | undefined) || 'satellite',
+            token: baseMap.ak || baseMap.key || baseMap.token,
+            sk: baseMap.sk,
+            showLabel: baseMap.showLabel ?? true,
+          },
+        };
+      case 'custom':
+        return {
+          type: 'custom',
+          custom: {
+            providers: baseMap.providers || [],
+            type: baseMap.type as 'xyz' | 'wmts' | 'imageryProviders' | undefined,
+            mode: baseMap.mode,
+            customUrl: baseMap.customUrl,
+            urlTemplate: baseMap.urlTemplate,
+            rectangle: baseMap.rectangle,
+            minimumLevel: baseMap.minimumLevel,
+            maximumLevel: baseMap.maximumLevel,
+            credit: baseMap.credit,
+            cameraBounds: baseMap.cameraBounds,
+            wmtsLayer: baseMap.wmtsLayer,
+            wmtsStyle: baseMap.wmtsStyle,
+            wmtsFormat: baseMap.wmtsFormat,
+            tileMatrixSetId: baseMap.tileMatrixSetId,
+          },
+        };
+      default:
+        return {
+          type: 'tdt',
+          tdt: {
+            mapTypeId: (baseMap.type as 'vec' | 'img' | 'ter' | 'tdt3d' | undefined) || 'img',
+            token: baseMap.token || baseMap.key || '',
+            sk: baseMap.sk,
+            showLabel: baseMap.showLabel ?? true,
+          },
+        };
+    }
+  }
+
   private resolveBaseMapConfig(options: Partial<MapPluginOptions>): BaseMapConfig {
     if (options.baseMap) {
       const provider = normalizeProviderId(options.baseMap.provider);
@@ -493,7 +603,66 @@ export class MapPlugin {
       };
     }
 
-    return buildDefaultBaseMap(DEFAULT_PROVIDER_TYPE);
+    const layers = this.mergeLayersConfig(options.layers);
+    switch (layers.type) {
+      case 'gaode':
+        return {
+          provider: 'gaode',
+          type: layers.gaode?.mapTypeId || 'satellite',
+          key: layers.gaode?.token,
+          sk: layers.gaode?.sk,
+          showLabel: layers.gaode?.showLabel ?? true,
+        };
+      case 'tencent':
+        return {
+          provider: 'tencent',
+          type: layers.tencent?.mapTypeId || 'satellite',
+          key: layers.tencent?.key || layers.tencent?.token,
+          showLabel: layers.tencent?.showLabel ?? true,
+        };
+      case 'google':
+        return {
+          provider: 'google',
+          type: layers.google?.mapTypeId || 'roadmap',
+          key: layers.google?.apiKey || layers.google?.key || layers.google?.token,
+          showLabel: layers.google?.showLabel ?? false,
+        };
+      case 'baidu':
+        return {
+          provider: 'baidu',
+          type: layers.baidu?.mapTypeId || 'satellite',
+          ak: layers.baidu?.token,
+          sk: layers.baidu?.sk,
+          showLabel: layers.baidu?.showLabel ?? true,
+        };
+      case 'custom':
+        return {
+          provider: 'custom',
+          type: layers.custom?.type || 'imageryProviders',
+          mode: layers.custom?.mode || 'online',
+          providers: layers.custom?.providers,
+          customUrl: layers.custom?.customUrl,
+          urlTemplate: layers.custom?.urlTemplate,
+          rectangle: layers.custom?.rectangle,
+          minimumLevel: layers.custom?.minimumLevel,
+          maximumLevel: layers.custom?.maximumLevel,
+          credit: layers.custom?.credit,
+          cameraBounds: layers.custom?.cameraBounds,
+          wmtsLayer: layers.custom?.wmtsLayer,
+          wmtsStyle: layers.custom?.wmtsStyle,
+          wmtsFormat: layers.custom?.wmtsFormat,
+          tileMatrixSetId: layers.custom?.tileMatrixSetId,
+          showLabel: false,
+        };
+      default:
+        return {
+          provider: 'tdt',
+          type: layers.tdt?.mapTypeId || 'img',
+          token: layers.tdt?.token,
+          sk: layers.tdt?.sk,
+          showLabel: layers.tdt?.showLabel ?? true,
+        };
+    }
   }
 
   private resolveCurrentMapTypeId(baseMapConfig: BaseMapConfig = this.baseMapConfig): string {
@@ -801,10 +970,14 @@ export class MapPlugin {
       return this.noFlyZoneLoadPromise;
     }
 
-    this.noFlyZoneLoadPromise = (async () => {
+    const version = this.lifecycleVersion;
+    const pending = (async () => {
       const viewer = this.ensureViewer();
       const dataSource = new Cesium.CustomDataSource('airport-no-fly-zones');
       const zones = await loadAllAirportNoFlyZones();
+      if (version !== this.lifecycleVersion || this.viewer !== viewer || viewer.isDestroyed()) {
+        throw Object.assign(new Error('Map initialization cancelled'), { name: 'AbortError' });
+      }
 
       zones.forEach((zone, index) => {
         const ring = zone.feature.geometry.coordinates[0] || [];
@@ -830,15 +1003,20 @@ export class MapPlugin {
       });
 
       dataSource.show = this.noFlyZoneVisible;
-      viewer.dataSources.add(dataSource);
+      await viewer.dataSources.add(dataSource);
+      if (version !== this.lifecycleVersion || this.viewer !== viewer || viewer.isDestroyed()) {
+        if (!viewer.isDestroyed()) viewer.dataSources.remove(dataSource, true);
+        throw Object.assign(new Error('Map initialization cancelled'), { name: 'AbortError' });
+      }
       this.noFlyZoneDataSource = dataSource;
       return dataSource;
     })();
+    this.noFlyZoneLoadPromise = pending;
 
     try {
-      return await this.noFlyZoneLoadPromise;
+      return await pending;
     } finally {
-      this.noFlyZoneLoadPromise = null;
+      if (this.noFlyZoneLoadPromise === pending) this.noFlyZoneLoadPromise = null;
     }
   }
 
@@ -862,6 +1040,7 @@ export class MapPlugin {
 
   private async syncGeoWTFS(): Promise<void> {
     const viewer = this.viewer;
+    const version = this.lifecycleVersion;
     if (!viewer) {
       return;
     }
@@ -877,6 +1056,7 @@ export class MapPlugin {
     if (this.currentMapTypeId === 'tdt3d') {
       await ensureTDT3DExtensionLoaded();
     }
+    if (version !== this.lifecycleVersion || this.viewer !== viewer || viewer.isDestroyed()) return;
 
     try {
       this.currentGeoWTFS = mapType?.geoWTFS?.(this.getLayerToken(), viewer, this.getLayerSk()) || null;
@@ -1236,17 +1416,50 @@ export class MapPlugin {
   /**
    * 初始化地图
    */
-  async initialize(): Promise<Cesium.Viewer> {
+  initialize(signal?: AbortSignal): Promise<Cesium.Viewer> {
+    if (signal?.aborted) {
+      return Promise.reject(Object.assign(new Error('Map initialization cancelled'), { name: 'AbortError' }));
+    }
+    if (this.isInitialized && this.viewer && !this.viewer.isDestroyed()) {
+      return Promise.resolve(this.viewer);
+    }
+    if (this.initializationPromise && this.initializationSignal === signal) {
+      return this.initializationPromise;
+    }
+    if (this.viewer) this.destroy();
+    const pending = this.initializeViewer(signal);
+    this.initializationPromise = pending;
+    this.initializationSignal = signal;
+    const clearPending = () => {
+      if (this.initializationPromise === pending) {
+        this.initializationPromise = null;
+        this.initializationSignal = undefined;
+      }
+    };
+    void pending.then(clearPending, clearPending);
+    return pending;
+  }
+
+  private async initializeViewer(signal?: AbortSignal): Promise<Cesium.Viewer> {
     if (this.isInitialized) {
       return this.viewer!;
     }
 
+    const version = ++this.lifecycleVersion;
+    const abortError = () => Object.assign(new Error('Map initialization cancelled'), { name: 'AbortError' });
+    const checkActive = () => {
+      if (signal?.aborted || version !== this.lifecycleVersion || !this.viewer || this.viewer.isDestroyed()) {
+        throw abortError();
+      }
+    };
+    const onAbort = () => {
+      if (version === this.lifecycleVersion) this.destroy();
+    };
+    if (signal?.aborted) throw abortError();
+    signal?.addEventListener('abort', onAbort, { once: true });
     try {
       // 创建地图容器
-      const container = document.getElementById(this.containerId);
-      if (!container) {
-        throw new Error(`找不到 ID 为"${this.containerId}"的容器元素`);
-      }
+      const container = resolveMapContainer(this.containerId);
       // 创建 Cesium Viewer
       // Enable native WebGL anti-aliasing by default. Preserve every caller
       // override, including an explicit `antialias: false`.
@@ -1295,7 +1508,9 @@ export class MapPlugin {
 
       // 添加地图图层
       await this.addLayers();
+      checkActive();
       await this.syncGeoWTFS();
+      checkActive();
       this.syncCreditDisplay();
 
       // 设置相机视图
@@ -1306,14 +1521,18 @@ export class MapPlugin {
 
       if (this.noFlyZoneConfig.autoLoad) {
         await this.showNoFlyZones();
+        checkActive();
       }
 
       this.isInitialized = true;
       console.log('MapPlugin 初始化完成');
       return this.viewer;
     } catch (error) {
-      console.error('MapPlugin 初始化失败:', error);
+      if (version === this.lifecycleVersion) this.destroy();
+      if ((error as Error)?.name !== 'AbortError') console.error('MapPlugin 初始化失败:', error);
       throw error;
+    } finally {
+      signal?.removeEventListener('abort', onAbort);
     }
   }
 
@@ -1382,6 +1601,7 @@ export class MapPlugin {
     return {
       viewerOptions: { ...this.viewerOptions },
       fxaa: this.fxaa,
+      layers: this.mapConfigMode === 'legacy' ? this.buildLayersConfigForBaseMap(this.baseMapConfig) : undefined,
       camera: { ...this.cameraConfig },
       mapService: this.mapServiceConfig ? { ...this.mapServiceConfig } : undefined,
       baseMap: this.mapConfigMode === 'legacy' ? { ...this.baseMapConfig } : undefined,
@@ -1409,6 +1629,34 @@ export class MapPlugin {
       this.applyCameraZoomConstraints();
       this.setCameraView();
     }
+  }
+
+  /** 兼容已发布版本的图层配置入口。 */
+  updateLayers(config: Partial<LayersConfig>): void {
+    this.assertLegacyMutationAllowed('updateLayers');
+    this.baseMapConfig = this.resolveBaseMapConfig({
+      layers: this.mergeLayersConfig(config),
+      mapAuth: this.mapAuthConfig,
+    });
+    this.syncMapServiceState();
+    this.currentMapTypeId = this.resolveCurrentMapTypeId();
+    const mapType = this.getCurrentToolbarMapType();
+    const isForcedMapType = !!mapType?.forcePlaceName;
+    const resolvedPlaceNameVisible = this.resolvePlaceNameVisible();
+
+    if (!isForcedMapType) {
+      this.nonForcedPlaceNameVisible = resolvedPlaceNameVisible;
+    }
+
+    this.placeNameVisible = isForcedMapType ? true : resolvedPlaceNameVisible;
+
+    // 如果已初始化，立即应用新配置
+    if (this.isInitialized) {
+      void this.refreshLayersAndGeoWTFS();
+    }
+
+    this.updateToolbarLayerState();
+    this.syncOfflineToolbarState();
   }
 
   /** @deprecated mapService 模式请使用 setMapService()。 */
@@ -1845,6 +2093,11 @@ export class MapPlugin {
    * 销毁插件
    */
   destroy(): void {
+    this.lifecycleVersion += 1;
+    this.layerRequestVersion += 1;
+    this.initializationPromise = null;
+    this.initializationSignal = undefined;
+    this.noFlyZoneLoadPromise = null;
     this.toolbarService?.destroy();
     this.toolbarService = null;
 
@@ -1871,11 +2124,11 @@ export class MapPlugin {
     }
 
     if (this.viewer) {
-      if (this.noFlyZoneDataSource) {
+      if (this.noFlyZoneDataSource && !this.viewer.isDestroyed()) {
         this.viewer.dataSources.remove(this.noFlyZoneDataSource, true);
-        this.noFlyZoneDataSource = null;
       }
-      this.viewer.destroy();
+      this.noFlyZoneDataSource = null;
+      if (!this.viewer.isDestroyed()) this.viewer.destroy();
       this.viewer = null;
     }
 
@@ -1893,11 +2146,11 @@ export class MapPlugin {
 
 /**
  * 创建地图插件实例的工厂函数
- * @param containerId 地图容器 ID
+ * @param containerId 地图容器 ID 或 HTML 元素
  * @param options 地图插件配置选项
  */
 export function createMapPlugin(
-  containerId: string,
+  containerId: MapContainer,
   options?: Partial<MapPluginOptions>,
   toolbarConfig?: ToolbarConfig,
 ): MapPlugin {

@@ -61,6 +61,19 @@ export class SearchButtonHandler extends BaseButtonHandler {
   private searchContainer: HTMLElement | null = null;
   private searchTimer: number | null = null;
   private latestSearchToken = 0;
+  private panelTimers = new Set<number>();
+  private releaseScrollbarStyles?: () => void;
+  private removePositionListeners?: () => void;
+  private static readonly scrollbarStyles = new WeakMap<Document, { element: HTMLElement; users: number; owned: boolean }>();
+
+  private schedulePanelTask(task: () => void, delay: number): void {
+    const panel = this.searchContainer;
+    const timer = this.ownerWindow.setTimeout(() => {
+      this.panelTimers.delete(timer);
+      if (panel && this.searchContainer === panel && panel.isConnected) task();
+    }, delay);
+    this.panelTimers.add(timer);
+  }
 
   private normalizeStyleConfig(styleConfig?: SearchContainerStyleConfig): SearchContainerStyleConfig {
     const resolvedStyleConfig = (styleConfig || {}) as SearchContainerStyleConfig;
@@ -80,13 +93,19 @@ export class SearchButtonHandler extends BaseButtonHandler {
   }
 
   private ensureScrollbarStyles(): void {
-    if (document.getElementById(SearchButtonHandler.SCROLLBAR_STYLE_ID)) {
+    if (this.releaseScrollbarStyles) return;
+    const targetDocument = this.ownerDocument;
+    const existing = SearchButtonHandler.scrollbarStyles.get(targetDocument);
+    if (existing) {
+      existing.users++;
+      this.releaseScrollbarStyles = () => this.releaseStyles(targetDocument);
       return;
     }
 
-    const style = document.createElement('style');
+    const inheritedStyle = targetDocument.getElementById(SearchButtonHandler.SCROLLBAR_STYLE_ID);
+    const style = inheritedStyle ?? targetDocument.createElement('style');
     style.id = SearchButtonHandler.SCROLLBAR_STYLE_ID;
-    style.textContent = `
+    if (!inheritedStyle) style.textContent = `
       .search-results {
         -ms-overflow-style: none;
         scrollbar-width: none;
@@ -99,7 +118,20 @@ export class SearchButtonHandler extends BaseButtonHandler {
       }
     `;
 
-    document.head.appendChild(style);
+    if (!inheritedStyle) targetDocument.head.appendChild(style);
+    SearchButtonHandler.scrollbarStyles.set(targetDocument, {
+      element: style,
+      users: 1,
+      owned: !inheritedStyle,
+    });
+    this.releaseScrollbarStyles = () => this.releaseStyles(targetDocument);
+  }
+
+  private releaseStyles(targetDocument: Document): void {
+    const styles = SearchButtonHandler.scrollbarStyles.get(targetDocument);
+    if (!styles || --styles.users > 0) return;
+    if (styles.owned) styles.element.remove();
+    SearchButtonHandler.scrollbarStyles.delete(targetDocument);
   }
 
   private clearSearchResults(): void {
@@ -121,14 +153,14 @@ export class SearchButtonHandler extends BaseButtonHandler {
 
   private resetSearchTimer(): void {
     if (this.searchTimer !== null) {
-      window.clearTimeout(this.searchTimer);
+      this.ownerWindow.clearTimeout(this.searchTimer);
       this.searchTimer = null;
     }
   }
 
   private scheduleInputSearch(query: string): void {
     this.resetSearchTimer();
-    this.searchTimer = window.setTimeout(() => {
+    this.searchTimer = this.ownerWindow.setTimeout(() => {
       this.searchTimer = null;
       void this.doSearch(query);
     }, SearchButtonHandler.INPUT_SEARCH_DEBOUNCE_MS);
@@ -307,12 +339,12 @@ export class SearchButtonHandler extends BaseButtonHandler {
    */
   handleMouseLeave(): void {
     if (this.searchContainer) {
-      setTimeout(() => {
-        const activeElement = document.activeElement;
+      this.schedulePanelTask(() => {
+        const activeElement = this.ownerDocument.activeElement;
         if (
           this.searchContainer &&
           !this.searchContainer.matches(':hover') &&
-          (!(activeElement instanceof HTMLElement) || activeElement.tagName !== 'INPUT')
+          activeElement?.tagName !== 'INPUT'
         ) {
           this.closeSearch();
         }
@@ -365,7 +397,7 @@ export class SearchButtonHandler extends BaseButtonHandler {
     const actionIconStyle = { ...defaultStyles.actionIcon, ...userStyles.actionIconStyle };
 
     // 创建容器
-    this.searchContainer = document.createElement('div');
+    this.searchContainer = this.ownerDocument.createElement('div');
     this.searchContainer.className = 'search-container';
     Object.assign(this.searchContainer.style, containerStyle);
 
@@ -373,7 +405,7 @@ export class SearchButtonHandler extends BaseButtonHandler {
     this.searchContainer.style.top = `${anchor.offsetTop}px`;
 
     // 输入框
-    const input = document.createElement('input');
+    const input = this.ownerDocument.createElement('input');
     input.type = 'text';
     if (this.useI18n && this.i18n) {
       input.dataset.i18nKey = 'toolbar.search_placeholder';
@@ -394,7 +426,7 @@ export class SearchButtonHandler extends BaseButtonHandler {
       syncActionButton();
     });
 
-    const actionBtn = document.createElement('button');
+    const actionBtn = this.ownerDocument.createElement('button');
     actionBtn.type = 'button';
     Object.assign(actionBtn.style, actionButtonStyle);
 
@@ -439,7 +471,7 @@ export class SearchButtonHandler extends BaseButtonHandler {
 
     // 失焦关闭
     input.addEventListener('blur', () => {
-      setTimeout(() => {
+      this.schedulePanelTask(() => {
         if (!this.searchContainer?.matches(':hover')) {
           this.closeSearch();
         }
@@ -453,7 +485,19 @@ export class SearchButtonHandler extends BaseButtonHandler {
     syncActionButton();
 
     this.adjustSearchPosition();
-    setTimeout(() => input.focus(), 100);
+    const targetWindow = this.ownerWindow;
+    const reposition = () => {
+      if (!this.searchContainer) return;
+      this.searchContainer.style.top = `${anchor.offsetTop}px`;
+      this.adjustSearchPosition();
+    };
+    targetWindow.addEventListener('resize', reposition);
+    targetWindow.addEventListener('scroll', reposition, true);
+    this.removePositionListeners = () => {
+      targetWindow.removeEventListener('resize', reposition);
+      targetWindow.removeEventListener('scroll', reposition, true);
+    };
+    this.schedulePanelTask(() => input.focus(), 100);
   }
 
   /**
@@ -502,12 +546,12 @@ export class SearchButtonHandler extends BaseButtonHandler {
     const hoverStyle = userStyles.resultItemHoverStyle || { backgroundColor: 'rgba(16, 56, 109, 0.96)' };
     const activeStyle = userStyles.resultItemActiveStyle || { backgroundColor: 'rgba(20, 74, 145, 0.96)' };
 
-    const resultsContainer = document.createElement('div');
+    const resultsContainer = this.ownerDocument.createElement('div');
     resultsContainer.className = 'search-results';
     Object.assign(resultsContainer.style, resultStyle);
 
     if (results.length === 0) {
-      const emptyState = document.createElement('div');
+      const emptyState = this.ownerDocument.createElement('div');
       Object.assign(emptyState.style, resultItemStyle, {
         cursor: 'default',
         color: 'rgba(210, 225, 244, 0.72)',
@@ -522,14 +566,14 @@ export class SearchButtonHandler extends BaseButtonHandler {
     }
 
     results.forEach((result) => {
-      const item = document.createElement('div');
+      const item = this.ownerDocument.createElement('div');
       Object.assign(item.style, resultItemStyle);
       item.style.display = 'flex';
       item.style.flexDirection = 'column';
       item.style.alignItems = 'flex-start';
       item.style.gap = '6px';
 
-      const nameElement = document.createElement('div');
+      const nameElement = this.ownerDocument.createElement('div');
       const fallbackLabel = typeof result === 'string'
         ? result
         : (typeof result?.name === 'string' && result.name.trim())
@@ -549,7 +593,7 @@ export class SearchButtonHandler extends BaseButtonHandler {
 
       const addressText = typeof result.address === 'string' ? result.address.trim() : '';
       if (addressText) {
-        const addressElement = document.createElement('div');
+        const addressElement = this.ownerDocument.createElement('div');
         addressElement.textContent = addressText;
         Object.assign(addressElement.style, {
           width: '100%',
@@ -627,7 +671,7 @@ export class SearchButtonHandler extends BaseButtonHandler {
     if (!this.searchContainer) return;
 
     const rect = this.searchContainer.getBoundingClientRect();
-    const viewportWidth = window.innerWidth;
+    const viewportWidth = this.ownerWindow.innerWidth;
 
     if (rect.right > viewportWidth) {
       this.searchContainer.style.right = '';
@@ -642,23 +686,23 @@ export class SearchButtonHandler extends BaseButtonHandler {
     style: Partial<CSSStyleDeclaration>,
     fallbackText: string,
   ): HTMLElement {
-    if (icon instanceof HTMLElement) {
-      const wrapper = document.createElement('span');
+    if (typeof icon !== 'string' && icon.nodeType === 1) {
+      const wrapper = this.ownerDocument.createElement('span');
       Object.assign(wrapper.style, style);
       wrapper.appendChild(icon.cloneNode(true));
       return wrapper;
     }
 
-    if (this.isImagePath(icon)) {
-      const image = document.createElement('img');
+    if (typeof icon === 'string' && this.isImagePath(icon)) {
+      const image = this.ownerDocument.createElement('img');
       image.src = icon;
       image.alt = fallbackText;
       Object.assign(image.style, style);
       return image;
     }
 
-    const text = document.createElement('span');
-    text.textContent = icon;
+    const text = this.ownerDocument.createElement('span');
+    text.textContent = typeof icon === 'string' ? icon : fallbackText;
     Object.assign(text.style, style);
     return text;
   }
@@ -671,7 +715,14 @@ export class SearchButtonHandler extends BaseButtonHandler {
    * 关闭搜索框
    */
   closeSearch(): void {
+    ++this.latestSearchToken;
     this.resetSearchTimer();
+    for (const timer of this.panelTimers) this.ownerWindow.clearTimeout(timer);
+    this.panelTimers.clear();
+    this.removePositionListeners?.();
+    this.removePositionListeners = undefined;
+    this.releaseScrollbarStyles?.();
+    this.releaseScrollbarStyles = undefined;
     if (this.searchContainer) {
       this.searchContainer.remove();
       this.searchContainer = null;

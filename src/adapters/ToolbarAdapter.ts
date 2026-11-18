@@ -96,11 +96,12 @@ class ToolbarAdapterMapController {
 
   toggleFullscreen(): void {
     const container = this.viewer.container as HTMLElement;
-    const willEnterFullscreen = !document.fullscreenElement;
+    const ownerDocument = container.ownerDocument;
+    const willEnterFullscreen = !ownerDocument.fullscreenElement;
     if (willEnterFullscreen) {
       void container.requestFullscreen?.();
     } else {
-      void document.exitFullscreen?.();
+      void ownerDocument.exitFullscreen?.();
     }
     this.callbacks?.fullscreen?.(willEnterFullscreen);
   }

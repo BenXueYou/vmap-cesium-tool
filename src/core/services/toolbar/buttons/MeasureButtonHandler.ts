@@ -157,15 +157,7 @@ export class MeasureButtonHandler extends BaseButtonHandler {
    */
   handleMouseLeave(): void {
     // 延迟关闭菜单，给用户时间移动到菜单上
-    if (this.menu && this.menu['menuElement']) {
-      setTimeout(() => {
-        const menuEl = this.menu!['menuElement'];
-        if (menuEl && !menuEl.matches(':hover')) {
-          this.menu?.hide();
-          this.deactivateButton();
-        }
-      }, 100);
-    }
+    this.menu?.scheduleAutoClose();
   }
 
   /**

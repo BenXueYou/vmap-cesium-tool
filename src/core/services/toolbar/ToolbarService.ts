@@ -186,7 +186,7 @@ export class ToolbarService {
       offsetRight: toolbarStyle.offsetRight,
       offsetBottom: toolbarStyle.offsetBottom,
       offsetLeft: toolbarStyle.offsetLeft,
-    });
+    }, undefined, container.ownerDocument);
 
     // 挂载到容器
     this.toolbar.mount(container);

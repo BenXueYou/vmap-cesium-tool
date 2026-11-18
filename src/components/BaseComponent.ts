@@ -14,8 +14,8 @@ export abstract class BaseComponent {
    * @param tagName 元素标签名
    * @param styleConfig 样式配置
    */
-  constructor(tagName: string = 'div', styleConfig: StyleConfig = {}) {
-    this.element = document.createElement(tagName);
+  constructor(tagName: string = 'div', styleConfig: StyleConfig = {}, ownerDocument: Document = document) {
+    this.element = ownerDocument.createElement(tagName);
     this.styleConfig = styleConfig;
     this.applyStyle();
   }
@@ -63,7 +63,7 @@ export abstract class BaseComponent {
     let parentElement: HTMLElement | null;
 
     if (typeof parent === 'string') {
-      parentElement = document.querySelector(parent);
+      parentElement = this.element.ownerDocument.querySelector(parent);
     } else {
       parentElement = parent;
     }

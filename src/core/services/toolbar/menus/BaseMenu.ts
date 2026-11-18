@@ -38,6 +38,19 @@ export abstract class BaseMenu implements IMenu {
   
   /** 是否使用国际化 */
   protected useI18n: boolean;
+  private closeTimer?: number;
+  private removePositionListeners?: () => void;
+
+  protected get ownerDocument(): Document {
+    if (!this.toolbarElement) throw new Error('Menu is detached from its toolbar');
+    return this.toolbarElement.ownerDocument;
+  }
+
+  protected get ownerWindow(): Window {
+    const ownerWindow = this.ownerDocument.defaultView;
+    if (!ownerWindow) throw new Error('Menu requires a document with a window');
+    return ownerWindow;
+  }
 
   /**
    * 构造函数
@@ -65,6 +78,12 @@ export abstract class BaseMenu implements IMenu {
    * 隐藏菜单
    */
   hide(): void {
+    if (this.closeTimer !== undefined) {
+      this.ownerWindow.clearTimeout(this.closeTimer);
+      this.closeTimer = undefined;
+    }
+    this.removePositionListeners?.();
+    this.removePositionListeners = undefined;
     if (this.menuElement && this.menuElement.parentNode) {
       this.menuElement.parentNode.removeChild(this.menuElement);
       this.menuElement = null;
@@ -101,7 +120,7 @@ export abstract class BaseMenu implements IMenu {
    * @param customStyles 自定义样式
    */
   protected createMenuContainer(className: string, customStyles: Partial<CSSStyleDeclaration> = {}): HTMLElement {
-    const menu = document.createElement('div');
+    const menu = this.ownerDocument.createElement('div');
     menu.className = className;
     menu.style.cssText = `
       position: absolute;
@@ -171,8 +190,8 @@ export abstract class BaseMenu implements IMenu {
   protected adjustPosition(): void {
     if (!this.menuElement) return;
 
-    const viewportHeight = window.innerHeight;
-    const viewportWidth = window.innerWidth;
+    const viewportHeight = this.ownerWindow.innerHeight;
+    const viewportWidth = this.ownerWindow.innerWidth;
     let menuRect = this.menuElement.getBoundingClientRect();
 
     // 底部溢出调整
@@ -255,7 +274,7 @@ export abstract class BaseMenu implements IMenu {
     icon: string | HTMLElement,
     onClick: () => void
   ): HTMLElement {
-    const menuItem = document.createElement('div');
+    const menuItem = this.ownerDocument.createElement('div');
     menuItem.setAttribute('data-menu-item', id);
     menuItem.style.cssText = `
       padding: 8px 12px;
@@ -273,7 +292,7 @@ export abstract class BaseMenu implements IMenu {
     menuItem.appendChild(iconEl);
 
     // 文本
-    const label = document.createElement('span');
+    const label = this.ownerDocument.createElement('span');
     if (textKey && this.useI18n && this.i18n) {
       this.i18n.bindElement(label, textKey, 'textContent');
     } else {
@@ -310,7 +329,7 @@ export abstract class BaseMenu implements IMenu {
     }
 
     if (this.isImagePath(icon)) {
-      const image = document.createElement('img');
+      const image = this.ownerDocument.createElement('img');
       image.src = icon;
       image.alt = altText;
       image.style.width = '14px';
@@ -320,7 +339,7 @@ export abstract class BaseMenu implements IMenu {
       return image;
     }
 
-    const textIcon = document.createElement('span');
+    const textIcon = this.ownerDocument.createElement('span');
     textIcon.textContent = icon;
     textIcon.style.fontSize = '14px';
     textIcon.style.flexShrink = '0';
@@ -338,12 +357,28 @@ export abstract class BaseMenu implements IMenu {
   protected setupAutoClose(delay: number = 100): void {
     if (!this.menuElement) return;
 
-    this.menuElement.addEventListener('mouseleave', () => {
-      setTimeout(() => {
-        if (this.menuElement && !this.menuElement.matches(':hover')) {
-          this.hide();
-        }
-      }, delay);
-    });
+    this.menuElement.addEventListener('mouseleave', () => this.scheduleAutoClose(delay));
+    const targetWindow = this.ownerWindow;
+    const reposition = () => {
+      if (!this.anchorElement || !this.menuElement) return;
+      this.positionMenu(this.anchorElement, { position: 'left' });
+      this.adjustPosition();
+    };
+    targetWindow.addEventListener('resize', reposition);
+    targetWindow.addEventListener('scroll', reposition, true);
+    this.removePositionListeners = () => {
+      targetWindow.removeEventListener('resize', reposition);
+      targetWindow.removeEventListener('scroll', reposition, true);
+    };
+  }
+
+  scheduleAutoClose(delay: number = 100): void {
+    const menu = this.menuElement;
+    if (!menu) return;
+    if (this.closeTimer !== undefined) this.ownerWindow.clearTimeout(this.closeTimer);
+    this.closeTimer = this.ownerWindow.setTimeout(() => {
+      this.closeTimer = undefined;
+      if (this.menuElement === menu && !menu.matches(':hover')) this.hide();
+    }, delay);
   }
 }
